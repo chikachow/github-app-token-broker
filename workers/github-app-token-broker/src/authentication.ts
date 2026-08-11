@@ -5,8 +5,6 @@ import type {
   VerifiedSubjectToken,
 } from "@github-app-token-broker/oidc/id-token-authenticator";
 
-export type { VerifiedSubjectToken } from "@github-app-token-broker/oidc/id-token-authenticator";
-
 export interface AuthenticatedContext {
   readonly verificationEvidence: OidcVerificationEvidence;
   readonly verifiedSubjectToken: VerifiedSubjectToken;

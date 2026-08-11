@@ -1,0 +1,13 @@
+{
+  "name": "@github-app-token-broker/token-issuance-policy",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/token-issuance-policy.ts"
+  },
+  "dependencies": {
+    "@github-app-token-broker/github": "workspace:*",
+    "@github-app-token-broker/oidc": "workspace:*"
+  }
+}

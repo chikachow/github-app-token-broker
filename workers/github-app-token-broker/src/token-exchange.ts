@@ -1,8 +1,8 @@
 import { jsonResponse } from "@github-app-token-broker/http/problem-details";
 import { readRequestBodyUpTo } from "@github-app-token-broker/http/request-body";
-import { normalizeInstallationAccessTokenRequest } from "./installation-access-token-request.ts";
+import { normalizeInstallationAccessTokenRequest } from "@github-app-token-broker/github/installation-access-token-request";
 import type { InstallationAccessTokenExchangeResult } from "./installation-access-token-exchange.ts";
-import type { InstallationAccessTokenRequest } from "./installation-access-token-request.ts";
+import type { InstallationAccessTokenRequest } from "@github-app-token-broker/github/installation-access-token-request";
 import type { InstallationAccessTokenIssuanceFailureReason } from "./policy/installation-access-token-issuance.ts";
 
 const maxTokenExchangeBodyBytes = 64 * 1024;

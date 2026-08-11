@@ -16,12 +16,12 @@ github-app-token-broker accepts Client-presented OpenID Connect ID Tokens from c
 - the Worker owns no public-location binding and never derives the audience from the incoming URL, `Host`, forwarded headers, or `/token` route
 - source workflows pin an immutable external action release and explicitly provide the Repository Resource and Requested Permissions
 - the action validates its configured Token Exchange Endpoint URL as a canonical credential-free HTTPS URL before OIDC or broker network I/O, rejects redirects, requires the returned scope to exactly match the explicit requested scope, and never derives or changes the audience from the endpoint; the selected endpoint receives the ID Token subject token and can observe an Installation Access Token when it proxies the request, so the authority controlling `TOKEN_BROKER_URL` is already trusted to obtain and handle those credentials
-- OIDC Provider Registrations and Permit Statements are independent, checked-in trust decisions; registration authenticates tokens but never authorizes Installation Access Token Issuance
-- the authoritative configured registration and Permit Statement inventory is the checked-in [`configured-token-exchange-composition.ts`](workers/github-app-token-broker/src/configured-token-exchange-composition.ts) and [`configured-token-issuance-policy.ts`](workers/github-app-token-broker/src/policy/configured-token-issuance-policy.ts) source
+- OIDC Provider Registrations and Permit Statements are independent, reviewed build-time trust decisions; registration authenticates tokens but never authorizes Installation Access Token Issuance
+- each Worker artifact contains its exact OIDC Provider Registration and Permit Statement inventory; the public source provides the typed composition Interface but no production inventory
 - Clients must supply exactly one effective canonical Repository Resource; value-less occurrences are omitted, and Subject Token Claims never select the target
 - Clients must explicitly supply a non-empty `scope`; the broker rejects omitted and exactly empty scope with `invalid_scope` and never infers Requested Permissions from Claims, policy, App grants, or deployment configuration
-- Clients may name structurally valid GitHub permissions, but every Requested Permission must be covered by checked-in Permit Statements
-- checked-in Token Issuance Policy Permit Statements must compose Effective Permissions that cover the Requested Permissions for the Verified Subject Token and Repository Resource before a token is issued
+- Clients may name structurally valid GitHub permissions, but every Requested Permission must be covered by compiled Permit Statements
+- compiled Token Issuance Policy Permit Statements must compose Effective Permissions that cover the Requested Permissions for the Verified Subject Token and Repository Resource before a token is issued
 - the GitHub App installation independently remains the upper bound on repositories and permissions
 - the GitHub App private key remains inside the deployment secret boundary
 
@@ -29,4 +29,4 @@ github-app-token-broker accepts Client-presented OpenID Connect ID Tokens from c
 
 Never commit deployment secrets, local `.dev.vars`, `.env`, GitHub App private keys, Cloudflare API tokens, or generated Wrangler state.
 
-The source repository intentionally carries only public-safe Wrangler templates for local development, tests, and dry-runs. Production deployment details, credentials, secret values, and deployment overlays must stay outside this codebase.
+The source repository intentionally carries only public-safe Wrangler templates for local development, tests, and dry-runs. Production OIDC Provider Registrations, Permit Statements, deployment details, credentials, secret values, and deployment configuration must stay outside this codebase.

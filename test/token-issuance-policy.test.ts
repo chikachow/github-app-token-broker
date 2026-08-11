@@ -10,7 +10,7 @@ import {
   unionGitHubInstallationPermissions,
   type GitHubInstallationPermissions,
   type InstallationAccessTokenRequest,
-} from "../workers/github-app-token-broker/src/installation-access-token-request.ts";
+} from "@github-app-token-broker/github/installation-access-token-request";
 import {
   claimEquals,
   claimOneOf,
@@ -21,9 +21,10 @@ import {
   tokenIssuancePolicyPermits,
   tokenIssuancePolicySupportsRequestedPermissions,
   tokenIssuancePolicySupportsTarget,
+  type ClaimPredicateDefinition,
   type PermitStatementDefinition,
-} from "../workers/github-app-token-broker/src/policy/token-issuance-policy.ts";
-import type { VerifiedSubjectToken } from "../workers/github-app-token-broker/src/authentication.ts";
+} from "@github-app-token-broker/token-issuance-policy";
+import type { VerifiedSubjectToken } from "@github-app-token-broker/oidc/id-token-authenticator";
 import { createVerifiedSubjectToken } from "./support/oidc.ts";
 
 const parsedIssuer = parseOidcIssuerIdentifier("https://issuer.example");
@@ -139,7 +140,88 @@ describe("Token Issuance Policy compilation", () => {
       },
     } as const;
 
-    expect(Object.isFrozen(compileTokenIssuancePolicy([statement]))).toBe(true);
+    const policy = compileTokenIssuancePolicy([statement]);
+
+    expect(policy).toEqual({
+      permitStatements: [
+        {
+          permissions: { actions: "read", contents: "write" },
+          resource: {
+            href: "https://api.github.com/repos/owner/repository",
+            owner: "owner",
+            repository: "repository",
+          },
+          subjectToken: {
+            claimPredicates: [
+              { claimName: "trusted", expectedValue: true, kind: "claim-equals" },
+              {
+                claimName: "event_name",
+                expectedValues: ["push", "workflow_dispatch"],
+                kind: "claim-one-of",
+              },
+            ],
+            issuer,
+          },
+        },
+      ],
+    });
+    expectRecursivelyFrozen(policy);
+  });
+
+  it("captures a structural snapshot without retaining authoring definitions", () => {
+    const definitions: PermitStatementDefinition[] = [
+      {
+        permissions: { contents: "write" },
+        resource: { owner: "owner", repository: "repository" },
+        subjectToken: {
+          claimPredicates: [
+            { claimName: "trusted", expectedValue: true, kind: "claim-equals" as const },
+            {
+              claimName: "event_name",
+              expectedValues: ["push", "workflow_dispatch"] as [string, ...string[]],
+              kind: "claim-one-of" as const,
+            },
+          ],
+          issuer,
+        },
+      },
+    ];
+    const policy = compileTokenIssuancePolicy(definitions);
+    const definition = definitions[0];
+
+    if (definition === undefined) {
+      throw new Error("missing authoring definition");
+    }
+
+    (definition.permissions as Record<string, string>)["contents"] = "read";
+    (definition.resource as { owner: string }).owner = "replacement-owner";
+    (definition.subjectToken.claimPredicates as ClaimPredicateDefinition[]).length = 0;
+    definitions.length = 0;
+
+    expect(policy).toEqual({
+      permitStatements: [
+        {
+          permissions: { contents: "write" },
+          resource: {
+            href: "https://api.github.com/repos/owner/repository",
+            owner: "owner",
+            repository: "repository",
+          },
+          subjectToken: {
+            claimPredicates: [
+              { claimName: "trusted", expectedValue: true, kind: "claim-equals" },
+              {
+                claimName: "event_name",
+                expectedValues: ["push", "workflow_dispatch"],
+                kind: "claim-one-of",
+              },
+            ],
+            issuer,
+          },
+        },
+      ],
+    });
+    expectRecursivelyFrozen(policy);
   });
 
   it.each([
@@ -488,29 +570,22 @@ function materializedPermissionsCover(
   });
 }
 
-describe("Token Issuance Policy evaluation", () => {
-  it("rejects values that are not compiled policies", () => {
-    expect(() =>
-      tokenIssuancePolicyPermits(
-        {} as never,
-        matchingSubjectToken,
-        requestFor({ contents: "read" }),
-      ),
-    ).toThrow("invalid Token Issuance Policy");
-    expect(() =>
-      tokenIssuancePolicySupportsTarget({} as never, requestFor({ contents: "read" })),
-    ).toThrow("invalid Token Issuance Policy");
-    expect(() =>
-      tokenIssuancePolicySupportsRequestedPermissions(
-        {} as never,
-        requestFor({ contents: "read" }),
-      ),
-    ).toThrow("invalid Token Issuance Policy");
-    expect(() => assertTokenIssuancePolicyIssuersAreRegistered({} as never, [])).toThrow(
-      "invalid Token Issuance Policy",
-    );
-  });
+function expectRecursivelyFrozen(value: unknown, seen = new Set<object>()): void {
+  if (typeof value !== "object" || value === null || seen.has(value)) {
+    return;
+  }
 
+  seen.add(value);
+  expect(Object.isFrozen(value)).toBe(true);
+
+  for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(value))) {
+    if ("value" in descriptor) {
+      expectRecursivelyFrozen(descriptor.value, seen);
+    }
+  }
+}
+
+describe("Token Issuance Policy evaluation", () => {
   it("reports every unique missing policy issuer in lexical order", () => {
     const firstIssuer = parseOidcIssuerIdentifier("https://a.example");
     const secondIssuer = parseOidcIssuerIdentifier("https://z.example");

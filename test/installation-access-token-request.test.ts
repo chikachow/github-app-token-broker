@@ -9,7 +9,7 @@ import {
   parseGitHubRepositoryResource,
   unionGitHubInstallationPermissions,
   type GitHubInstallationPermissionLevel,
-} from "../workers/github-app-token-broker/src/installation-access-token-request.ts";
+} from "@github-app-token-broker/github/installation-access-token-request";
 import {
   fixtureSourceResource,
   fixtureTargetResource,

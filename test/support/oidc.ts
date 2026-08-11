@@ -1,5 +1,5 @@
 import { parseOidcIssuerIdentifier } from "@github-app-token-broker/oidc/provider-registration";
-import type { VerifiedSubjectToken } from "../../workers/github-app-token-broker/src/authentication.ts";
+import type { VerifiedSubjectToken } from "@github-app-token-broker/oidc/id-token-authenticator";
 import {
   createOidcToken,
   createTokenExchangeRequestBody,

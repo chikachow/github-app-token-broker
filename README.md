@@ -7,13 +7,14 @@ The only public service route is `POST /token`. The service has no webhook recei
 ## Architecture
 
 - `workers/github-app-token-broker` is the sole deployable Cloudflare Worker package (`@github-app-token-broker/worker`).
-- `packages/oidc` owns the deep ID Token authenticator, exact issuer registrations, discovery/JWK Set validation, bounded caches, and fail-closed error classification.
-- `packages/github` owns GitHub App JWT signing, installation lookup, owner binding, and installation-token minting.
+- `packages/oidc` owns the deep ID Token authenticator, OIDC Provider Registration validation, discovery/JWK Set validation, bounded caches, and fail-closed error classification.
+- `packages/github` owns Installation Access Token Request normalization, GitHub App JWT signing, installation lookup, owner binding, and installation-token minting.
+- `packages/token-issuance-policy` owns Permit Statement compilation and evaluation.
 - `packages/http` owns bounded request/response body helpers and problem responses.
-- Provider packages contain reviewed GitHub Actions and Google service-account ID Token profiles plus source-supported, exact organization-scoped Fly OIDC Provider Registration construction. The default production composition registers only GitHub Actions and Google and contains no Fly Permit Statement.
-- `configured-token-exchange-composition.ts` is the small checked-in source/build composition seam for provider registrations and Token Issuance Policy. Those values are compiled into the Worker artifact; the exact Subject-Token Audience, one GitHub App credential pair, and rate limit remain deployment bindings.
+- Provider packages contain reviewed GitHub Actions and Google service-account registrations plus exact organization-scoped Fly OIDC Provider Registration construction.
+- `createTokenExchangeWorker` accepts OIDC Provider Registrations and a compiled Token Issuance Policy. An external deployment owns that TypeScript composition and compiles it into its Worker artifact. The source Wrangler template instead uses a generic deny-all entrypoint.
 
-The intended model is one GitHub App per deployment. Deployments of the same already-compiled Worker artifact may use different App credentials and Subject-Token Audiences, but they cannot inject different provider registrations or Token Issuance Policies at runtime. A different trust or policy composition may reuse the same runtime implementation, but it requires a different reviewed source composition and newly built Worker artifact. The public API deliberately exposes no App selector.
+The intended model is one GitHub App per deployment. OIDC Provider Registrations and Token Issuance Policy are build-time composition values, while App credentials, Subject-Token Audience, and rate limit are deployment bindings. Changing trust or policy requires a reviewed composition change and a newly built Worker artifact. The public API deliberately exposes no App selector or runtime policy loader.
 
 ## `POST /token`
 
@@ -30,7 +31,7 @@ scope=contents:read
 
 Important invariants:
 
-- issuer trust comes only from checked-in exact OIDC Provider Registrations
+- issuer trust comes only from exact OIDC Provider Registrations compiled into the Worker artifact
 - the ID Token must have the deployment's exact single-string `TOKEN_BROKER_AUDIENCE`; the RFC 8693 `audience` parameter is unsupported and grants nothing
 - every request names exactly one canonical GitHub Repository Resource
 - every request explicitly names a non-empty `scope`; the broker has no default Requested Permissions
@@ -52,7 +53,7 @@ The Worker consumes one App identity per deployment:
 - `TOKEN_BROKER_AUDIENCE`: required non-secret exact scalar Subject-Token Audience supplied by the deployment
 - `TOKEN_EXCHANGE_RATE_LIMIT`: Cloudflare rate-limit binding
 
-The audience must be a non-empty, non-whitespace, single-line string and is validated before request routing. It is an identity, not a Worker location binding: the Worker never derives it from the incoming URL, `Host`, forwarded headers, or `/token` route. Provider registrations and Token Issuance Policy are source-reviewed values in [`configured-token-exchange-composition.ts`](workers/github-app-token-broker/src/configured-token-exchange-composition.ts) and are compiled into the Worker artifact; neither is a runtime deployment binding or Client input.
+The audience must be a non-empty, non-whitespace, single-line string and is validated before request routing. It is an identity, not a Worker location binding: the Worker never derives it from the incoming URL, `Host`, forwarded headers, or `/token` route. OIDC Provider Registrations and Token Issuance Policy are reviewed TypeScript supplied to `createTokenExchangeWorker` and compiled into the artifact; neither is a runtime deployment binding or Client input.
 
 ## Local development
 

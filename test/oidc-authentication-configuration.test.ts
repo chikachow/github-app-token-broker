@@ -5,7 +5,7 @@ import { createFlyOidcProviderRegistration } from "../packages/oidc-provider-fly
 import {
   createGitHubRepositoryResource,
   type InstallationAccessTokenRequest,
-} from "../workers/github-app-token-broker/src/installation-access-token-request.ts";
+} from "@github-app-token-broker/github/installation-access-token-request";
 import { createOidcIdTokenAuthenticator } from "@github-app-token-broker/oidc/id-token-authenticator";
 import {
   claimEquals,
@@ -13,7 +13,7 @@ import {
   githubRepositoryResourceConstraint,
   oidcSubjectTokenConstraint,
   tokenIssuancePolicyPermits,
-} from "../workers/github-app-token-broker/src/policy/token-issuance-policy.ts";
+} from "@github-app-token-broker/token-issuance-policy";
 import { fetchOidcRemoteDocumentResponseTestDouble } from "./support/oidc.ts";
 import { createOidcToken } from "./support/oidc-token.ts";
 import { testPrivateKeyPem } from "./support/rsa-test-key-pair.ts";

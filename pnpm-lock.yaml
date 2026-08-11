@@ -21,6 +21,9 @@ importers:
       '@cloudflare/workers-types':
         specifier: 5.20260730.1
         version: 5.20260730.1
+      '@github-app-token-broker/github':
+        specifier: workspace:*
+        version: link:packages/github
       '@github-app-token-broker/http':
         specifier: workspace:*
         version: link:packages/http
@@ -30,6 +33,9 @@ importers:
       '@github-app-token-broker/oidc-provider-github-actions':
         specifier: workspace:*
         version: link:packages/oidc-provider-github-actions
+      '@github-app-token-broker/token-issuance-policy':
+        specifier: workspace:*
+        version: link:packages/token-issuance-policy
       '@github-app-token-broker/worker':
         specifier: workspace:*
         version: link:workers/github-app-token-broker
@@ -111,6 +117,15 @@ importers:
         specifier: workspace:*
         version: link:../oidc
 
+  packages/token-issuance-policy:
+    dependencies:
+      '@github-app-token-broker/github':
+        specifier: workspace:*
+        version: link:../github
+      '@github-app-token-broker/oidc':
+        specifier: workspace:*
+        version: link:../oidc
+
   workers/github-app-token-broker:
     dependencies:
       '@github-app-token-broker/github':
@@ -122,12 +137,9 @@ importers:
       '@github-app-token-broker/oidc':
         specifier: workspace:*
         version: link:../../packages/oidc
-      '@github-app-token-broker/oidc-provider-github-actions':
+      '@github-app-token-broker/token-issuance-policy':
         specifier: workspace:*
-        version: link:../../packages/oidc-provider-github-actions
-      '@github-app-token-broker/oidc-provider-google-service-account':
-        specifier: workspace:*
-        version: link:../../packages/oidc-provider-google-service-account
+        version: link:../../packages/token-issuance-policy
 
 packages:
 

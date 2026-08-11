@@ -29,9 +29,11 @@
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.19.1",
     "@cloudflare/workers-types": "5.20260730.1",
+    "@github-app-token-broker/github": "workspace:*",
     "@github-app-token-broker/http": "workspace:*",
     "@github-app-token-broker/oidc": "workspace:*",
     "@github-app-token-broker/oidc-provider-github-actions": "workspace:*",
+    "@github-app-token-broker/token-issuance-policy": "workspace:*",
     "@github-app-token-broker/worker": "workspace:*",
     "@tsconfig/strictest": "2.0.8",
     "@types/node": "24.13.3",

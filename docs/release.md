@@ -17,12 +17,10 @@ Run this checklist before making the repository public or tagging a release.
 - `docs/service-contract.md` matches implemented behaviour.
 - `docs/implementation.md` matches the workspace packages, Worker entrypoints, bindings, and verification commands.
 - `docs/deployment.md` documents only the generic interface between this source repository and an external deployment system.
-- Checked-in OIDC Provider Registrations match the intended production trust set; any authentication-only registration is intentional and documented.
-- Checked-in Token Issuance Policy Permit Statements match the intended production authorization set, and every referenced issuer has a Provider Registration.
+- The Worker package exposes the named composition Interface and no default production composition.
+- The generic Wrangler entrypoint remains deny-all and contains no deployment inventory.
 - No dynamic issuer-trust or authorization-policy binding has been introduced.
-- Deployment overlays do not override source-owned issuer trust or
-  authorization policy and preserve deployment-owned routes, identifiers, rate
-  limits, and secret bindings.
+- An external deployment owns and independently tests the OIDC Provider Registrations and Token Issuance Policy compiled into its artifact.
 - Deployment validation proves the Worker audience binding exactly equals the audience requested by its Clients and separately proves that Clients use the intended routed HTTPS Token Exchange Endpoint.
 - `CONTEXT.md` remains the glossary source of truth.
 - Deployment remains outside this codebase.

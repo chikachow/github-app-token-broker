@@ -1,4 +1,8 @@
-export type SecretTextBinding = string | SecretsStoreSecret;
+export type SecretTextBinding =
+  | string
+  | {
+      readonly get: () => Promise<string>;
+    };
 
 export async function resolveSecretText(
   binding: SecretTextBinding | undefined,

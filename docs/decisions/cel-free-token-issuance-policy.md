@@ -4,11 +4,10 @@
 
 Decision status: Accepted.
 
-Decision scope: This record defines authorization-model capabilities, not the
-current production Permit Statement inventory. Conditional examples describe
-what a reviewed application composition can express. The service contract and
-implementation reference record which capabilities production currently
-configures.
+Decision scope: This record defines authorization-model capabilities, not any
+deployment's Permit Statement inventory. Conditional examples describe what a
+reviewed application composition can express. A deployment-owned TypeScript
+composition and its tests record the inventory compiled into that artifact.
 
 ## Context
 
@@ -18,7 +17,7 @@ presented with a Verified Subject Token.
 
 The former CEL policy combined structural issuer, resource, and permission
 fields with CEL expressions over Subject Token Claims. CEL admitted
-substantially more syntax, types, and operations than checked-in policy needed.
+substantially more syntax, types, and operations than reviewed policies needed.
 It also required a parser, planner, binding adapter, compilation cache, runtime
 error handling, and tests for expression-language behavior outside the
 authorization domain.
@@ -37,9 +36,9 @@ glossary](../../CONTEXT.md). This decision uses those terms rather than defining
 a second authorization vocabulary.
 
 The entry is a **Permit Statement**, not a grant or rule. OAuth defines an
-authorization grant as a protocol credential, while this entry is checked-in
-authorization configuration. The entry has neither a selectable effect nor an
-identifier-bearing rule-combining role.
+authorization grant as a protocol credential, while this entry is reviewed
+build-time authorization configuration. The entry has neither a selectable
+effect nor an identifier-bearing rule-combining role.
 
 The policy input remains a **Verified Subject Token**, following the RFC 8693
 `subject_token` role. The design does not construct an application Principal.
@@ -122,13 +121,14 @@ Empty policy is valid and does not permit any request.
 
 Policy definitions are compiled once during application construction.
 Compilation rejects malformed or unknown fields, validates local invariants,
-copies and freezes all owned data, and returns an opaque Token Issuance Policy.
+copies and recursively freezes all owned data, and returns a structural Token
+Issuance Policy snapshot containing the normalized Permit Statements.
 It accepts duplicate and overlapping Permit Statements because pointwise union
 is idempotent and overlap is intentional.
 
 Evaluation is total for compiled policy and normalized inputs and returns only
-a Boolean. The opaque compiled representation does not make its current
-evaluation algorithm part of the decision.
+a Boolean. The snapshot's structure is part of the package Interface; its
+current evaluation algorithm is not.
 
 No matched statement, stable statement identifier, contributor list,
 denial-reason collection, or third decision state is exposed.
@@ -176,7 +176,7 @@ shape from Google user ID Tokens under the same Issuer Identifier.
 
 ### Authentication and authorization remain separate
 
-OIDC Provider Registrations remain checked-in authentication decisions.
+OIDC Provider Registrations remain reviewed build-time authentication decisions.
 Application composition verifies that every Issuer Identifier referenced by
 policy has a configured Provider Registration. The reverse is not required:
 registration alone creates no Permit Statement and grants no token-issuance
@@ -187,7 +187,7 @@ Registration. Provider-specific policy matchers, inheritance, issuer aliases,
 registration-derived capabilities, and automatic statement generation are not
 introduced. Ordinary TypeScript constants, arrays, spreads, `map`, and
 `flatMap` provide authoring reuse, including the capability to construct
-parameterized checked-in Fly registrations and statements.
+parameterized Fly registrations and statements in a deployment composition.
 
 ### Scope
 
@@ -203,10 +203,10 @@ mechanism, callback registry, or service-specific base implementation.
 
 - CEL and its direct dependencies, bindings, caches, helpers, and
   expression-specific tests are removed.
-- Policy authoring exposes only operations required by checked-in policy.
+- Policy authoring exposes only operations required by reviewed policy.
 - Weaker levels in the Requested Permissions are permitted by stronger
   configured levels.
-- Permission names remain extensible; checked-in Permit Statements must still
+- Permission names remain extensible; compiled Permit Statements must still
   cover every Requested Permission, and GitHub validates name and level
   compatibility after policy approval.
 - Independently authored applicable statements contribute to the same Effective
@@ -220,8 +220,8 @@ mechanism, callback registry, or service-specific base implementation.
   context but contain only the Boolean policy outcome.
 - Adding an OIDC Provider Registration does not authorize it; independent
   Permit Statements remain necessary.
-- The opaque compiled representation permits future internal optimization
-  without changing authoring or evaluation interfaces.
+- Recursive freezing prevents later mutation of policy authoring inputs from
+  changing the compiled structural snapshot.
 
 ## Rejected alternatives
 
@@ -277,7 +277,7 @@ compromised issuer. It can also reject supported customized Claim formats.
 ## Residual risks
 
 - Issuer-only OIDC Subject Token Constraints are intentionally valid and rely
-  on careful review of checked-in policy.
+  on careful review of the deployment's policy.
 - Repository identity is name-based, so deleting and recreating a repository
   under the same owner and name can continue to match policy. GitHub App
   installation authority remains an independent control.

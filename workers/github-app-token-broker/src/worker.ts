@@ -1,4 +1,5 @@
 import { problemResponse } from "@github-app-token-broker/http/problem-details";
+import type { SecretTextBinding } from "@github-app-token-broker/github/secrets";
 import type { InstallationAccessTokenExchange } from "./installation-access-token-exchange.ts";
 import { parseSubjectTokenAudience } from "./subject-token-audience.ts";
 import {
@@ -7,27 +8,47 @@ import {
 } from "./token-exchange.ts";
 import {
   createInstallationAccessTokenExchangeForWorker,
-  configuredTokenExchangeWorkerDependencies,
   defaultTokenExchangeWorkerRuntimeDependencies,
 } from "./dependencies.ts";
-import type {
-  TokenExchangeWorkerDependencies,
-  TokenExchangeWorkerRuntimeDependencies,
-} from "./dependencies.ts";
+import {
+  assertTokenIssuancePolicyIssuersAreRegistered,
+  type TokenIssuancePolicy,
+} from "@github-app-token-broker/token-issuance-policy";
+import type { OidcProviderRegistration } from "@github-app-token-broker/oidc/provider-registration";
 
-export type {
-  TokenExchangeWorkerDependencies,
-  TokenExchangeWorkerRuntimeDependencies,
-} from "./dependencies.ts";
+export interface TokenExchangeComposition {
+  readonly oidcProviderRegistrations: readonly OidcProviderRegistration[];
+  readonly tokenIssuancePolicy: TokenIssuancePolicy;
+}
+
+export interface TokenExchangeWorkerRuntimeDependencies {
+  readonly fetch: typeof fetch;
+  readonly now: () => Date;
+}
+
+export interface TokenExchangeWorkerEnv {
+  readonly GITHUB_API_BASE_URL?: string;
+  readonly GITHUB_APP_ID: string;
+  readonly GITHUB_APP_PRIVATE_KEY: SecretTextBinding;
+  readonly TOKEN_BROKER_AUDIENCE: string;
+  readonly TOKEN_EXCHANGE_RATE_LIMIT: {
+    limit(options: { readonly key: string }): Promise<{ readonly success: boolean }>;
+  };
+}
 
 export function createTokenExchangeWorker(
-  dependencies: TokenExchangeWorkerDependencies,
-): ExportedHandler<TokenExchangeEnv> {
+  composition: TokenExchangeComposition,
+  runtimeDependencies: TokenExchangeWorkerRuntimeDependencies = defaultTokenExchangeWorkerRuntimeDependencies,
+): ExportedHandler<TokenExchangeWorkerEnv> {
+  const oidcProviderRegistrations = Object.freeze([...composition.oidcProviderRegistrations]);
+  assertOidcProviderRegistrationIssuersAreUnique(oidcProviderRegistrations);
+  const tokenIssuancePolicy = composition.tokenIssuancePolicy;
+  assertTokenIssuancePolicyIssuersAreRegistered(tokenIssuancePolicy, oidcProviderRegistrations);
   const workerDependencies = Object.freeze({
-    fetch: dependencies.fetch,
-    now: dependencies.now,
-    oidcProviderRegistrations: Object.freeze([...dependencies.oidcProviderRegistrations]),
-    tokenIssuancePolicy: dependencies.tokenIssuancePolicy,
+    fetch: runtimeDependencies.fetch,
+    now: runtimeDependencies.now,
+    oidcProviderRegistrations,
+    tokenIssuancePolicy,
   });
   let configuredRuntime:
     | {
@@ -78,13 +99,21 @@ export function createTokenExchangeWorker(
   };
 }
 
-export function createConfiguredTokenExchangeWorker(
-  runtimeDependencies: TokenExchangeWorkerRuntimeDependencies = defaultTokenExchangeWorkerRuntimeDependencies,
-): ExportedHandler<TokenExchangeEnv> {
-  return createTokenExchangeWorker(configuredTokenExchangeWorkerDependencies(runtimeDependencies));
+function assertOidcProviderRegistrationIssuersAreUnique(
+  registrations: readonly OidcProviderRegistration[],
+): void {
+  const issuers = new Set<string>();
+
+  for (const registration of registrations) {
+    if (issuers.has(registration.issuer)) {
+      throw new TypeError("duplicate OIDC Provider Registration issuer");
+    }
+
+    issuers.add(registration.issuer);
+  }
 }
 
-function githubApp(env: TokenExchangeEnv) {
+function githubApp(env: TokenExchangeWorkerEnv) {
   return {
     ...(env.GITHUB_API_BASE_URL === undefined
       ? {}

@@ -1,12 +1,12 @@
 import type { GitHubAppDependencies, GitHubAppEnv } from "@github-app-token-broker/github/app";
 import type { OidcIdTokenAuthenticator } from "@github-app-token-broker/oidc/id-token-authenticator";
-import type { TokenIssuancePolicy } from "./policy/token-issuance-policy.ts";
+import type { TokenIssuancePolicy } from "@github-app-token-broker/token-issuance-policy";
 import {
   type InstallationAccessTokenIssuanceFailureReason,
   issueInstallationAccessTokenForContext,
 } from "./policy/installation-access-token-issuance.ts";
 import { authenticateOidcIdToken, type OidcAuthenticationFailureReason } from "./authentication.ts";
-import type { InstallationAccessTokenRequest } from "./installation-access-token-request.ts";
+import type { InstallationAccessTokenRequest } from "@github-app-token-broker/github/installation-access-token-request";
 
 type TokenExchangeAuthorizationFailureReason = Extract<
   InstallationAccessTokenIssuanceFailureReason,
