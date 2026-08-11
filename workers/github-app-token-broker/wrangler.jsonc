@@ -29,6 +29,6 @@
   "vars": {
     "GITHUB_API_BASE_URL": "https://api.github.com",
     "GITHUB_APP_ID": "000000",
-    "TOKEN_BROKER_AUDIENCE": "https://cyspbot.chikachow.org",
+    "TOKEN_BROKER_AUDIENCE": "https://broker.example",
   },
 }

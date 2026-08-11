@@ -17,8 +17,11 @@ Use present-tense documentation for implemented behaviour.
 
 Decision records may also document source-supported capabilities that are not
 currently configured in production. Label capability statements explicitly and
-use conditional language. `docs/service-contract.md` is the sole authoritative
-inventory of current production OIDC Provider Registrations and Token Issuance
-Policy Permit Statements; `docs/implementation.md` describes their mechanics and
-links to that inventory. Do not treat a clearly labelled capability as a
-configured policy.
+use conditional language. `docs/service-contract.md` is authoritative for public
+behavior and security semantics. The checked-in
+`workers/github-app-token-broker/src/configured-token-exchange-composition.ts`
+and `workers/github-app-token-broker/src/policy/configured-token-issuance-policy.ts`
+source are authoritative for the exact configured OIDC Provider Registration and
+Permit Statement inventories. `docs/implementation.md` describes their mechanics
+without duplicating those inventories. Do not treat a clearly labelled capability
+as configured trust or authorization.

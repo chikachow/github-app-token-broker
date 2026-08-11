@@ -16,17 +16,17 @@ Run this checklist before making the repository public or tagging a release.
 - `README.md` describes the current source repository and deployment boundary.
 - `docs/service-contract.md` matches implemented behaviour.
 - `docs/implementation.md` matches the workspace packages, Worker entrypoints, bindings, and verification commands.
-- `docs/deployment.md` documents the dedicated private `chikachow/github-app-token-broker-deploy` contract, the exact audience Worker binding, the immutable GitHub Action client with its fixed audience and optional URL override, and the sole Node-only OIDC fixture seam intentionally consumed from a pinned source checkout.
+- `docs/deployment.md` documents only the generic interface between this source repository and an external deployment system.
 - Checked-in OIDC Provider Registrations match the intended production trust set; any authentication-only registration is intentional and documented.
 - Checked-in Token Issuance Policy Permit Statements match the intended production authorization set, and every referenced issuer has a Provider Registration.
 - No dynamic issuer-trust or authorization-policy binding has been introduced.
 - Deployment overlays do not override source-owned issuer trust or
   authorization policy and preserve deployment-owned routes, identifiers, rate
   limits, and secret bindings.
-- Deployment validation proves the Worker audience binding exactly equals the action's fixed audience, and proves that the optional source repository URL override is either absent for the default endpoint or exactly the intended routed HTTPS destination before client enablement.
+- Deployment validation proves the Worker audience binding exactly equals the audience requested by its Clients and separately proves that Clients use the intended routed HTTPS Token Exchange Endpoint.
 - `CONTEXT.md` remains the glossary source of truth.
 - Deployment remains outside this codebase.
-- Source workflows dispatch only `update-github-app-token-broker.yml` in `chikachow/github-app-token-broker-deploy`; they contain no old-service endpoint or deployment target.
+- Source workflows do not hard-code deployment-owned audience or route values; any Token Exchange Endpoint override comes from repository configuration.
 
 ## Repository Settings
 

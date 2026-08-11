@@ -64,8 +64,7 @@ export async function createOidcToken(
   const now = Math.floor(Date.now() / 1000);
   const privateKey = await importPKCS8(privateKeyPem, "RS256");
   const { sub, ...payloadOverrides } = overrides ?? {};
-  const audience =
-    options?.audience === undefined ? "https://cyspbot.chikachow.org" : options.audience;
+  const audience = options?.audience === undefined ? "https://broker.example" : options.audience;
   let jwt = new SignJWT({
     actor: "dependabot[bot]",
     base_ref: "",

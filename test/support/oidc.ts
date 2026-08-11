@@ -24,7 +24,7 @@ export function createVerifiedSubjectToken(
 
   return {
     claims: {
-      aud: "https://cyspbot.chikachow.org",
+      aud: "https://broker.example",
       exp: now + 300,
       iat: now - 10,
       iss: issuer,

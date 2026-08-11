@@ -24,7 +24,7 @@ describe("OIDC ID Token authentication configuration", () => {
     const authenticator = createOidcIdTokenAuthenticator(
       {
         providerRegistrations: [registration],
-        subjectTokenAudience: "https://broker.example/token",
+        subjectTokenAudience: "https://broker.example",
       },
       {
         fetch: fetchOidcRemoteDocumentResponseTestDouble,
@@ -34,7 +34,7 @@ describe("OIDC ID Token authentication configuration", () => {
     const acceptedToken = await createOidcToken(
       testPrivateKeyPem,
       {},
-      { audience: "https://broker.example/token", issuer: registration.issuer },
+      { audience: "https://broker.example", issuer: registration.issuer },
     );
     const rejectedToken = await createOidcToken(
       testPrivateKeyPem,

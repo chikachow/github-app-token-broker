@@ -45,9 +45,9 @@ Exactly empty `resource` occurrences are treated as omitted under [OAuth token e
 
 Scope order is not significant, and repeated identical scope tokens are normalized once. Two tokens for the same permission name at different levels are ambiguous and rejected. The resulting canonical map is the Requested Permissions. Leading whitespace, trailing whitespace, repeated spaces, tabs, newlines, multiple or missing colons, non-scope-token characters, and levels outside `read`, `write`, and `admin` are rejected. An omitted `scope`, exactly empty `scope=`, or whitespace-only field is rejected with `400 {"error":"invalid_scope"}`. The broker has no default Requested Permissions.
 
-An empty `scope` is not a no-permissions request and is never translated to an empty GitHub permissions object. The broker does not infer permissions from the Repository Resource, Subject Token Claims, Token Issuance Policy maxima, GitHub App grants, or deployment configuration. The separately released `chikachow/cyspbot-app-token-action` has a caller convenience default of `contents:write pull_requests:write`, but these source workflows pass their least-privilege scopes explicitly. Action behavior does not make `scope` optional at the Token Exchange Endpoint.
+An empty `scope` is not a no-permissions request and is never translated to an empty GitHub permissions object. The broker does not infer permissions from the Repository Resource, Subject Token Claims, Token Issuance Policy maxima, GitHub App grants, or deployment configuration. Source workflows pass their least-privilege scopes explicitly. Caller behavior does not make `scope` optional at the Token Exchange Endpoint.
 
-The OpenID Connect ID Token supplied as the RFC 8693 subject token must have non-empty Issuer Identifier (`iss`), Audience (`aud`), and Subject (`sub`) claims plus numeric Expiration Time (`exp`) and Issued At (`iat`) claims. github-app-token-broker accepts only the ID Token subject-token-type identifier, verifies the configured Issuer Identifier and expiration, and does not impose a separate maximum token age based on `iat`. The ID Token must have the single audience value from the deployment-owned `TOKEN_BROKER_AUDIENCE` binding. The binding is an exact non-empty, non-whitespace, single-line scalar; it may be URL-shaped or opaque, and its initial value is `https://cyspbot.chikachow.org`. Missing or plural token audiences, and every scalar value that does not exactly equal the configured value, receive `400 {"error":"invalid_request"}`. After central verification, a non-null OIDC ID Token Profile on the selected registration validates its provider-specific token kind; an explicit `null` profile means central validation is sufficient.
+The OpenID Connect ID Token supplied as the RFC 8693 subject token must have non-empty Issuer Identifier (`iss`), Audience (`aud`), and Subject (`sub`) claims plus numeric Expiration Time (`exp`) and Issued At (`iat`) claims. github-app-token-broker accepts only the ID Token subject-token-type identifier, verifies the configured Issuer Identifier and expiration, and does not impose a separate maximum token age based on `iat`. The ID Token must have the single audience value from the deployment-owned `TOKEN_BROKER_AUDIENCE` binding. The binding is an exact non-empty, non-whitespace, single-line scalar and may be URL-shaped or opaque. Missing or plural token audiences, and every scalar value that does not exactly equal the configured value, receive `400 {"error":"invalid_request"}`. After central verification, a non-null OIDC ID Token Profile on the selected registration validates its provider-specific token kind; an explicit `null` profile means central validation is sufficient.
 
 github-app-token-broker does not support RFC 8693 `audience`, `actor_token`, or `actor_token_type` form parameters. Non-empty `audience` parameters are rejected with `invalid_target` because this profile uses `resource` for the issued token target and service-owned GitHub App credentials. Actor-token parameters are rejected as malformed for this profile with `invalid_request`.
 
@@ -160,16 +160,16 @@ The source-supported Fly provider package constructs a reviewed registration for
 
 A custom reviewed source composition and build may register that exact issuer and must independently add Permit Statements selecting every Fly Claim material to authorization. An already-compiled Worker cannot add the registration or policy at deployment time. The default production composition does not register Fly and contains no Fly Permit Statement, so it rejects Fly tokens as unregistered issuers. Fly documents both its [organization-specific OpenID Connect issuers and Machine identity Claims](https://fly.io/docs/security/openid-connect/) and [Machine token acquisition with a caller-selected audience](https://fly.io/docs/machines/api/tokens-resource/).
 
-For a deployment whose `TOKEN_BROKER_AUDIENCE` is `https://cyspbot.chikachow.org`, a Fly workload requests its ID Token with that exact value in the Fly Tokens resource `aud` field; `/token` is not part of the audience:
+For a deployment whose `TOKEN_BROKER_AUDIENCE` is `https://broker.example`, a Fly workload requests its ID Token with that exact value in the Fly Tokens resource `aud` field; `/token` is not part of the audience:
 
 ```http
 POST /v1/tokens/oidc
 Content-Type: application/json
 
-{"aud":"https://cyspbot.chikachow.org"}
+{"aud":"https://broker.example"}
 ```
 
-Fly returns the serialized ID Token as the response body. The workload sends that value as this service's RFC 8693 `subject_token` and sends the broker request to `https://cyspbot.chikachow.org/token` (or to the separately configured transport URL). The broker still accepts it only when the built artifact contains both the exact Fly organization registration and a Permit Statement that covers the token's signed Claims, requested Repository Resource, and Requested Permissions.
+Fly returns the serialized ID Token as the response body. The workload sends that value as this service's RFC 8693 `subject_token` and sends the broker request to the deployment's Token Exchange Endpoint. The broker still accepts it only when the built artifact contains both the exact Fly organization registration and a Permit Statement that covers the token's signed Claims, requested Repository Resource, and Requested Permissions.
 
 ### Token Issuance Policy
 
@@ -182,26 +182,7 @@ contains no Fly or Google Permit Statement. Every policy issuer must resolve to
 a configured OIDC Provider Registration when the application is composed; the
 reverse is intentionally not required.
 
-The exact configured inventory contains 16 Permit Statements. Every row also requires `ref_type=branch`, `ref=refs/heads/main`, the GitHub Actions issuer, and the exact `workflow_ref` shown:
-
-| Workflow repository and file                                                                                                  | Accepted events                     | Repository Resource                             | Maximum permissions                  |
-| ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- | ----------------------------------------------- | ------------------------------------ |
-| `chikachow/github-app-token-broker/.github/workflows/pnpm-up.yml@refs/heads/main`                                             | `schedule`, `workflow_dispatch`     | `chikachow/github-app-token-broker`             | `contents:write pull_requests:write` |
-| `chikachow/github-app-token-broker/.github/workflows/run-github-app-token-broker-deploy-update.yml@refs/heads/main`           | `workflow_run`, `workflow_dispatch` | `chikachow/github-app-token-broker-deploy`      | `actions:write`                      |
-| `chikachow/github-app-token-broker-deploy/.github/workflows/update-github-app-token-broker.yml@refs/heads/main`               | `workflow_dispatch`                 | `chikachow/github-app-token-broker-deploy`      | `contents:write pull_requests:write` |
-| `chikachow/cyspbot/.github/workflows/pnpm-up.yml@refs/heads/main`                                                             | `schedule`, `workflow_dispatch`     | `chikachow/cyspbot`                             | `contents:write pull_requests:write` |
-| `chikachow/cyspbot/.github/workflows/run-cyspbot-deploy-update.yml@refs/heads/main`                                           | `workflow_run`, `workflow_dispatch` | `chikachow/cyspbot-deploy`                      | `actions:write`                      |
-| `chikachow/cyspbot-deploy/.github/workflows/update-cyspbot.yml@refs/heads/main`                                               | `workflow_dispatch`                 | `chikachow/cyspbot-deploy`                      | `contents:write pull_requests:write` |
-| `chikachow/cloudflare-workload-identity/.github/workflows/pnpm-up.yml@refs/heads/main`                                        | `schedule`, `workflow_dispatch`     | `chikachow/cloudflare-workload-identity`        | `contents:write pull_requests:write` |
-| `chikachow/cloudflare-workload-identity/.github/workflows/run-cloudflare-workload-identity-deploy-update.yml@refs/heads/main` | `workflow_run`, `workflow_dispatch` | `chikachow/cloudflare-workload-identity-deploy` | `actions:write`                      |
-| `chikachow/cloudflare-workload-identity-deploy/.github/workflows/update-cloudflare-workload-identity.yml@refs/heads/main`     | `workflow_dispatch`                 | `chikachow/cloudflare-workload-identity-deploy` | `contents:write pull_requests:write` |
-| `chikachow/cloudflare-workload-identity-deploy/.github/workflows/pnpm-up.yml@refs/heads/main`                                 | `schedule`, `workflow_dispatch`     | `chikachow/cloudflare-workload-identity-deploy` | `contents:write pull_requests:write` |
-| `chikachow/cyspbot-app-token-action/.github/workflows/pnpm-up.yml@refs/heads/main`                                            | `schedule`, `workflow_dispatch`     | `chikachow/cyspbot-app-token-action`            | `contents:write pull_requests:write` |
-| `cysp/graphql-schema-registry/.github/workflows/pnpm-up.yml@refs/heads/main`                                                  | `schedule`, `workflow_dispatch`     | `cysp/graphql-schema-registry`                  | `contents:write pull_requests:write` |
-| `cysp/terraform-provider-braze/.github/workflows/update-indirect-dependencies.yml@refs/heads/main`                            | `schedule`, `workflow_dispatch`     | `cysp/terraform-provider-braze`                 | `contents:write pull_requests:write` |
-| `cysp/terraform-provider-censusworkspace/.github/workflows/update-indirect-dependencies.yml@refs/heads/main`                  | `schedule`, `workflow_dispatch`     | `cysp/terraform-provider-censusworkspace`       | `contents:write pull_requests:write` |
-| `cysp/terraform-provider-contentful/.github/workflows/update-indirect-dependencies.yml@refs/heads/main`                       | `schedule`, `workflow_dispatch`     | `cysp/terraform-provider-contentful`            | `contents:write pull_requests:write` |
-| `cysp/terraform-provider-typesense/.github/workflows/update-indirect-dependencies.yml@refs/heads/main`                        | `schedule`, `workflow_dispatch`     | `cysp/terraform-provider-typesense`             | `contents:write pull_requests:write` |
+The authoritative configured inventory is the checked-in [`configured-token-issuance-policy.ts`](../workers/github-app-token-broker/src/policy/configured-token-issuance-policy.ts) source. It is intentionally not duplicated in documentation.
 
 #### GitHub Actions
 
@@ -220,16 +201,7 @@ After authentication, a GitHub Actions Permit Statement applies only when:
 
 Claims a statement does not select, including `sub`, repository IDs, owner IDs, and actor metadata, do not affect authorization. A GitHub Actions token that fails its OIDC ID Token Profile, including an invalid `azp` claim, remains an invalid subject token and returns `400 {"error":"invalid_request"}`. Repository identity remains name-based; a repository deleted and recreated with the same owner/name can continue to match when the GitHub App installation still grants sufficient permissions.
 
-The separately released `chikachow/cyspbot-app-token-action` uses these convenience-default Requested Permissions when its `scope` input is absent, empty, or whitespace-only:
-
-```json
-{
-  "contents": "write",
-  "pull_requests": "write"
-}
-```
-
-The action explicitly serializes `scope=contents%3Awrite+pull_requests%3Awrite` in the broker request. These source workflows override that convenience default with an explicit scope. Direct broker Clients must likewise send their chosen non-empty scope explicitly; the broker does not own or recreate this default.
+Source workflows send an explicit scope. Direct broker Clients must likewise send their chosen non-empty scope explicitly; the broker does not own or recreate a caller default.
 
 github-app-token-broker denies forked pull request contexts, unconfigured refs, unconfigured workflow files, tag refs, and unsupported event names.
 

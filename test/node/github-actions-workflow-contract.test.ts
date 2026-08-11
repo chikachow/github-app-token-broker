@@ -7,7 +7,7 @@ const wranglerConfigs = [
   new URL("../../wrangler.jsonc", import.meta.url),
   new URL("../../workers/github-app-token-broker/wrangler.jsonc", import.meta.url),
 ] as const;
-const initialTokenBrokerAudience = "https://cyspbot.chikachow.org";
+const templateTokenBrokerAudience = "https://broker.example";
 const tokenBrokerWorkflows = [
   "pnpm-up.yml",
   "run-github-app-token-broker-deploy-update.yml",
@@ -106,15 +106,15 @@ describe("GitHub Actions workflow configuration contract", () => {
     }
   });
 
-  it("publishes only the deployment-owned audience as a Worker binding", async () => {
+  it("uses the public template Subject-Token Audience as the Worker binding", async () => {
     const configs = await Promise.all(wranglerConfigs.map((file) => readFile(file, "utf8")));
 
     for (const config of configs) {
-      expect(config).toContain(`"TOKEN_BROKER_AUDIENCE": "${initialTokenBrokerAudience}"`);
+      expect(config).toContain(`"TOKEN_BROKER_AUDIENCE": "${templateTokenBrokerAudience}"`);
       expect(config).not.toContain('"TOKEN_BROKER_URL"');
       expect(config).not.toContain('"TOKEN_BROKER_AUDIENCE": "github-app-token-broker"');
       expect(config).not.toContain(
-        '"TOKEN_BROKER_AUDIENCE": "https://cyspbot.chikachow.org/token"',
+        `"TOKEN_BROKER_AUDIENCE": "${templateTokenBrokerAudience}/token"`,
       );
     }
   });
