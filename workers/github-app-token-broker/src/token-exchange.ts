@@ -1,5 +1,5 @@
-import { jsonResponse } from "@cyspbot/http/problem-details";
-import { readRequestBodyUpTo } from "@cyspbot/http/request-body";
+import { jsonResponse } from "@github-app-token-broker/http/problem-details";
+import { readRequestBodyUpTo } from "@github-app-token-broker/http/request-body";
 import { normalizeInstallationAccessTokenRequest } from "./installation-access-token-request.ts";
 import type { InstallationAccessTokenExchangeResult } from "./installation-access-token-exchange.ts";
 import type { InstallationAccessTokenRequest } from "./installation-access-token-request.ts";
@@ -170,10 +170,10 @@ function wwwAuthenticateChallenge(authorization: string | null): string {
   const scheme = authorization?.split(/\s+/u, 1)[0];
 
   if (scheme !== undefined && /^[A-Za-z][A-Za-z0-9!#$%&'*+.^_`|~-]*$/u.test(scheme)) {
-    return `${scheme} realm="cyspbot"`;
+    return `${scheme} realm="github-app-token-broker"`;
   }
 
-  return 'Basic realm="cyspbot"';
+  return 'Basic realm="github-app-token-broker"';
 }
 
 function optionalTokenRequestFormValue(

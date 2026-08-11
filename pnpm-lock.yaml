@@ -21,21 +21,18 @@ importers:
       '@cloudflare/workers-types':
         specifier: 5.20260730.1
         version: 5.20260730.1
-      '@cyspbot/github-webhook-receiver':
-        specifier: workspace:*
-        version: link:workers/cyspbot-github-webhook-receiver
-      '@cyspbot/http':
+      '@github-app-token-broker/http':
         specifier: workspace:*
         version: link:packages/http
-      '@cyspbot/oidc':
+      '@github-app-token-broker/oidc':
         specifier: workspace:*
         version: link:packages/oidc
-      '@cyspbot/oidc-provider-github-actions':
+      '@github-app-token-broker/oidc-provider-github-actions':
         specifier: workspace:*
         version: link:packages/oidc-provider-github-actions
-      '@cyspbot/token-exchange':
+      '@github-app-token-broker/worker':
         specifier: workspace:*
-        version: link:workers/cyspbot-token-exchange
+        version: link:workers/github-app-token-broker
       '@tsconfig/strictest':
         specifier: 2.0.8
         version: 2.0.8
@@ -66,10 +63,13 @@ importers:
       wrangler:
         specifier: 4.116.0
         version: 4.116.0(@cloudflare/workers-types@5.20260730.1)
+      yaml:
+        specifier: 2.9.0
+        version: 2.9.0
 
   packages/github:
     dependencies:
-      '@cyspbot/http':
+      '@github-app-token-broker/http':
         specifier: workspace:*
         version: link:../http
       jose:
@@ -83,7 +83,7 @@ importers:
 
   packages/oidc:
     dependencies:
-      '@cyspbot/http':
+      '@github-app-token-broker/http':
         specifier: workspace:*
         version: link:../http
       jose:
@@ -95,46 +95,37 @@ importers:
 
   packages/oidc-provider-fly:
     dependencies:
-      '@cyspbot/oidc':
+      '@github-app-token-broker/oidc':
         specifier: workspace:*
         version: link:../oidc
 
   packages/oidc-provider-github-actions:
     dependencies:
-      '@cyspbot/oidc':
+      '@github-app-token-broker/oidc':
         specifier: workspace:*
         version: link:../oidc
 
   packages/oidc-provider-google-service-account:
     dependencies:
-      '@cyspbot/oidc':
+      '@github-app-token-broker/oidc':
         specifier: workspace:*
         version: link:../oidc
 
-  workers/cyspbot-github-webhook-receiver:
+  workers/github-app-token-broker:
     dependencies:
-      '@cyspbot/github':
+      '@github-app-token-broker/github':
         specifier: workspace:*
         version: link:../../packages/github
-      '@cyspbot/http':
+      '@github-app-token-broker/http':
         specifier: workspace:*
         version: link:../../packages/http
-
-  workers/cyspbot-token-exchange:
-    dependencies:
-      '@cyspbot/github':
-        specifier: workspace:*
-        version: link:../../packages/github
-      '@cyspbot/http':
-        specifier: workspace:*
-        version: link:../../packages/http
-      '@cyspbot/oidc':
+      '@github-app-token-broker/oidc':
         specifier: workspace:*
         version: link:../../packages/oidc
-      '@cyspbot/oidc-provider-github-actions':
+      '@github-app-token-broker/oidc-provider-github-actions':
         specifier: workspace:*
         version: link:../../packages/oidc-provider-github-actions
-      '@cyspbot/oidc-provider-google-service-account':
+      '@github-app-token-broker/oidc-provider-google-service-account':
         specifier: workspace:*
         version: link:../../packages/oidc-provider-google-service-account
 

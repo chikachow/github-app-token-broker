@@ -1,7 +1,7 @@
 import {
   createOidcProviderRegistration,
   type OidcIdTokenProfile,
-} from "@cyspbot/oidc/provider-registration";
+} from "@github-app-token-broker/oidc/provider-registration";
 
 const githubActionsOidcIdTokenProfile: OidcIdTokenProfile = {
   validate: (claims) => claims["azp"] === undefined || claims["azp"] === claims.aud,

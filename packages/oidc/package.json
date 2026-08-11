@@ -1,5 +1,5 @@
 {
-  "name": "@cyspbot/oidc",
+  "name": "@github-app-token-broker/oidc",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -11,7 +11,7 @@
     "./verified-id-token": "./src/verified-id-token.ts"
   },
   "dependencies": {
-    "@cyspbot/http": "workspace:*",
+    "@github-app-token-broker/http": "workspace:*",
     "jose": "6.2.5",
     "zod": "4.4.3"
   }

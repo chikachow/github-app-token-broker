@@ -11,12 +11,12 @@ import {
   type OidcIdTokenAuthenticator,
   type OidcVerificationEvidence,
   type VerifiedSubjectToken,
-} from "@cyspbot/oidc/id-token-authenticator";
+} from "@github-app-token-broker/oidc/id-token-authenticator";
 import {
   createOidcProviderRegistration,
   parseOidcIssuerIdentifier,
   type OidcIdTokenSigningAlgorithm,
-} from "@cyspbot/oidc/provider-registration";
+} from "@github-app-token-broker/oidc/provider-registration";
 
 import { testPrivateKeyPem, testPublicJwk } from "./support/rsa-test-key-pair.ts";
 
@@ -44,7 +44,7 @@ describe("OIDC ID Token Authenticator", () => {
       createOidcIdTokenAuthenticator(
         {
           providerRegistrations: [registration, registration],
-          subjectTokenAudience: "cyspbot",
+          subjectTokenAudience: "github-app-token-broker",
         },
         { fetch: successfulProviderFetch, now: () => new Date() },
       ),
@@ -73,7 +73,7 @@ describe("OIDC ID Token Authenticator", () => {
     const authenticator = createOidcIdTokenAuthenticator(
       {
         providerRegistrations: [structuralRegistration],
-        subjectTokenAudience: "cyspbot",
+        subjectTokenAudience: "github-app-token-broker",
       },
       { fetch: successfulProviderFetch, now: () => new Date() },
     );
@@ -93,7 +93,7 @@ describe("OIDC ID Token Authenticator", () => {
               acceptedIdTokenSigningAlgorithms: [],
             },
           ],
-          subjectTokenAudience: "cyspbot",
+          subjectTokenAudience: "github-app-token-broker",
         },
         { fetch: successfulProviderFetch, now: () => new Date() },
       ),
@@ -146,7 +146,7 @@ describe("OIDC ID Token Authenticator", () => {
     const authenticator = createOidcIdTokenAuthenticator(
       {
         providerRegistrations: [registration],
-        subjectTokenAudience: "cyspbot",
+        subjectTokenAudience: "github-app-token-broker",
       },
       {
         fetch: fetchOidcRemoteDocumentResponse,
@@ -225,7 +225,7 @@ describe("OIDC ID Token Authenticator", () => {
     const authenticator = createOidcIdTokenAuthenticator(
       {
         providerRegistrations: [registration],
-        subjectTokenAudience: "cyspbot",
+        subjectTokenAudience: "github-app-token-broker",
       },
       {
         fetch: successfulProviderFetch,
@@ -250,7 +250,7 @@ describe("OIDC ID Token Authenticator", () => {
     const unavailableAuthenticator = createOidcIdTokenAuthenticator(
       {
         providerRegistrations: [registration],
-        subjectTokenAudience: "cyspbot",
+        subjectTokenAudience: "github-app-token-broker",
       },
       {
         fetch: () => Promise.resolve(new Response(null, { status: 503 })),
@@ -288,7 +288,9 @@ describe("OIDC ID Token Authenticator", () => {
     const authenticator = testAuthenticator(successfulProviderFetch);
 
     await expect(
-      authenticator.authenticateIdToken(await signedIdToken({ audience: ["cyspbot", "other"] })),
+      authenticator.authenticateIdToken(
+        await signedIdToken({ audience: ["github-app-token-broker", "other"] }),
+      ),
     ).resolves.toEqual(
       expectedFailure("subject_token_rejected", "ERR_JWT_CLAIM_VALIDATION_FAILED"),
     );
@@ -333,7 +335,7 @@ describe("OIDC ID Token Authenticator", () => {
     const authenticator = createOidcIdTokenAuthenticator(
       {
         providerRegistrations: [profileRegistration],
-        subjectTokenAudience: "cyspbot",
+        subjectTokenAudience: "github-app-token-broker",
       },
       { fetch: successfulProviderFetch, now: () => new Date() },
     );
@@ -487,7 +489,7 @@ describe("OIDC ID Token Authenticator", () => {
     const authenticator = createOidcIdTokenAuthenticator(
       {
         providerRegistrations: [registration],
-        subjectTokenAudience: "cyspbot",
+        subjectTokenAudience: "github-app-token-broker",
       },
       {
         fetch: fetchOidcRemoteDocumentResponse,
@@ -560,7 +562,7 @@ describe("OIDC ID Token Authenticator", () => {
     const authenticator = createOidcIdTokenAuthenticator(
       {
         providerRegistrations: [registration],
-        subjectTokenAudience: "cyspbot",
+        subjectTokenAudience: "github-app-token-broker",
       },
       {
         fetch: fetchOidcRemoteDocumentResponse,
@@ -667,7 +669,7 @@ describe("OIDC ID Token Authenticator", () => {
     const authenticator = createOidcIdTokenAuthenticator(
       {
         providerRegistrations: [algorithmRegistration],
-        subjectTokenAudience: "cyspbot",
+        subjectTokenAudience: "github-app-token-broker",
       },
       { fetch: fetchOidcRemoteDocumentResponse, now: () => now },
     );
@@ -726,7 +728,7 @@ describe("OIDC ID Token Authenticator", () => {
     const authenticator = createOidcIdTokenAuthenticator(
       {
         providerRegistrations: [algorithmRegistration],
-        subjectTokenAudience: "cyspbot",
+        subjectTokenAudience: "github-app-token-broker",
       },
       { fetch: fetchOidcRemoteDocumentResponse, now: () => now },
     );
@@ -802,7 +804,7 @@ describe("OIDC ID Token Authenticator", () => {
     const authenticator = createOidcIdTokenAuthenticator(
       {
         providerRegistrations: [algorithmRegistration],
-        subjectTokenAudience: "cyspbot",
+        subjectTokenAudience: "github-app-token-broker",
       },
       { fetch: fetchOidcRemoteDocumentResponse, now: () => now },
     );
@@ -1416,7 +1418,7 @@ describe("OIDC ID Token Authenticator", () => {
     const authenticator = createOidcIdTokenAuthenticator(
       {
         providerRegistrations: [profileRegistration],
-        subjectTokenAudience: "cyspbot",
+        subjectTokenAudience: "github-app-token-broker",
       },
       { fetch: successfulProviderFetch, now: () => new Date() },
     );
@@ -1440,7 +1442,7 @@ describe("OIDC ID Token Authenticator", () => {
     const authenticator = createOidcIdTokenAuthenticator(
       {
         providerRegistrations: [profileRegistration],
-        subjectTokenAudience: "cyspbot",
+        subjectTokenAudience: "github-app-token-broker",
       },
       { fetch: successfulProviderFetch, now: () => new Date() },
     );
@@ -1504,7 +1506,7 @@ function testAuthenticator(
   return createOidcIdTokenAuthenticator(
     {
       providerRegistrations: [registration],
-      subjectTokenAudience: "cyspbot",
+      subjectTokenAudience: "github-app-token-broker",
     },
     { fetch: fetchOidcRemoteDocumentResponse, now },
   );
@@ -1654,7 +1656,7 @@ async function signedIdToken(
   const privateKey = await importPKCS8(testPrivateKeyPem, options.algorithm ?? "RS256");
 
   return new SignJWT({
-    aud: options.audience ?? "cyspbot",
+    aud: options.audience ?? "github-app-token-broker",
     exp: now + 300,
     iat: now - 10,
     iss: options.tokenIssuer ?? issuer,

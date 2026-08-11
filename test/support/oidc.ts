@@ -1,5 +1,5 @@
-import { parseOidcIssuerIdentifier } from "@cyspbot/oidc/provider-registration";
-import type { VerifiedSubjectToken } from "../../workers/cyspbot-token-exchange/src/authentication.ts";
+import { parseOidcIssuerIdentifier } from "@github-app-token-broker/oidc/provider-registration";
+import type { VerifiedSubjectToken } from "../../workers/github-app-token-broker/src/authentication.ts";
 import {
   createOidcToken,
   createTokenExchangeRequestBody,
@@ -24,7 +24,7 @@ export function createVerifiedSubjectToken(
 
   return {
     claims: {
-      aud: "cyspbot",
+      aud: "https://cyspbot.chikachow.org",
       exp: now + 300,
       iat: now - 10,
       iss: issuer,

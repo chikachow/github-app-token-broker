@@ -1,4 +1,4 @@
-import { readBodyUpTo } from "@cyspbot/http/body";
+import { readBodyUpTo } from "@github-app-token-broker/http/body";
 import {
   createLocalJWKSet,
   decodeJwt,

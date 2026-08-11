@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { readBodyUpTo } from "@cyspbot/http/body";
+import { readBodyUpTo } from "@github-app-token-broker/http/body";
 
 describe("bounded body reading", () => {
   it("accepts an absent body as empty", async () => {

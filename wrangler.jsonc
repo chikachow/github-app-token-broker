@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "cyspbot-test-harness",
+  "name": "github-app-token-broker-test-harness",
   "main": "test/support/root-test-harness.ts",
   "compatibility_date": "2026-07-24",
   "compatibility_flags": [
@@ -24,10 +24,11 @@
     },
   ],
   "secrets": {
-    "required": ["GITHUB_APP_PRIVATE_KEY", "GITHUB_WEBHOOK_SECRET"],
+    "required": ["GITHUB_APP_PRIVATE_KEY"],
   },
   "vars": {
     "GITHUB_API_BASE_URL": "https://api.github.com",
     "GITHUB_APP_ID": "000000",
+    "TOKEN_BROKER_AUDIENCE": "https://cyspbot.chikachow.org",
   },
 }

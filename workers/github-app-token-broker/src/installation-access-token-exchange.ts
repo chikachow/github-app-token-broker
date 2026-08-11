@@ -1,5 +1,5 @@
-import type { GitHubAppDependencies, GitHubAppEnv } from "@cyspbot/github/app";
-import type { OidcIdTokenAuthenticator } from "@cyspbot/oidc/id-token-authenticator";
+import type { GitHubAppDependencies, GitHubAppEnv } from "@github-app-token-broker/github/app";
+import type { OidcIdTokenAuthenticator } from "@github-app-token-broker/oidc/id-token-authenticator";
 import type { TokenIssuancePolicy } from "./policy/token-issuance-policy.ts";
 import {
   type InstallationAccessTokenIssuanceFailureReason,

@@ -1,5 +1,5 @@
 {
-  "name": "@cyspbot/oidc-provider-google-service-account",
+  "name": "@github-app-token-broker/oidc-provider-google-service-account",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -8,6 +8,6 @@
     "./provider-registration": "./src/provider-registration.ts"
   },
   "dependencies": {
-    "@cyspbot/oidc": "workspace:*"
+    "@github-app-token-broker/oidc": "workspace:*"
   }
 }

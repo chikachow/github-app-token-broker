@@ -1,11 +1,11 @@
-# cyspbot
+# github-app-token-broker
 
-cyspbot is the maintainer's hosted automation application. It lets trusted automation workloads obtain repository-scoped GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
+github-app-token-broker is the maintainer's hosted automation application. It lets trusted automation workloads obtain repository-scoped GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
 
 ## Language
 
 **Token Exchange Client**:
-The OAuth Client that sends a token exchange request to **cyspbot**; it is not necessarily the Subject represented by the request's ID Token.
+The OAuth Client that sends a token exchange request to **github-app-token-broker**; it is not necessarily the Subject represented by the request's ID Token.
 _Avoid_: Authenticated Caller, Subject, User, human, consumer
 
 **Fly Machine Identity**:
@@ -34,15 +34,15 @@ _Avoid_: Serialized subject token, derived principal fields, Client-provided att
 
 **Installation Access Token Issuance**:
 The exchange of a **Verified Subject Token** for a short-lived **Installation Access Token** under **Token Issuance Policy**.
-_Avoid_: cyspbot itself, app login
+_Avoid_: github-app-token-broker itself, app login
 
 **Installation Access Token Request**:
-The normalized request for one **Installation Access Token**, containing one **Repository Resource** and the GitHub App permissions requested for it.
-_Avoid_: Profile, grant, target selector, raw form values
+The normalized request for one **Installation Access Token**, containing one explicitly requested **Repository Resource** and the GitHub App permissions derived from one explicitly supplied non-empty scope.
+_Avoid_: Profile, grant, target selector, raw form values, broker default permissions
 
 **Requested Permissions**:
-The canonical permission map requested for one **Installation Access Token Request**.
-_Avoid_: Client-selected permission map, raw scope string, GitHub `permissions` request object
+The canonical permission map derived from the explicit scope of one **Installation Access Token Request**.
+_Avoid_: Inferred permissions, broker or deployment defaults, raw scope string, GitHub `permissions` request object
 
 **Repository Resource**:
 A canonical GitHub API repository URI in the form `https://api.github.com/repos/{owner}/{repo}`.
@@ -84,24 +84,24 @@ _Avoid_: Generic expression, Claim mapping, unverified Claim test
 The pointwise maximum permission map contributed by applicable **Permit Statements**, ordered `omitted < read < write < admin`.
 _Avoid_: First matching statement, whole-map equality, GitHub installation permissions
 
-**Webhook Receiver**:
-A cyspbot endpoint that authenticates and acknowledges GitHub webhook deliveries.
-_Avoid_: Business event processor, schema-normalizer
-
 **Token Exchange Endpoint**:
-The cyspbot Token Endpoint that accepts an ID Token as the RFC 8693 subject token and returns an **Installation Access Token**.
+The github-app-token-broker Token Endpoint that accepts an ID Token as the RFC 8693 subject token and returns an **Installation Access Token**.
 _Avoid_: Installation collection endpoint, raw GitHub passthrough
+
+**Subject-Token Audience**:
+The deployment-owned exact non-empty single-line scalar that identifies the logical recipient of incoming ID Tokens. A deployment may choose a URL-shaped or opaque value. It is distinct from the hosted **Token Exchange Endpoint** location and is never derived from request-controlled data or from that endpoint.
+_Avoid_: request host, inferred endpoint identity, client-selected audience
 
 **OpenID Provider**:
 An external OpenID Connect authority that issues ID Tokens and publishes configuration describing its issuer and verification keys.
-_Avoid_: OIDC Provider Registration, cyspbot, token caller
+_Avoid_: OIDC Provider Registration, github-app-token-broker, token caller
 
 **OIDC Issuer Identifier**:
 The exact, case-sensitive HTTPS identifier asserted by an **OpenID Provider** in **OpenID Provider Metadata** and ID Token `iss` Claims.
 _Avoid_: Provider alias, discovery URL, JWK Set URI
 
 **OIDC Provider Registration**:
-A cyspbot trust decision for one **OIDC Issuer Identifier**, its accepted ID Token signing algorithms, and its **OIDC ID Token Profile** selection.
+A github-app-token-broker trust decision for one **OIDC Issuer Identifier**, its accepted ID Token signing algorithms, and its **OIDC ID Token Profile** selection.
 _Avoid_: Trusted OIDC Issuer, arbitrary identity provider, provider alias
 
 **OIDC ID Token Profile**:

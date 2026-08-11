@@ -24,9 +24,9 @@ means central OIDC validation is sufficient. Registration still authenticates
 an issuer without authorizing token issuance.
 
 The current [service contract](../service-contract.md) distinguishes registered
-OAuth Token Endpoint errors from cyspbot protocol extensions. In particular,
+OAuth Token Endpoint errors from github-app-token-broker protocol extensions. In particular,
 the `500` and `503` mappings for authentication failures reuse `server_error`
-and `temporarily_unavailable` as cyspbot Token Endpoint extensions; they are not
+and `temporarily_unavailable` as github-app-token-broker Token Endpoint extensions; they are not
 claims of compliance with RFC 6749 section 5.2. This clarification governs the
 original text's historical reference to an “OAuth response contract.”
 
@@ -35,24 +35,24 @@ the architecture and policy boundary that was accepted before this amendment.
 
 ## Context
 
-cyspbot is an OAuth 2.0 Security Token Service. An automation workload sends an
-OpenID Connect ID Token as the RFC 8693 `subject_token` to cyspbot's Token
+github-app-token-broker is an OAuth 2.0 Security Token Service. An automation workload sends an
+OpenID Connect ID Token as the RFC 8693 `subject_token` to github-app-token-broker's Token
 Endpoint and requests a repository-scoped GitHub App installation access token.
 
 The protocol roles are:
 
 - the automation workload is the OAuth Client for the token exchange;
-- cyspbot is the Authorization Server exposing the Token Endpoint;
+- github-app-token-broker is the Authorization Server exposing the Token Endpoint;
 - each external issuer is an OpenID Provider for the incoming ID Token; and
 - the GitHub API is the Resource Server for the issued installation access
   token.
 
 The Client is not necessarily the Subject represented by the ID Token. Client
-Authentication is also distinct from subject-token authentication; cyspbot does
+Authentication is also distinct from subject-token authentication; github-app-token-broker does
 not infer one from the other.
 
 OpenID Provider Configuration supplies an issuer's endpoints,
-capabilities, and key-location metadata. It does not decide whether cyspbot
+capabilities, and key-location metadata. It does not decide whether github-app-token-broker
 trusts that issuer or what credential an authenticated Subject may receive.
 Likewise, the ID Token Audience (`aud`) Claim identifies the intended recipient
 of the incoming token, while the token-exchange `resource`, `audience`, and
@@ -62,7 +62,7 @@ issued token.
 AWS IAM OIDC federation, Google Cloud Workload Identity Federation, and Vault
 JWT authentication use different configuration resource boundaries, but share
 the same semantic stages: explicit issuer trust, key resolution, assertion
-admission, and later authorization. cyspbot retains those stages without
+admission, and later authorization. github-app-token-broker retains those stages without
 adopting a general-purpose identity-provider control plane.
 
 ## Decision
@@ -91,18 +91,18 @@ GitHub credential issuance remain outside this boundary.
 Configuration is placed at the narrowest stable owner that determines its
 meaning:
 
-| Concern                                           | Owner                                              | Decision                                                                                                                                                       |
-| ------------------------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Subject-token audience                            | ID Token authentication service                    | One exact scalar audience identifies cyspbot as the recipient. It is not repeated in provider registrations.                                                   |
-| Trusted Issuer Identifier                         | OIDC Provider Registration                         | Each registration names one exact, case-sensitive HTTPS Issuer Identifier.                                                                                     |
-| Accepted ID Token signing algorithms              | OIDC Provider Registration                         | Each provider has an independently reviewed, non-empty asymmetric algorithm allowlist. Coincidentally equal provider allowlists do not become a global policy. |
-| Token-kind constraints                            | OIDC Provider Registration's OIDC ID Token Profile | Code-owned cross-claim rules distinguish the accepted kind of ID Token after central verification.                                                             |
-| Provider key location and advertised capabilities | OpenID Provider                                    | The validated OpenID Provider Configuration Response supplies `jwks_uri` and `id_token_signing_alg_values_supported`.                                          |
-| Target resource and requested permissions         | Installation Access Token Request and Token Policy | Token-exchange `resource` and `scope` are normalized before policy evaluation and are never inferred from subject-token Claims.                                |
-| Credential grant                                  | Token Policy                                       | Exact Issuer, verified Claims, resource, and permissions determine whether issuance is allowed.                                                                |
-| Maximum issued authority                          | GitHub App installation                            | GitHub's installation and granted permissions remain the upper bound on the installation access token.                                                         |
+| Concern                                           | Owner                                              | Decision                                                                                                                                                                                                                        |
+| ------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Subject-token audience                            | Deployment composition                             | One exact non-empty single-line scalar identifies this deployment's logical recipient and is not derived from endpoint location or requests. Source-supported capability: a deployment may choose a URL-shaped or opaque value. |
+| Trusted Issuer Identifier                         | OIDC Provider Registration                         | Each registration names one exact, case-sensitive HTTPS Issuer Identifier.                                                                                                                                                      |
+| Accepted ID Token signing algorithms              | OIDC Provider Registration                         | Each provider has an independently reviewed, non-empty asymmetric algorithm allowlist. Coincidentally equal provider allowlists do not become a global policy.                                                                  |
+| Token-kind constraints                            | OIDC Provider Registration's OIDC ID Token Profile | Code-owned cross-claim rules distinguish the accepted kind of ID Token after central verification.                                                                                                                              |
+| Provider key location and advertised capabilities | OpenID Provider                                    | The validated OpenID Provider Configuration Response supplies `jwks_uri` and `id_token_signing_alg_values_supported`.                                                                                                           |
+| Target resource and requested permissions         | Installation Access Token Request and Token Policy | Explicit token-exchange `resource` and non-empty `scope` values are required and normalized before policy evaluation; neither is inferred from subject-token Claims, policy maxima, App grants, or deployment configuration.    |
+| Credential grant                                  | Token Policy                                       | Exact Issuer, verified Claims, resource, and permissions determine whether issuance is allowed.                                                                                                                                 |
+| Maximum issued authority                          | GitHub App installation                            | GitHub's installation and granted permissions remain the upper bound on the installation access token.                                                                                                                          |
 
-An OIDC Provider Registration is cyspbot's application-specific trust record,
+An OIDC Provider Registration is github-app-token-broker's application-specific trust record,
 not an OpenID Provider Configuration Document or OpenID Connect Dynamic Client
 Registration. It contains:
 
@@ -114,8 +114,9 @@ It contains no audience, JWK Set URI, provider alias, claim mapping,
 authorization rule, or caller-selected key source.
 
 The service audience and provider profiles are both authentication controls but
-have different owners. The audience establishes that every incoming ID Token
-was issued for this token-exchange service. A provider profile establishes that
+have different owners. The deployment-owned audience establishes that every incoming ID Token
+was issued for this exact logical recipient. Public routing to the source-owned `/token` operation
+is a deployment concern, not an audience identity or Worker binding. A provider profile establishes that
 a centrally verified token is the intended provider-specific token kind.
 Profiles do not choose issuers, fetch trust material, or grant a target
 credential.
@@ -154,7 +155,7 @@ I/O.
 
 ### OpenID Provider Configuration URL derivation
 
-cyspbot implements the OpenID Connect Discovery 1.0 Provider Configuration
+github-app-token-broker implements the OpenID Connect Discovery 1.0 Provider Configuration
 algorithm:
 
 1. start with the already validated exact Issuer Identifier;
@@ -283,8 +284,8 @@ validated state, not by silently changing the authoritative trust source.
 
 - Issuer trust remains explicit, reviewable, and finite even though key
   location is provider-owned.
-- Providers can move their JWK Set endpoint without a cyspbot release, after
-  cyspbot validates refreshed Provider Metadata.
+- Providers can move their JWK Set endpoint without a github-app-token-broker release, after
+  github-app-token-broker validates refreshed Provider Metadata.
 - Discovery adds remote trust documents and therefore an availability surface.
   Exact issuer validation, HTTPS-only locations, redirect rejection, bounded
   work, and validated caching constrain that surface.
@@ -338,8 +339,9 @@ authorized to use every implemented algorithm.
 ### Provider-local audiences
 
 Rejected because every registered provider supplies subject tokens to the same
-cyspbot recipient. Repeating the service audience per provider permits drift
-without representing provider variation.
+exact configured Subject-Token Audience, which may be URL-shaped or opaque.
+Repeating the service audience per provider permits drift without representing
+provider variation.
 
 ### Client-selected provider or provider alias
 
@@ -349,7 +351,7 @@ identifier introduces ambiguity and lifecycle without removing issuer checks.
 
 ### Generic provider configuration, attribute mapping, or provider CEL
 
-Rejected because cyspbot integrates reviewed, code-owned provider profiles
+Rejected because github-app-token-broker integrates reviewed, code-owned provider profiles
 rather than operating a tenant-facing identity-provider control plane. Generic
 mapping and admission languages would add schema, validation, and identity
 lifecycle semantics without improving the trust decision.

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { VerifiedSubjectToken } from "../workers/cyspbot-token-exchange/src/authentication.ts";
+import type { VerifiedSubjectToken } from "../workers/github-app-token-broker/src/authentication.ts";
 
-import { issueInstallationAccessTokenForContext } from "../workers/cyspbot-token-exchange/src/policy/installation-access-token-issuance.ts";
+import { issueInstallationAccessTokenForContext } from "../workers/github-app-token-broker/src/policy/installation-access-token-issuance.ts";
 import { testNow, testRepository, testInstallationId } from "./support/constants.ts";
 import { fetchGitHubTestDouble, githubInstallationResponse } from "./support/github-api.ts";
 import { createVerifiedSubjectToken } from "./support/oidc.ts";
@@ -11,7 +11,7 @@ import {
   compileTokenIssuancePolicy,
   githubRepositoryResourceConstraint,
   oidcSubjectTokenConstraint,
-} from "../workers/cyspbot-token-exchange/src/policy/token-issuance-policy.ts";
+} from "../workers/github-app-token-broker/src/policy/token-issuance-policy.ts";
 
 const application = {
   githubApp: testEnv,

@@ -1,10 +1,10 @@
-import { githubActionsOidcProviderRegistration } from "@cyspbot/oidc-provider-github-actions";
+import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-github-actions";
 import {
   createGitHubRepositoryResource,
   type GitHubInstallationPermissions,
   type InstallationAccessTokenRequest,
-} from "../../workers/cyspbot-token-exchange/src/installation-access-token-request.ts";
-import type { VerifiedSubjectToken } from "../../workers/cyspbot-token-exchange/src/authentication.ts";
+} from "../../workers/github-app-token-broker/src/installation-access-token-request.ts";
+import type { VerifiedSubjectToken } from "../../workers/github-app-token-broker/src/authentication.ts";
 import { createVerifiedSubjectToken } from "./oidc.ts";
 
 type GitHubActionsWorkflowFileName = `${string}.${"yml" | "yaml"}`;
@@ -41,6 +41,13 @@ const pullRequestAuthoringPermissions = {
 
 export const configuredPermitStatementExpectations: readonly ConfiguredPermitStatementExpectation[] =
   [
+    dependencyUpdateExpectation("chikachow/github-app-token-broker", "pnpm-up.yml"),
+    ...deploymentRepositoryUpdateExpectations({
+      deploymentRepositoryFullName: "chikachow/github-app-token-broker-deploy",
+      updateTriggerWorkflowFileName: "run-github-app-token-broker-deploy-update.yml",
+      updateTriggerRepositoryFullName: "chikachow/github-app-token-broker",
+      updateWorkflowFileName: "update-github-app-token-broker.yml",
+    }),
     dependencyUpdateExpectation("chikachow/cyspbot", "pnpm-up.yml"),
     ...deploymentRepositoryUpdateExpectations({
       deploymentRepositoryFullName: "chikachow/cyspbot-deploy",

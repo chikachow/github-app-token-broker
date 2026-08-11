@@ -37,7 +37,7 @@ export function normalizeInstallationAccessTokenRequest(options: {
     return { error: "invalid_target", ok: false };
   }
 
-  const scope = parseGitHubInstallationScope(options.scope ?? "contents:write pull_requests:write");
+  const scope = options.scope === null ? null : parseGitHubInstallationScope(options.scope);
 
   if (scope === null) {
     return { error: "invalid_scope", ok: false };

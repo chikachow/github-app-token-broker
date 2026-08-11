@@ -6,14 +6,14 @@ Decision status: Accepted.
 
 ## Context
 
-After Token Issuance Policy permits a request, cyspbot uses its own GitHub App
+After Token Issuance Policy permits a request, github-app-token-broker uses its own GitHub App
 credentials to resolve the target installation and request an installation
 access token. The Client does not select those credentials or construct either
 GitHub API request.
 
 The former issuance boundary treated GitHub `401`, `403`, and `404` responses as
 an invalid OAuth target. That classification attributed a downstream response
-to the Client's `resource` even after cyspbot had already established that the
+to the Client's `resource` even after github-app-token-broker had already established that the
 Repository Resource and Requested Permissions were supported. It was also unreliable:
 GitHub can use `404` for an existing private resource when authentication or
 permissions are insufficient, and uses `403` for both ordinary forbidden
@@ -28,29 +28,29 @@ succeed.
 The issuance boundary classifies failures by ownership and retryability rather
 than inferring OAuth target validity from a GitHub response status.
 
-| Issuance condition                            | Internal reason        | cyspbot Token Endpoint response           |
-| --------------------------------------------- | ---------------------- | ----------------------------------------- |
-| missing or invalid service-owned private key  | `internal_failure`     | `500 {"error":"server_error"}`            |
-| request rejected with `400`                   | `internal_failure`     | `500 {"error":"server_error"}`            |
-| service-owned credentials rejected with `401` | `internal_failure`     | `500 {"error":"server_error"}`            |
-| validation rejected with `422`                | `internal_failure`     | `500 {"error":"server_error"}`            |
-| non-rate-limit `403`                          | `upstream_failure`     | `502 {"error":"server_error"}`            |
-| `404`                                         | `upstream_failure`     | `502 {"error":"server_error"}`            |
-| rate-limit `403` or `429`                     | `upstream_unavailable` | `503 {"error":"temporarily_unavailable"}` |
-| `503`                                         | `upstream_unavailable` | `503 {"error":"temporarily_unavailable"}` |
-| transport failure                             | `upstream_unavailable` | `503 {"error":"temporarily_unavailable"}` |
-| malformed or invalid successful response      | `upstream_failure`     | `502 {"error":"server_error"}`            |
-| other GitHub `5xx`                            | `upstream_failure`     | `502 {"error":"server_error"}`            |
-| otherwise unclassified failure                | `internal_failure`     | `500 {"error":"server_error"}`            |
+| Issuance condition                            | Internal reason        | github-app-token-broker Token Endpoint response |
+| --------------------------------------------- | ---------------------- | ----------------------------------------------- |
+| missing or invalid service-owned private key  | `internal_failure`     | `500 {"error":"server_error"}`                  |
+| request rejected with `400`                   | `internal_failure`     | `500 {"error":"server_error"}`                  |
+| service-owned credentials rejected with `401` | `internal_failure`     | `500 {"error":"server_error"}`                  |
+| validation rejected with `422`                | `internal_failure`     | `500 {"error":"server_error"}`                  |
+| non-rate-limit `403`                          | `upstream_failure`     | `502 {"error":"server_error"}`                  |
+| `404`                                         | `upstream_failure`     | `502 {"error":"server_error"}`                  |
+| rate-limit `403` or `429`                     | `upstream_unavailable` | `503 {"error":"temporarily_unavailable"}`       |
+| `503`                                         | `upstream_unavailable` | `503 {"error":"temporarily_unavailable"}`       |
+| transport failure                             | `upstream_unavailable` | `503 {"error":"temporarily_unavailable"}`       |
+| malformed or invalid successful response      | `upstream_failure`     | `502 {"error":"server_error"}`                  |
+| other GitHub `5xx`                            | `upstream_failure`     | `502 {"error":"server_error"}`                  |
+| otherwise unclassified failure                | `internal_failure`     | `500 {"error":"server_error"}`                  |
 
 ### Protocol extension status
 
-These HTTP-status and error-code pairs are deliberate cyspbot protocol
+These HTTP-status and error-code pairs are deliberate github-app-token-broker protocol
 extensions. RFC 8693 delegates token-exchange errors to RFC 6749 section 5.2,
 which normally specifies HTTP `400` for Token Endpoint error responses. The
 IANA OAuth Extensions Error Registry registers `server_error` and
 `temporarily_unavailable` for the authorization endpoint, not the Token
-Endpoint. cyspbot reuses those names at the Token Endpoint with `500`, `502`,
+Endpoint. github-app-token-broker reuses those names at the Token Endpoint with `500`, `502`,
 and `503` statuses as an explicit service contract; this decision does not
 claim that those pairs comply with RFC 6749 section 5.2. Clients must interpret
 the complete status and error-code pair.
@@ -76,7 +76,7 @@ Client.
 
 ### Response and logging boundary
 
-The cyspbot Token Endpoint response contains only the documented error code. It
+The github-app-token-broker Token Endpoint response contains only the documented error code. It
 does not expose GitHub response bodies, GitHub credentials, installation access
 tokens, network exception messages, or installation identifiers that were not
 yet resolved.
@@ -93,13 +93,13 @@ require a separate decision.
 - RFC 8693 `invalid_target` describes an Authorization Server that is unwilling
   or unable to issue for a requested target. It is not a generic translation of
   a later Resource Server failure.
-- A GitHub `401` concerns credentials owned by cyspbot, so it is an internal
+- A GitHub `401` concerns credentials owned by github-app-token-broker, so it is an internal
   configuration or credential failure rather than a Client error.
 - Missing or invalid local private-key material is likewise a service-owned
   configuration failure and is never classified as a GitHub `5xx` response.
-- GitHub `422` after policy approval validates a request that cyspbot composed;
+- GitHub `422` after policy approval validates a request that github-app-token-broker composed;
   it is a service/configuration failure rather than `invalid_scope`. GitHub,
-  not cyspbot, remains authoritative for permission-name and level
+  not github-app-token-broker, remains authoritative for permission-name and level
   compatibility.
 - GitHub documents that a private resource can produce `404` when authentication
   is missing or insufficient. Treating `404` as `invalid_target` would be both
@@ -108,10 +108,10 @@ require a separate decision.
   headers and error message. Those signals justify a retryable classification.
 - A malformed or schema-invalid successful GitHub response violates the
   operation's upstream response contract and is therefore an upstream failure.
-- cyspbot uses HTTP `502` as an application-level distinction between a
+- github-app-token-broker uses HTTP `502` as an application-level distinction between a
   non-retry-classified upstream failure and an internal request or credential
   failure. It does not claim that every classified GitHub `403` or `404` is an
-  invalid upstream HTTP response under RFC 9110. HTTP `503` and cyspbot's
+  invalid upstream HTTP response under RFC 9110. HTTP `503` and github-app-token-broker's
   `temporarily_unavailable` Token Endpoint extension tell the Client that a
   later retry can succeed.
 
@@ -141,7 +141,7 @@ transport failures, rate limits, or GitHub `503` responses.
 
 Rejected because rate limits and unavailability are meaningfully retryable, and
 `400` or `401` indicates a request or credential constructed and owned by
-cyspbot.
+github-app-token-broker.
 
 ### Forward GitHub error bodies or retry headers
 

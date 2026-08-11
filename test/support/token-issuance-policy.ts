@@ -1,11 +1,11 @@
-import { githubActionsOidcProviderRegistration } from "@cyspbot/oidc-provider-github-actions";
+import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-github-actions";
 import {
   claimEquals,
   claimOneOf,
   compileTokenIssuancePolicy,
   githubRepositoryResourceConstraint,
   oidcSubjectTokenConstraint,
-} from "../../workers/cyspbot-token-exchange/src/policy/token-issuance-policy.ts";
+} from "../../workers/github-app-token-broker/src/policy/token-issuance-policy.ts";
 import { createVerifiedSubjectToken } from "./oidc.ts";
 
 import {
