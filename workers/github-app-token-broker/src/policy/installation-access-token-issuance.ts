@@ -6,13 +6,13 @@ import {
 import { GitHubApiError, GitHubApiTransportError } from "@github-app-token-broker/github/http";
 import type { GitHubAppDependencies, GitHubAppEnv } from "@github-app-token-broker/github/app";
 import type { AuthenticatedContext } from "../authentication.ts";
-import type { InstallationAccessTokenRequest } from "../installation-access-token-request.ts";
-import type { TokenIssuancePolicy } from "./token-issuance-policy.ts";
+import type { InstallationAccessTokenRequest } from "@github-app-token-broker/github/installation-access-token-request";
+import type { TokenIssuancePolicy } from "@github-app-token-broker/token-issuance-policy";
 import {
   tokenIssuancePolicyPermits,
   tokenIssuancePolicySupportsRequestedPermissions,
   tokenIssuancePolicySupportsTarget,
-} from "./token-issuance-policy.ts";
+} from "@github-app-token-broker/token-issuance-policy";
 
 export type InstallationAccessTokenIssuanceFailureReason =
   | "internal_failure"

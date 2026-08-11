@@ -15,13 +15,10 @@ Do not commit local deployment state or secrets. In particular, keep `.dev.vars`
 
 Use present-tense documentation for implemented behaviour.
 
-Decision records may also document source-supported capabilities that are not
-currently configured in production. Label capability statements explicitly and
-use conditional language. `docs/service-contract.md` is authoritative for public
-behavior and security semantics. The checked-in
-`workers/github-app-token-broker/src/configured-token-exchange-composition.ts`
-and `workers/github-app-token-broker/src/policy/configured-token-issuance-policy.ts`
-source are authoritative for the exact configured OIDC Provider Registration and
-Permit Statement inventories. `docs/implementation.md` describes their mechanics
-without duplicating those inventories. Do not treat a clearly labelled capability
-as configured trust or authorization.
+Decision records may document source-supported capabilities without implying
+that a deployment has selected them. Label capability statements explicitly
+and use conditional language. `docs/service-contract.md` is authoritative for
+public behavior and security semantics. Each external deployment's reviewed
+TypeScript composition is authoritative for that artifact's exact OIDC Provider
+Registration and Permit Statement inventories. Do not document a concrete
+deployment inventory in this public repository.

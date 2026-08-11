@@ -135,14 +135,14 @@ upstream document is an invalid successful representation and follows the
 
 OpenID Provider Configuration or JWK Set unavailability means github-app-token-broker cannot obtain validated OpenID Provider Metadata or a usable JWK Set: network failures, timeouts, non-200 responses, unexpected media types, oversized responses, malformed JSON or shape, an issuer mismatch, an invalid `jwks_uri`, incompatible advertised algorithms, an empty or wholly incompatible JWK Set, or ambiguous provider key material. Bounded last-known-good OpenID Provider Metadata or a JWK Set may be used according to documented cache controls. Responses marked [`Cache-Control: no-cache`](https://www.rfc-editor.org/rfc/rfc9111#section-5.2.2.4) require successful revalidation before reuse and are never used as stale fallback after a failed revalidation. ID Tokens whose protected header names a `kid` absent from an otherwise usable JWK Set are invalid subject tokens and return `400 {"error":"invalid_request"}` because the protected header is part of the Client-presented token.
 
-### Configured production OIDC Provider Registrations
+### Supported OIDC Provider Registrations
 
 | OpenID Provider                  | OIDC Issuer Identifier (`iss`)                | OIDC ID Token Profile                                          |
 | -------------------------------- | --------------------------------------------- | -------------------------------------------------------------- |
 | GitHub Actions                   | `https://token.actions.githubusercontent.com` | validates that `azp` is absent or equals the exact `aud` value |
 | Google service account ID Tokens | `https://accounts.google.com`                 | validates that `azp` equals `sub`                              |
 
-Every provider requires the Client to supply an explicit repository `resource`.
+Provider packages expose these reviewed registrations for deployment composition. Their availability does not register them in an artifact or create a Permit Statement. Every request still requires the Client to supply an explicit repository `resource`.
 
 #### GitHub Actions
 
@@ -152,13 +152,13 @@ GitHub Actions Clients present a [GitHub Actions OIDC token](https://docs.github
 
 Google service account Clients present a [service account ID Token](https://cloud.google.com/docs/authentication/token-types#service_account_id_tokens) issued by the Google Cloud IAM authorization server with Issuer Identifier `https://accounts.google.com`. The shared verifier requires a non-empty string Subject (`sub`), and the Google service-account OIDC ID Token Profile requires the Authorized Party (`azp`) to equal that Subject. Google documents both claims as the service account unique ID for this token type; github-app-token-broker treats that identifier as an opaque string. Optional `email` and `email_verified` claims do not affect authentication.
 
-Google Clients must provide an explicit repository `resource`; omission or `resource=` receives `invalid_target`. Authentication produces a Verified Subject Token but does not create a Permit Statement. The production Token Issuance Policy contains no Google Permit Statement.
+Google Clients must provide an explicit repository `resource`; omission or `resource=` receives `invalid_target`. Authentication produces a Verified Subject Token but does not create a Permit Statement.
 
 #### Source-supported Fly OIDC registration
 
 The source-supported Fly provider package constructs a reviewed registration for one exact issuer in the form `https://oidc.fly.io/{organization-slug}`. The constructor accepts a canonical lowercase organization slug, restricts ID Token signatures to RS256, and selects an explicit null OIDC ID Token Profile. Central ID Token validation therefore authenticates the signed Fly Machine Identity Claims without imposing provider-specific relationships among `org_name`, `app_name`, `machine_name`, and `sub`.
 
-A custom reviewed source composition and build may register that exact issuer and must independently add Permit Statements selecting every Fly Claim material to authorization. An already-compiled Worker cannot add the registration or policy at deployment time. The default production composition does not register Fly and contains no Fly Permit Statement, so it rejects Fly tokens as unregistered issuers. Fly documents both its [organization-specific OpenID Connect issuers and Machine identity Claims](https://fly.io/docs/security/openid-connect/) and [Machine token acquisition with a caller-selected audience](https://fly.io/docs/machines/api/tokens-resource/).
+A deployment composition may register that exact issuer and must independently add Permit Statements selecting every Fly Claim material to authorization. An already-compiled Worker cannot add the registration or policy at runtime. Fly documents both its [organization-specific OpenID Connect issuers and Machine identity Claims](https://fly.io/docs/security/openid-connect/) and [Machine token acquisition with a caller-selected audience](https://fly.io/docs/machines/api/tokens-resource/).
 
 For a deployment whose `TOKEN_BROKER_AUDIENCE` is `https://broker.example`, a Fly workload requests its ID Token with that exact value in the Fly Tokens resource `aud` field; `/token` is not part of the audience:
 
@@ -173,16 +173,11 @@ Fly returns the serialized ID Token as the response body. The workload sends tha
 
 ### Token Issuance Policy
 
-Installation Access Token Issuance is allowed only when the normalized request is covered by the closed, immutable set of checked-in Permit Statements. Each independently complete statement contains an exact issuer, Claim Predicates over Subject Token Claims, one exact Repository Resource Constraint, and a non-empty permission map. Missing or wrongly typed selected Claims make a statement non-applicable; evaluation never throws for verified Claim data.
+Installation Access Token Issuance is allowed only when the normalized request is covered by the closed, immutable set of Permit Statements compiled into the Worker artifact. Each independently complete statement contains an exact issuer, Claim Predicates over Subject Token Claims, one exact Repository Resource Constraint, and a non-empty permission map. Missing or wrongly typed selected Claims make a statement non-applicable; evaluation never throws for verified Claim data.
 
 All statements whose issuer, Claim Predicates, and Repository Resource Constraint apply contribute permissions pointwise using `omitted < read < write < admin`. The policy permits the request only when those Effective Permissions cover the Requested Permissions. Statement order is irrelevant, stronger contributed permissions cover weaker Requested Permissions, and several statements may jointly cover a request. Permission names are extensible, but every Requested Permission still requires explicit Permit Statement coverage; arbitrary names are never authorized by default. There are no deny statements, inheritance, dynamic configuration, generic expression language, or authorization decision objects.
 
-The production policy authorizes only checked-in GitHub Actions contexts and
-contains no Fly or Google Permit Statement. Every policy issuer must resolve to
-a configured OIDC Provider Registration when the application is composed; the
-reverse is intentionally not required.
-
-The authoritative configured inventory is the checked-in [`configured-token-issuance-policy.ts`](../workers/github-app-token-broker/src/policy/configured-token-issuance-policy.ts) source. It is intentionally not duplicated in documentation.
+Every policy issuer must resolve to an OIDC Provider Registration when the application is composed; the reverse is intentionally not required. The deployment-owned TypeScript entrypoint and its independent tests are authoritative for an artifact's exact inventory.
 
 #### GitHub Actions
 
@@ -203,7 +198,7 @@ Claims a statement does not select, including `sub`, repository IDs, owner IDs, 
 
 Source workflows send an explicit scope. Direct broker Clients must likewise send their chosen non-empty scope explicitly; the broker does not own or recreate a caller default.
 
-github-app-token-broker denies forked pull request contexts, unconfigured refs, unconfigured workflow files, tag refs, and unsupported event names.
+A Permit Statement may constrain event name, ref type, repository, ref, workflow file, and resource independently. Contexts not covered by the compiled Permit Statements are denied.
 
 #### Shared enforcement and issuance
 

@@ -1,8 +1,10 @@
 import {
   createTokenExchangeWorker,
-  type TokenExchangeWorkerDependencies,
+  type TokenExchangeComposition,
+  type TokenExchangeWorkerEnv,
+  type TokenExchangeWorkerRuntimeDependencies,
 } from "@github-app-token-broker/worker";
-import { configuredOidcProviderRegistrations } from "../../workers/github-app-token-broker/src/configured-oidc-provider-registrations.ts";
+import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-github-actions";
 
 import { testNow } from "./constants.ts";
 import { fetchGitHubTestDouble } from "./github-api.ts";
@@ -17,16 +19,22 @@ export {
 } from "./oidc.ts";
 export { testEnv };
 
-type TestEnv = TokenExchangeEnv;
+type TestEnv = TokenExchangeWorkerEnv;
 
-export const testTokenExchangeWorkerDependencies = {
+export const testTokenExchangeComposition = {
+  oidcProviderRegistrations: [githubActionsOidcProviderRegistration],
+  tokenIssuancePolicy: testTokenIssuancePolicy,
+} satisfies TokenExchangeComposition;
+
+export const testTokenExchangeWorkerRuntimeDependencies = {
   fetch: fetchTokenExchangeExternalTestDouble,
   now: () => testNow,
-  oidcProviderRegistrations: configuredOidcProviderRegistrations,
-  tokenIssuancePolicy: testTokenIssuancePolicy,
-} satisfies TokenExchangeWorkerDependencies;
+} satisfies TokenExchangeWorkerRuntimeDependencies;
 
-const tokenExchangeApp = createTokenExchangeWorker(testTokenExchangeWorkerDependencies);
+const tokenExchangeApp = createTokenExchangeWorker(
+  testTokenExchangeComposition,
+  testTokenExchangeWorkerRuntimeDependencies,
+);
 
 export function fetchTokenExchange(
   input: RequestInfo | URL,
@@ -46,13 +54,23 @@ export function fetchTokenExchangeWithEnv(
 export function fetchTokenExchangeWithDependencies(
   input: RequestInfo | URL,
   init: RequestInit | undefined,
-  dependencies: Partial<TokenExchangeWorkerDependencies>,
+  overrides: Partial<TokenExchangeComposition & TokenExchangeWorkerRuntimeDependencies>,
 ): Promise<Response> {
   return fetchWorkerWithApp(
-    createTokenExchangeWorker({
-      ...testTokenExchangeWorkerDependencies,
-      ...dependencies,
-    }),
+    createTokenExchangeWorker(
+      {
+        ...testTokenExchangeComposition,
+        oidcProviderRegistrations:
+          overrides.oidcProviderRegistrations ??
+          testTokenExchangeComposition.oidcProviderRegistrations,
+        tokenIssuancePolicy:
+          overrides.tokenIssuancePolicy ?? testTokenExchangeComposition.tokenIssuancePolicy,
+      },
+      {
+        fetch: overrides.fetch ?? testTokenExchangeWorkerRuntimeDependencies.fetch,
+        now: overrides.now ?? testTokenExchangeWorkerRuntimeDependencies.now,
+      },
+    ),
     input,
     init,
   );
@@ -87,8 +105,4 @@ function fetchTokenExchangeExternalTestDouble(
     : fetchGitHubTestDouble(request);
 }
 
-const oidcProviderHostnames = new Set([
-  "accounts.google.com",
-  "token.actions.githubusercontent.com",
-  "www.googleapis.com",
-]);
+const oidcProviderHostnames = new Set(["token.actions.githubusercontent.com"]);

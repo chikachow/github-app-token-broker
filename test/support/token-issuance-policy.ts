@@ -5,7 +5,7 @@ import {
   compileTokenIssuancePolicy,
   githubRepositoryResourceConstraint,
   oidcSubjectTokenConstraint,
-} from "../../workers/github-app-token-broker/src/policy/token-issuance-policy.ts";
+} from "@github-app-token-broker/token-issuance-policy";
 import { createVerifiedSubjectToken } from "./oidc.ts";
 
 import {

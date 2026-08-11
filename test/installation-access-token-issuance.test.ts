@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { VerifiedSubjectToken } from "../workers/github-app-token-broker/src/authentication.ts";
+import type { VerifiedSubjectToken } from "@github-app-token-broker/oidc/id-token-authenticator";
 
 import { issueInstallationAccessTokenForContext } from "../workers/github-app-token-broker/src/policy/installation-access-token-issuance.ts";
 import { testNow, testRepository, testInstallationId } from "./support/constants.ts";
@@ -11,7 +11,7 @@ import {
   compileTokenIssuancePolicy,
   githubRepositoryResourceConstraint,
   oidcSubjectTokenConstraint,
-} from "../workers/github-app-token-broker/src/policy/token-issuance-policy.ts";
+} from "@github-app-token-broker/token-issuance-policy";
 
 const application = {
   githubApp: testEnv,

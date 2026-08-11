@@ -11,8 +11,8 @@ import {
   type GitHubInstallationPermissions,
   type InstallationAccessTokenRequest,
   type GitHubRepositoryResource,
-} from "../installation-access-token-request.ts";
-import type { VerifiedSubjectToken } from "../authentication.ts";
+} from "@github-app-token-broker/github/installation-access-token-request";
+import type { VerifiedSubjectToken } from "@github-app-token-broker/oidc/id-token-authenticator";
 
 export type ClaimPredicateDefinition =
   | Readonly<{
@@ -42,37 +42,34 @@ export interface PermitStatementDefinition {
   readonly subjectToken: OidcSubjectTokenConstraintDefinition;
 }
 
-interface CompiledClaimEqualsPredicate {
+interface ClaimEqualsPredicate {
   readonly claimName: string;
   readonly expectedValue: string | boolean;
   readonly kind: "claim-equals";
 }
 
-interface CompiledClaimOneOfPredicate {
+interface ClaimOneOfPredicate {
   readonly claimName: string;
   readonly expectedValues: readonly [string, ...string[]];
   readonly kind: "claim-one-of";
 }
 
-type CompiledClaimPredicate = CompiledClaimEqualsPredicate | CompiledClaimOneOfPredicate;
+type ClaimPredicate = ClaimEqualsPredicate | ClaimOneOfPredicate;
 
-interface CompiledPermitStatement {
-  readonly claimPredicates: readonly CompiledClaimPredicate[];
+interface OidcSubjectTokenConstraint {
+  readonly claimPredicates: readonly ClaimPredicate[];
   readonly issuer: OidcIssuerIdentifier;
-  readonly permissions: GitHubInstallationPermissions;
-  readonly resource: GitHubRepositoryResource;
 }
 
-declare const tokenIssuancePolicyBrand: unique symbol;
+interface PermitStatement {
+  readonly permissions: GitHubInstallationPermissions;
+  readonly resource: GitHubRepositoryResource;
+  readonly subjectToken: OidcSubjectTokenConstraint;
+}
 
-export type TokenIssuancePolicy = Readonly<{
-  readonly [tokenIssuancePolicyBrand]: true;
-}>;
-
-const compiledPolicyStatements = new WeakMap<
-  TokenIssuancePolicy,
-  readonly CompiledPermitStatement[]
->();
+export interface TokenIssuancePolicy {
+  readonly permitStatements: readonly PermitStatement[];
+}
 
 export function claimEquals(
   claimName: string,
@@ -157,11 +154,7 @@ export function compileTokenIssuancePolicy(
       compilePermitStatement(definition, `permitStatements[${index}]`),
     ),
   );
-  const policy = Object.freeze({}) as TokenIssuancePolicy;
-
-  compiledPolicyStatements.set(policy, statements);
-
-  return policy;
+  return Object.freeze({ permitStatements: statements });
 }
 
 export function tokenIssuancePolicyPermits(
@@ -169,13 +162,11 @@ export function tokenIssuancePolicyPermits(
   verifiedSubjectToken: VerifiedSubjectToken,
   request: InstallationAccessTokenRequest,
 ): boolean {
-  const statements = compiledStatementsFor(policy);
-
-  return policyStatementsCoverRequest(statements, request, (statement) => {
+  return policyStatementsCoverRequest(policy.permitStatements, request, (statement) => {
     return (
       statement.resource.href === request.resource.href &&
-      statement.issuer === verifiedSubjectToken.issuer &&
-      claimPredicatesMatch(statement.claimPredicates, verifiedSubjectToken.claims)
+      statement.subjectToken.issuer === verifiedSubjectToken.issuer &&
+      claimPredicatesMatch(statement.subjectToken.claimPredicates, verifiedSubjectToken.claims)
     );
   });
 }
@@ -184,7 +175,7 @@ export function tokenIssuancePolicySupportsTarget(
   policy: TokenIssuancePolicy,
   request: InstallationAccessTokenRequest,
 ): boolean {
-  return compiledStatementsFor(policy).some(
+  return policy.permitStatements.some(
     (statement) => statement.resource.href === request.resource.href,
   );
 }
@@ -193,19 +184,17 @@ export function tokenIssuancePolicySupportsRequestedPermissions(
   policy: TokenIssuancePolicy,
   request: InstallationAccessTokenRequest,
 ): boolean {
-  const statements = compiledStatementsFor(policy);
-
   return policyStatementsCoverRequest(
-    statements,
+    policy.permitStatements,
     request,
     (statement) => statement.resource.href === request.resource.href,
   );
 }
 
 function policyStatementsCoverRequest(
-  statements: readonly CompiledPermitStatement[],
+  statements: readonly PermitStatement[],
   request: InstallationAccessTokenRequest,
-  statementContributes: (statement: CompiledPermitStatement) => boolean,
+  statementContributes: (statement: PermitStatement) => boolean,
 ): boolean {
   const uncoveredPermissions = new Set(
     Object.keys(request.permissions) as (keyof GitHubInstallationPermissions)[],
@@ -238,29 +227,17 @@ function policyStatementsCoverRequest(
   return false;
 }
 
-function compiledStatementsFor(policy: TokenIssuancePolicy): readonly CompiledPermitStatement[] {
-  const statements = compiledPolicyStatements.get(policy);
-
-  if (statements === undefined) {
-    throw new TypeError("invalid Token Issuance Policy");
-  }
-
-  return statements;
-}
-
 export function assertTokenIssuancePolicyIssuersAreRegistered(
   policy: TokenIssuancePolicy,
   providerRegistrations: readonly OidcProviderRegistration[],
 ): void {
-  const statements = compiledStatementsFor(policy);
-
   const registeredIssuers = new Set(
     providerRegistrations.map((providerRegistration) => providerRegistration.issuer),
   );
   const missingIssuers = [
     ...new Set(
-      statements
-        .map((statement) => statement.issuer)
+      policy.permitStatements
+        .map((statement) => statement.subjectToken.issuer)
         .filter((issuer) => !registeredIssuers.has(issuer)),
     ),
   ].sort();
@@ -274,7 +251,7 @@ export function assertTokenIssuancePolicyIssuersAreRegistered(
   }
 }
 
-function compilePermitStatement(value: unknown, path: string): CompiledPermitStatement {
+function compilePermitStatement(value: unknown, path: string): PermitStatement {
   const statement = readExactObject(value, path, ["permissions", "resource", "subjectToken"]);
   const subjectToken = readExactObject(statement["subjectToken"], `${path}.subjectToken`, [
     "claimPredicates",
@@ -320,14 +297,13 @@ function compilePermitStatement(value: unknown, path: string): CompiledPermitSta
   validatePermissions(statement["permissions"], `${path}.permissions`);
 
   return Object.freeze({
-    claimPredicates,
-    issuer,
     permissions: canonicalizeInstallationAccessTokenPermissions(statement["permissions"]),
     resource,
+    subjectToken: Object.freeze({ claimPredicates, issuer }),
   });
 }
 
-function normalizeClaimPredicates(value: unknown, path: string): readonly CompiledClaimPredicate[] {
+function normalizeClaimPredicates(value: unknown, path: string): readonly ClaimPredicate[] {
   const definitions = readArray(value, path);
   const claimNames = new Set<string>();
   const predicates = definitions.map((definition, index) => {
@@ -384,7 +360,7 @@ function normalizeClaimPredicates(value: unknown, path: string): readonly Compil
 }
 
 function claimPredicatesMatch(
-  predicates: readonly CompiledClaimPredicate[],
+  predicates: readonly ClaimPredicate[],
   claims: Readonly<Record<string, unknown>>,
 ): boolean {
   return predicates.every((predicate) => {

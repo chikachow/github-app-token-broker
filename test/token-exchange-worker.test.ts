@@ -8,7 +8,8 @@ import {
   githubInstallationAccessTokenType,
   testEnv,
   tokenExchangeRequestBody,
-  testTokenExchangeWorkerDependencies,
+  testTokenExchangeComposition,
+  testTokenExchangeWorkerRuntimeDependencies,
 } from "./support/worker.ts";
 import { fetchGitHubTestDouble } from "./support/github-api.ts";
 import { fetchOidcRemoteDocumentResponseTestDouble } from "./support/oidc.ts";
@@ -22,7 +23,7 @@ import {
   compileTokenIssuancePolicy,
   githubRepositoryResourceConstraint,
   oidcSubjectTokenConstraint,
-} from "../workers/github-app-token-broker/src/policy/token-issuance-policy.ts";
+} from "@github-app-token-broker/token-issuance-policy";
 
 const tokenBrokerAudience = "https://broker.example";
 
@@ -109,7 +110,7 @@ describe("github-app-token-broker-token-exchange", () => {
   });
 
   it("maps internal OIDC failures to server_error with a Bearer challenge", async () => {
-    const fetchExternal = vi.fn(testTokenExchangeWorkerDependencies.fetch);
+    const fetchExternal = vi.fn(testTokenExchangeWorkerRuntimeDependencies.fetch);
     const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
     try {
@@ -242,6 +243,22 @@ describe("github-app-token-broker-token-exchange", () => {
     });
   });
 
+  it("accepts a structural GitHub App private-key binding", async () => {
+    const getPrivateKey = vi.fn(async () => testEnv.GITHUB_APP_PRIVATE_KEY);
+    const response = await fetchTokenExchangeWithEnv(
+      "https://example.test/token",
+      {
+        body: await tokenExchangeRequestBody(),
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        method: "POST",
+      },
+      { ...testEnv, GITHUB_APP_PRIVATE_KEY: { get: getPrivateKey } },
+    );
+
+    expect(response.status).toBe(200);
+    expect(getPrivateKey).toHaveBeenCalledTimes(2);
+  });
+
   it("uses the shared fetch dependency and reuses OIDC caches for the Worker lifetime", async () => {
     const sharedFetch = vi.fn<typeof fetch>((input, init) => {
       const url = new Request(input).url;
@@ -250,11 +267,9 @@ describe("github-app-token-broker-token-exchange", () => {
         ? fetchOidcRemoteDocumentResponseTestDouble(input)
         : fetchGitHubTestDouble(input, init);
     });
-    const app = createTokenExchangeWorker({
-      ...testTokenExchangeWorkerDependencies,
+    const app = createTokenExchangeWorker(testTokenExchangeComposition, {
       fetch: sharedFetch,
       now: () => testNow,
-      tokenIssuancePolicy: testTokenIssuancePolicy,
     });
     const exchangeToken = async () =>
       app.fetch?.(
@@ -295,18 +310,20 @@ describe("github-app-token-broker-token-exchange", () => {
         : fetchGitHubTestDouble(input, init);
     });
     const replacementFetch = vi.fn<typeof fetch>();
-    const oidcProviderRegistrations = [
-      ...testTokenExchangeWorkerDependencies.oidcProviderRegistrations,
-    ];
-    const dependencies = {
-      ...testTokenExchangeWorkerDependencies,
-      fetch: initialFetch,
+    const oidcProviderRegistrations = [...testTokenExchangeComposition.oidcProviderRegistrations];
+    const composition = {
       oidcProviderRegistrations,
+      tokenIssuancePolicy: testTokenIssuancePolicy,
     };
-    const worker = createTokenExchangeWorker(dependencies);
+    const runtimeDependencies = {
+      ...testTokenExchangeWorkerRuntimeDependencies,
+      fetch: initialFetch,
+    };
+    const worker = createTokenExchangeWorker(composition, runtimeDependencies);
 
-    dependencies.fetch = replacementFetch;
+    runtimeDependencies.fetch = replacementFetch;
     oidcProviderRegistrations.length = 0;
+    composition.tokenIssuancePolicy = compileTokenIssuancePolicy([]);
 
     const response = await worker.fetch?.(
       new Request("https://example.test/token", {
@@ -1037,8 +1054,8 @@ describe("github-app-token-broker-token-exchange", () => {
 
   it("rate limits token exchange requests before parsing the request body", async () => {
     const fetchExternal = vi.fn<typeof fetch>();
-    const worker = createTokenExchangeWorker({
-      ...testTokenExchangeWorkerDependencies,
+    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
+      ...testTokenExchangeWorkerRuntimeDependencies,
       fetch: fetchExternal,
     });
     const response = await worker.fetch?.(

@@ -3,47 +3,26 @@ import {
   type InstallationAccessTokenExchange,
 } from "./installation-access-token-exchange.ts";
 import { createOidcIdTokenAuthenticator } from "@github-app-token-broker/oidc/id-token-authenticator";
-import {
-  assertTokenIssuancePolicyIssuersAreRegistered,
-  type TokenIssuancePolicy,
-} from "./policy/token-issuance-policy.ts";
-import { configuredTokenExchangeComposition } from "./configured-token-exchange-composition.ts";
+import { type TokenIssuancePolicy } from "@github-app-token-broker/token-issuance-policy";
 import type { OidcIdTokenAuthenticatorDependencies } from "@github-app-token-broker/oidc/id-token-authenticator";
 import type { OidcProviderRegistration } from "@github-app-token-broker/oidc/provider-registration";
 
-export interface TokenExchangeWorkerDependencies {
+interface TokenExchangeWorkerDependencies {
   readonly fetch: typeof fetch;
   readonly now: () => Date;
   readonly oidcProviderRegistrations: readonly OidcProviderRegistration[];
   readonly tokenIssuancePolicy: TokenIssuancePolicy;
 }
 
-export interface TokenExchangeWorkerRuntimeDependencies {
-  readonly fetch: typeof fetch;
-  readonly now: () => Date;
-}
-
-export const defaultTokenExchangeWorkerRuntimeDependencies: TokenExchangeWorkerRuntimeDependencies =
-  {
-    fetch: (input, init) => fetch(input, init),
-    now: () => new Date(),
-  };
-
-export function configuredTokenExchangeWorkerDependencies(
-  runtimeDependencies: TokenExchangeWorkerRuntimeDependencies,
-): TokenExchangeWorkerDependencies {
-  return { ...runtimeDependencies, ...configuredTokenExchangeComposition };
-}
+export const defaultTokenExchangeWorkerRuntimeDependencies = {
+  fetch: (input: RequestInfo | URL, init?: RequestInit) => fetch(input, init),
+  now: () => new Date(),
+} satisfies Pick<TokenExchangeWorkerDependencies, "fetch" | "now">;
 
 export function createInstallationAccessTokenExchangeForWorker(
   dependencies: TokenExchangeWorkerDependencies,
   subjectTokenAudience: string,
 ): InstallationAccessTokenExchange {
-  assertTokenIssuancePolicyIssuersAreRegistered(
-    dependencies.tokenIssuancePolicy,
-    dependencies.oidcProviderRegistrations,
-  );
-
   const oidcIdTokenAuthenticatorDependencies: OidcIdTokenAuthenticatorDependencies = {
     fetch: (input, init) => dependencies.fetch(input, init),
     now: () => dependencies.now(),
