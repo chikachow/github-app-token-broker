@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { readRequestBodyUpTo } from "@cyspbot/http/request-body";
+import { readRequestBodyUpTo } from "@github-app-token-broker/http/request-body";
 
 describe("bounded request body reading", () => {
   it("accepts a Content-Length with leading zeroes", async () => {

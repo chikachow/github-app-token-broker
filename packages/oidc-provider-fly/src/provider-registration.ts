@@ -3,7 +3,7 @@ import {
   parseOidcIssuerIdentifier,
   type OidcIssuerIdentifier,
   type OidcProviderRegistration,
-} from "@cyspbot/oidc/provider-registration";
+} from "@github-app-token-broker/oidc/provider-registration";
 
 const flyOidcIssuerPrefix = "https://oidc.fly.io/";
 const flyOrganizationSlugPattern = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u;

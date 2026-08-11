@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createOidcProviderRegistration,
   parseOidcIssuerIdentifier,
-} from "@cyspbot/oidc/provider-registration";
+} from "@github-app-token-broker/oidc/provider-registration";
 
 describe("OIDC Provider Registration", () => {
   it.each(["https://issuer.example", "https://issuer.example/", "https://issuer.example/tenant"])(

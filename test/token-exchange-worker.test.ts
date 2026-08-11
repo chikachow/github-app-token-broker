@@ -17,14 +17,26 @@ import {
   testSubjectConstraintMatchingVerifiedSubjectToken,
   testTokenIssuancePolicy,
 } from "./support/token-issuance-policy.ts";
-import { createTokenExchangeWorker } from "@cyspbot/token-exchange";
+import { createTokenExchangeWorker } from "@github-app-token-broker/worker";
 import {
   compileTokenIssuancePolicy,
   githubRepositoryResourceConstraint,
   oidcSubjectTokenConstraint,
-} from "../workers/cyspbot-token-exchange/src/policy/token-issuance-policy.ts";
+} from "../workers/github-app-token-broker/src/policy/token-issuance-policy.ts";
 
-describe("cyspbot-token-exchange", () => {
+const tokenBrokerAudience = "https://cyspbot.chikachow.org";
+
+describe("github-app-token-broker-token-exchange", () => {
+  it("rejects non-POST token requests before authentication or exchange", async () => {
+    const response = await fetchTokenExchange("https://example.test/token", {
+      method: "GET",
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    await expect(response.json()).resolves.toEqual({ error: "invalid_request" });
+  });
+
   it("maps GitHub permission validation after policy approval to 500 server_error", async () => {
     const response = await fetchTokenExchangeWithDependencies(
       "https://example.test/token",
@@ -274,6 +286,43 @@ describe("cyspbot-token-exchange", () => {
     ).toHaveLength(1);
   });
 
+  it("captures dependencies when the Worker is constructed", async () => {
+    const initialFetch = vi.fn<typeof fetch>((input, init) => {
+      const url = new Request(input).url;
+
+      return url.startsWith("https://token.actions.githubusercontent.com/")
+        ? fetchOidcRemoteDocumentResponseTestDouble(input)
+        : fetchGitHubTestDouble(input, init);
+    });
+    const replacementFetch = vi.fn<typeof fetch>();
+    const oidcProviderRegistrations = [
+      ...testTokenExchangeWorkerDependencies.oidcProviderRegistrations,
+    ];
+    const dependencies = {
+      ...testTokenExchangeWorkerDependencies,
+      fetch: initialFetch,
+      oidcProviderRegistrations,
+    };
+    const worker = createTokenExchangeWorker(dependencies);
+
+    dependencies.fetch = replacementFetch;
+    oidcProviderRegistrations.length = 0;
+
+    const response = await worker.fetch?.(
+      new Request("https://example.test/token", {
+        body: await tokenExchangeRequestBody(),
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        method: "POST",
+      }) as Parameters<NonNullable<typeof worker.fetch>>[0],
+      testEnv,
+      {} as ExecutionContext,
+    );
+
+    expect(response?.status).toBe(200);
+    expect(initialFetch).toHaveBeenCalled();
+    expect(replacementFetch).not.toHaveBeenCalled();
+  });
+
   it("exchanges a read permission request when Token Issuance Policy permits it", async () => {
     const response = await fetchTokenExchangeWithDependencies(
       "https://example.test/token",
@@ -473,11 +522,11 @@ describe("cyspbot-token-exchange", () => {
     });
   });
 
-  it("rejects token exchange requests whose OIDC audience is not cyspbot", async () => {
+  it("rejects token exchange requests whose OIDC audience is not the configured logical audience", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
         tokenOptions: {
-          audience: "https://github.com/apps/cyspbot",
+          audience: "https://github.com/apps/github-app-token-broker",
         },
       }),
       headers: {
@@ -495,7 +544,7 @@ describe("cyspbot-token-exchange", () => {
   it.each([
     ["missing audience", null],
     ["empty audience", ""],
-    ["github app url", "https://github.com/apps/cyspbot"],
+    ["github app url", "https://github.com/apps/github-app-token-broker"],
     ["unknown service audience", "fixture-other-service"],
   ] as const)("rejects OIDC subject tokens with %s", async (_caseName, audience) => {
     const response = await fetchTokenExchange("https://example.test/token", {
@@ -520,7 +569,7 @@ describe("cyspbot-token-exchange", () => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
         tokenOptions: {
-          audience: ["cyspbot", "fixture-other-service"],
+          audience: [tokenBrokerAudience, "fixture-other-service"],
         },
       }),
       headers: {
@@ -539,10 +588,10 @@ describe("cyspbot-token-exchange", () => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
         claims: {
-          azp: "cyspbot",
+          azp: tokenBrokerAudience,
         },
         tokenOptions: {
-          audience: ["cyspbot", "fixture-other-service"],
+          audience: [tokenBrokerAudience, "fixture-other-service"],
         },
       }),
       headers: {
@@ -561,7 +610,7 @@ describe("cyspbot-token-exchange", () => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
         claims: {
-          azp: "cyspbot",
+          azp: tokenBrokerAudience,
         },
       }),
       headers: {
@@ -583,7 +632,7 @@ describe("cyspbot-token-exchange", () => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
         claims: {
-          azp: "https://github.com/apps/cyspbot",
+          azp: "https://github.com/apps/github-app-token-broker",
         },
       }),
       headers: {
@@ -657,7 +706,7 @@ describe("cyspbot-token-exchange", () => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
         form: {
-          audience: "https://github.com/apps/cyspbot",
+          audience: "https://github.com/apps/github-app-token-broker",
         },
       }),
       headers: {
@@ -676,7 +725,7 @@ describe("cyspbot-token-exchange", () => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
         tokenOptions: {
-          audience: "https://github.com/apps/cyspbot",
+          audience: "https://github.com/apps/github-app-token-broker",
         },
       }),
       headers: {
@@ -693,7 +742,7 @@ describe("cyspbot-token-exchange", () => {
 
   it("rejects duplicate non-empty audience parameters as unsupported targets", async () => {
     const body = new URLSearchParams(await tokenExchangeRequestBody());
-    body.append("audience", "https://github.com/apps/cyspbot");
+    body.append("audience", "https://github.com/apps/github-app-token-broker");
     body.append("audience", "https://github.com/apps/fixture-other-app");
 
     const response = await fetchTokenExchange("https://example.test/token", {
@@ -898,18 +947,37 @@ describe("cyspbot-token-exchange", () => {
     });
 
     expect(response.status).toBe(401);
-    expect(response.headers.get("www-authenticate")).toBe('Basic realm="cyspbot"');
+    expect(response.headers.get("www-authenticate")).toBe('Basic realm="github-app-token-broker"');
     expect(response.headers.get("cache-control")).toBe("no-store");
     await expect(response.json()).resolves.toEqual({
       error: "invalid_client",
     });
   });
 
-  it("treats an empty optional scope as omitted", async () => {
+  it("uses a Basic challenge when the authorization scheme is malformed", async () => {
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body: await tokenExchangeRequestBody(),
+      headers: {
+        authorization: "1invalid credentials",
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("www-authenticate")).toBe('Basic realm="github-app-token-broker"');
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    await expect(response.json()).resolves.toEqual({ error: "invalid_client" });
+  });
+
+  it.each([
+    ["omitted scope", null],
+    ["empty scope", ""],
+  ] as const)("rejects %s with invalid_scope", async (_caseName, scope) => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
         form: {
-          scope: "",
+          scope,
         },
       }),
       headers: {
@@ -918,13 +986,8 @@ describe("cyspbot-token-exchange", () => {
       method: "POST",
     });
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      access_token: "ghs_test_token",
-      issued_token_type: githubInstallationAccessTokenType,
-      scope: "contents:write pull_requests:write",
-      token_type: "Bearer",
-    });
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "invalid_scope" });
   });
 
   it.each([

@@ -1,70 +1,54 @@
 # Deployment
 
-This repository contains the cyspbot Worker implementation, tests, public documentation, and public-safe Wrangler template configuration for local development, tests, and dry-runs.
+This public repository owns the broker source, tests, documentation, public-safe Wrangler templates, and the source side of the release handoff. It does not own credentials, production routes, Cloudflare account identifiers, deployment overlays, or deployment execution.
 
-Production deployment is handled by a separate pipeline outside this codebase.
+## One App per deployment
 
-## Deployable Worker Packages
+`@github-app-token-broker/worker` is the sole deployable package and exposes only `POST /token`. Each deployed Worker instance receives one `GITHUB_APP_ID` and one `GITHUB_APP_PRIVATE_KEY`. Deploy a separate instance for another GitHub App. A separate trust or policy domain additionally requires a different reviewed source composition and newly built Worker artifact. Do not add a public App selector or multi-key endpoint.
 
-The implementation is split into two deployable workspace packages:
+The source-owned composition seam is `workers/github-app-token-broker/src/configured-token-exchange-composition.ts`. It binds:
 
-- `@cyspbot/token-exchange` deploys Worker `cyspbot-token-exchange`: `/token`, OpenID Connect ID Token verification, Token Issuance Policy, GitHub App installation access token issuance
-- `@cyspbot/github-webhook-receiver` deploys Worker `cyspbot-github-webhook-receiver`: `/github/webhooks`, signature validation, target app validation, JSON validation, and acknowledgement
+- the accepted OIDC Provider Registrations
+- the compiled Token Issuance Policy
 
-This source repository owns:
+The configured Worker composition imports this seam, so the build compiles both values into the Worker artifact. Deployments using the same already-compiled artifact cannot inject different registrations or policy through Worker bindings or other runtime configuration. The dependency-injection interface is a construction/test seam, not a deployment configuration surface. A deployment that needs a different registration or policy set may reuse the runtime implementation but must select a different reviewed source composition and build a different artifact.
 
-- public-safe deployable package templates under `workers/*`
-- package-owned Worker adapters, routes, dependency defaults, and Wrangler configs
-- shared package modules under `packages/*` for HTTP helpers, GitHub clients, OpenID Connect ID Token verification, and provider-specific OIDC ID Token Profile handling
-- generated Env types for the bindings required by the source
-- tests and Wrangler deploy dry runs for the two Worker packages
-- the Node-only OIDC test fixture seam at
-  `test/support/token-exchange-oidc-node-fixture.ts`, which the separate deployment
-  pipeline consumes to exercise its pinned source build without duplicating discovery,
-  JWK Set, or signing fixtures
+The deployment environment supplies one GitHub App credential pair, the rate-limit binding, and one non-secret identity binding. `TOKEN_BROKER_AUDIENCE` is the exact non-empty, non-whitespace, single-line scalar accepted in subject tokens; its initial value is `https://cyspbot.chikachow.org`. It may be URL-shaped or opaque. Public hostname and route ownership remain in deployment configuration rather than a Worker runtime binding. The audience and App credentials can differ across deployments of the same artifact; provider trust and authorization policy cannot.
 
-The checked-in Worker configs are local-development and dry-run templates only.
+## Dedicated private deployment repository
 
-## Separate Deployment Pipeline
+The deployment owner is the existing private `chikachow/github-app-token-broker-deploy` repository. Its `main` branch was bootstrapped with deployment documentation; its pipeline remains under review. The accepted `update-github-app-token-broker.yml` workflow must:
 
-The separate deployment pipeline should:
+1. accept `workflow_dispatch` on `main`
+2. select and pin a reviewed commit from `chikachow/github-app-token-broker`
+3. install with Node 24 and the source repository's pinned Corepack/pnpm version
+4. run `node --run check`
+5. preserve the source compatibility date and flags unless a reviewed deployment change intentionally updates them
+6. supply the deployment-owned Worker name, routes, exact `TOKEN_BROKER_AUDIENCE`, GitHub App ID/private key, rate-limit namespace, and Cloudflare credentials
+7. deploy only `workers/github-app-token-broker`
+8. smoke-test the routed `POST /token` contract without logging tokens
 
-1. Check out this source repository at a reviewed commit.
-2. Install dependencies.
-3. Run `node --run check`.
-4. Deploy Worker packages: token exchange and webhook receiver.
-5. Smoke-test `/token` and `/github/webhooks` on the production origin.
+The source workflow `run-github-app-token-broker-deploy-update.yml` is triggered manually or after successful `ci` on a push to `main`. It requests only `actions:write` for `chikachow/github-app-token-broker-deploy`, then runs `update-github-app-token-broker.yml` on that repository's `main` branch. The checked-in Token Issuance Policy contains matching exact workflow claims and target permissions.
 
-Local `pnpm run dev` uses Wrangler's multi-worker mode for separated Worker configs. Wrangler exposes only the first config locally and runs the rest as auxiliary Workers, so local dev does not replace same-origin route proof in the deployment environment. Local dev uses repository-local `.wrangler` state for Wrangler logs and the dev registry.
+Both source maintenance workflows pin the same immutable release of `chikachow/cyspbot-app-token-action`. The action always requests GitHub OIDC for the fixed logical audience `https://cyspbot.chikachow.org`; callers cannot override that identity value. Its default Token Exchange Endpoint URL is `https://cyspbot.chikachow.org/token`. Optional repository variable `TOKEN_BROKER_URL` is passed as `cyspbot-token-url` and changes only the exact POST destination, allowing a route migration without an identity migration. The action requires a canonical credential-free HTTPS URL with no query or fragment, rejects redirects, validates the complete response shape and exact requested scope, masks the token, and writes only token outputs. The selected endpoint receives the ID Token subject token and can observe an Installation Access Token when it proxies the request; the authority controlling the URL is already trusted to obtain and handle those credentials. Both workflows explicitly provide their repository resource and least-privilege scope. The action's fallback `contents:write pull_requests:write` scope remains a caller convenience only: direct Clients must supply a non-empty scope because the broker has no permission default.
 
-## OIDC Trust and Authorization Configuration
+The private deploy pipeline owns the Worker audience and public route. Its Worker overlay must bind `TOKEN_BROKER_AUDIENCE=https://cyspbot.chikachow.org`, matching the action's fixed audience. It may leave source variable `TOKEN_BROKER_URL` unset when the default endpoint reaches the intended route, or set it to the exact canonical HTTPS destination when routing requires an override. Deployment validation must compare the Worker binding with the action's documented audience and separately prove the effective action POST destination matches the intended route before enabling source workflows. A route migration may retain the stable audience and change only routing plus the optional URL override; changing the logical audience requires a coordinated action and deployment release. Neither identity nor location may be inferred from an incoming `Host` header.
 
-The token-exchange Worker has no dynamic issuer or authorization-policy binding. Production OIDC Provider Registrations and Permit Statements are immutable checked-in values. Changing either set requires a reviewed source change and deployment. Configuring a provider registration makes authentication possible but creates no Permit Statement; Token Issuance Policy remains an independent control.
+The private deploy repository also consumes `test/support/token-exchange-oidc-node-fixture.ts` from its pinned source checkout when it needs a deterministic GitHub Actions OIDC discovery, JWK Set, and signing fixture. The module exports `tokenExchangeOidcNodeFixture` with `privateKeyPem` and an `outboundService` fetch handler. It is a Node-only test seam: it must never supply production bindings or deployment secrets, and the deploy repository should import it only in validation tests against the pinned source revision.
 
-The [service contract](service-contract.md) and [implementation reference](implementation.md) own the exact production registration and Permit Statement inventory; this deployment guide records only the stable source/deployment ownership boundary.
+The private repository now exists, but the source-side handoff remains intentionally non-operational until its pipeline is accepted and the required secrets, bindings, routes, and source-repository configuration are provisioned. This source repository does not configure those resources, dispatch an unaccepted workflow, or deploy anything.
 
-## Token Exchange Protocol Rollouts
+## Migration order
 
-Changes that alter `/token` request shape must be deployed before repository workflows are updated to depend on the new shape. Keep the deploy-trigger workflow on an action version and inputs that the currently live Worker already authorizes, deploy the new Worker, then update the workflow to the new action/input shape in a follow-up change.
+Before the original service removes its token endpoint:
 
-This ordering prevents self-deployment deadlocks: a policy or workflow identity in source code is not usable until the Worker containing that policy has been deployed.
+1. accept and validate the private repository's pinned-source update/deploy pipeline
+2. provision the dedicated GitHub App credentials, Cloudflare secrets and bindings, production route configuration, and required repository configuration
+3. deploy and smoke-test the broker at its final origin
+4. verify the Worker audience exactly matches the action's fixed audience, set optional source repository variable `TOKEN_BROKER_URL` only when the default action endpoint does not name the intended route, and coordinate route and identity cutovers explicitly
+5. verify every configured workload and least-privilege policy path against the new service
+6. only then remove the old endpoint and deployment wiring
 
-## Public Source Boundary
+## Public source boundary
 
-Do not commit:
-
-- Cloudflare account IDs or API tokens
-- GitHub App IDs, private keys, or webhook secrets
-- local `.dev.vars`
-- local `.env`
-- generated `.wrangler` state
-- private deployment overlays or workflow secrets
-
-Public-safe template configs may include placeholder IDs, local-only values, and required binding names.
-
-Build release artifacts from tracked source files, not from the working directory. This matters because local development intentionally creates ignored files such as `.dev.vars`, `.wrangler/`, `.local-secrets/`, dependency directories, and local GitHub App key files.
-
-## External References
-
-- [Cloudflare Workers Wrangler configuration](https://developers.cloudflare.com/workers/wrangler/configuration/)
-- [Cloudflare Workers secrets](https://developers.cloudflare.com/workers/configuration/secrets/)
+Never commit Cloudflare account IDs or tokens, GitHub App IDs or private keys, `.dev.vars`, `.env`, `.wrangler/`, `.local-secrets/`, private deployment overlays, or production route details. Build from tracked files or an explicit archive, not an ambient working directory.

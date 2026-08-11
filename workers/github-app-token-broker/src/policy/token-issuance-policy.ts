@@ -2,7 +2,7 @@ import {
   parseOidcIssuerIdentifier,
   type OidcIssuerIdentifier,
   type OidcProviderRegistration,
-} from "@cyspbot/oidc/provider-registration";
+} from "@github-app-token-broker/oidc/provider-registration";
 import {
   canonicalizeInstallationAccessTokenPermissions,
   createGitHubRepositoryResource,

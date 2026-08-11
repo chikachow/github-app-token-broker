@@ -15,7 +15,7 @@ const testGithubActionsProviderConfigurationUrl = `${testGithubActionsIssuer}/.w
 const testGithubActionsJwksUrl = `${testGithubActionsIssuer}/.well-known/jwks`;
 
 /**
- * Node-only OIDC fixture seam shared by Vitest configuration and cyspbot-deploy.
+ * Node-only OIDC fixture seam shared by Vitest configuration and github-app-token-broker-deploy.
  * The token-exchange Workerd integration module receives only the private-key binding and imports
  * no Node crypto modules.
  */

@@ -1,7 +1,6 @@
 import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
 import { configDefaults, defineConfig } from "vitest/config";
 
-import { githubWebhookTestSecret } from "./test/support/webhook.ts";
 import { tokenExchangeOidcNodeFixture } from "./test/support/token-exchange-oidc-node-fixture.ts";
 
 export default defineConfig({
@@ -18,6 +17,7 @@ export default defineConfig({
             miniflare: {
               bindings: {
                 GITHUB_APP_ID: "000000",
+                TOKEN_BROKER_AUDIENCE: "https://cyspbot.chikachow.org",
               },
             },
             remoteBindings: false,
@@ -29,7 +29,7 @@ export default defineConfig({
         test: {
           allowOnly: false,
           detectAsyncLeaks: true,
-          exclude: [...configDefaults.exclude, "test/worker-integration/**"],
+          exclude: [...configDefaults.exclude, "test/node/**", "test/worker-integration/**"],
           name: "unit",
         },
       },
@@ -40,12 +40,13 @@ export default defineConfig({
               bindings: {
                 GITHUB_APP_PRIVATE_KEY: "unused-because-token-issuance-policy-denies",
                 OIDC_TEST_PRIVATE_KEY: tokenExchangeOidcNodeFixture.privateKeyPem,
+                TOKEN_BROKER_AUDIENCE: "https://cyspbot.chikachow.org",
               },
               outboundService: tokenExchangeOidcNodeFixture.outboundService,
             },
             remoteBindings: false,
             wrangler: {
-              configPath: "./workers/cyspbot-token-exchange/wrangler.jsonc",
+              configPath: "./workers/github-app-token-broker/wrangler.jsonc",
             },
           }),
         ],
@@ -58,24 +59,12 @@ export default defineConfig({
         },
       },
       {
-        plugins: [
-          cloudflareTest({
-            miniflare: {
-              bindings: {
-                GITHUB_WEBHOOK_SECRET: githubWebhookTestSecret,
-              },
-            },
-            remoteBindings: false,
-            wrangler: {
-              configPath: "./workers/cyspbot-github-webhook-receiver/wrangler.jsonc",
-            },
-          }),
-        ],
         test: {
           allowOnly: false,
           detectAsyncLeaks: true,
-          include: ["test/worker-integration/github-webhook-receiver.test.ts"],
-          name: "github-webhook-receiver-integration",
+          environment: "node",
+          include: ["test/node/**/*.test.ts"],
+          name: "node",
         },
       },
     ],

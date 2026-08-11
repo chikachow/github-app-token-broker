@@ -136,7 +136,7 @@ async function appAuthenticationHeaders(
   return {
     accept: githubAcceptHeader,
     authorization: `Bearer ${jwt}`,
-    "user-agent": "cyspbot",
+    "user-agent": "github-app-token-broker",
     "x-github-api-version": githubApiVersion,
   };
 }

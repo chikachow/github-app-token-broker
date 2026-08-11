@@ -32,7 +32,7 @@ explained why the complete request was not permitted.
 
 ### Domain language
 
-The canonical terms in this decision are defined in the [cyspbot domain
+The canonical terms in this decision are defined in the [github-app-token-broker domain
 glossary](../../CONTEXT.md). This decision uses those terms rather than defining
 a second authorization vocabulary.
 
@@ -54,7 +54,7 @@ made of Permit Statements. Each statement contains:
 - one exact Repository Resource Constraint; and
 - one non-empty GitHub installation permission map.
 
-Permission names are not a closed cyspbot catalogue. They are structurally
+Permission names are not a closed github-app-token-broker catalogue. They are structurally
 valid OAuth scope-token components, while permission levels form the closed
 ordered set `read`, `write`, and `admin`; GitHub remains authoritative for
 which names accept which levels.
@@ -146,9 +146,12 @@ to `invalid_request`.
 ### Trust Subject Token Claims
 
 Successful OIDC validation authenticates the complete Subject Token Claims from one
-exact configured issuer for the cyspbot audience. Policy directly selects the
-Subject Token Claims that are material to authorization; it does not reconstruct
-one signed representation from another merely to check their consistency.
+exact configured issuer for the deployment's exact configured Subject-Token Audience.
+That audience may be URL-shaped or opaque. It is distinct from the Token Exchange
+Endpoint URL and from the RFC 8693 `audience` and `resource` parameters that describe
+the requested output-token targets. Policy directly selects the Subject Token Claims
+that are material to authorization; it does not reconstruct one signed representation
+from another merely to check their consistency.
 
 GitHub Actions policy therefore selects exact signed `repository`,
 `event_name`, `ref_type`, `ref`, and `workflow_ref` values without constraining
@@ -211,8 +214,7 @@ mechanism, callback registry, or service-specific base implementation.
 - The authorization model is deliberately closed under pointwise permission
   union.
 - GitHub Actions policy, and any configured Fly policy, trust verified Subject
-  Token Claims rather than imposing redundant cross-Claim consistency
-  checks.
+  Token Claims rather than imposing redundant cross-Claim consistency checks.
 - A policy result that does not permit issuance is direct Boolean control flow.
 - Operational logs retain the verified subject-token and normalized request
   context but contain only the Boolean policy outcome.

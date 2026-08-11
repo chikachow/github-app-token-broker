@@ -3,14 +3,14 @@ import { describe, expect, it } from "vitest";
 import {
   createOidcProviderRegistration,
   parseOidcIssuerIdentifier,
-} from "@cyspbot/oidc/provider-registration";
+} from "@github-app-token-broker/oidc/provider-registration";
 import {
   createGitHubRepositoryResource,
   installationAccessTokenPermissionLevelCovers,
   unionGitHubInstallationPermissions,
   type GitHubInstallationPermissions,
   type InstallationAccessTokenRequest,
-} from "../workers/cyspbot-token-exchange/src/installation-access-token-request.ts";
+} from "../workers/github-app-token-broker/src/installation-access-token-request.ts";
 import {
   claimEquals,
   claimOneOf,
@@ -22,8 +22,8 @@ import {
   tokenIssuancePolicySupportsRequestedPermissions,
   tokenIssuancePolicySupportsTarget,
   type PermitStatementDefinition,
-} from "../workers/cyspbot-token-exchange/src/policy/token-issuance-policy.ts";
-import type { VerifiedSubjectToken } from "../workers/cyspbot-token-exchange/src/authentication.ts";
+} from "../workers/github-app-token-broker/src/policy/token-issuance-policy.ts";
+import type { VerifiedSubjectToken } from "../workers/github-app-token-broker/src/authentication.ts";
 import { createVerifiedSubjectToken } from "./support/oidc.ts";
 
 const parsedIssuer = parseOidcIssuerIdentifier("https://issuer.example");

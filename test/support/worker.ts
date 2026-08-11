@@ -1,10 +1,8 @@
-import { createGitHubWebhookReceiverWorker } from "@cyspbot/github-webhook-receiver/worker";
 import {
   createTokenExchangeWorker,
   type TokenExchangeWorkerDependencies,
-} from "@cyspbot/token-exchange";
-import type { GitHubWebhookReceiverDependencies } from "@cyspbot/github-webhook-receiver/github-webhooks/acceptance";
-import { configuredOidcProviderRegistrations } from "../../workers/cyspbot-token-exchange/src/configured-oidc-provider-registrations.ts";
+} from "@github-app-token-broker/worker";
+import { configuredOidcProviderRegistrations } from "../../workers/github-app-token-broker/src/configured-oidc-provider-registrations.ts";
 
 import { testNow } from "./constants.ts";
 import { fetchGitHubTestDouble } from "./github-api.ts";
@@ -19,20 +17,16 @@ export {
 } from "./oidc.ts";
 export { testEnv };
 
-type TestDependencies = GitHubWebhookReceiverDependencies & TokenExchangeWorkerDependencies;
-type TestEnv = GitHubWebhookReceiverEnv & TokenExchangeEnv;
+type TestEnv = TokenExchangeEnv;
 
 export const testTokenExchangeWorkerDependencies = {
   fetch: fetchTokenExchangeExternalTestDouble,
   now: () => testNow,
   oidcProviderRegistrations: configuredOidcProviderRegistrations,
   tokenIssuancePolicy: testTokenIssuancePolicy,
-} satisfies TestDependencies;
+} satisfies TokenExchangeWorkerDependencies;
 
 const tokenExchangeApp = createTokenExchangeWorker(testTokenExchangeWorkerDependencies);
-const githubWebhookReceiverApp = createGitHubWebhookReceiverWorker(
-  testTokenExchangeWorkerDependencies,
-);
 
 export function fetchTokenExchange(
   input: RequestInfo | URL,
@@ -62,13 +56,6 @@ export function fetchTokenExchangeWithDependencies(
     input,
     init,
   );
-}
-
-export function fetchGitHubWebhookReceiver(
-  input: RequestInfo | URL,
-  init?: RequestInit,
-): Promise<Response> {
-  return fetchWorkerWithApp(githubWebhookReceiverApp, input, init);
 }
 
 function fetchWorkerWithApp(
@@ -102,7 +89,6 @@ function fetchTokenExchangeExternalTestDouble(
 
 const oidcProviderHostnames = new Set([
   "accounts.google.com",
-  "oidc.fly.io",
   "token.actions.githubusercontent.com",
   "www.googleapis.com",
 ]);

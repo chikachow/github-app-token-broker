@@ -2,9 +2,9 @@ import {
   createInstallationAccessTokenForRepositoryName,
   GitHubAppConfigurationError,
   resolveInstallationForRepository,
-} from "@cyspbot/github/app";
-import { GitHubApiError, GitHubApiTransportError } from "@cyspbot/github/http";
-import type { GitHubAppDependencies, GitHubAppEnv } from "@cyspbot/github/app";
+} from "@github-app-token-broker/github/app";
+import { GitHubApiError, GitHubApiTransportError } from "@github-app-token-broker/github/http";
+import type { GitHubAppDependencies, GitHubAppEnv } from "@github-app-token-broker/github/app";
 import type { AuthenticatedContext } from "../authentication.ts";
 import type { InstallationAccessTokenRequest } from "../installation-access-token-request.ts";
 import type { TokenIssuancePolicy } from "./token-issuance-policy.ts";

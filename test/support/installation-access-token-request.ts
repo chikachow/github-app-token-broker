@@ -1,7 +1,7 @@
 import {
   normalizeInstallationAccessTokenRequest,
   type InstallationAccessTokenRequest,
-} from "../../workers/cyspbot-token-exchange/src/installation-access-token-request.ts";
+} from "../../workers/github-app-token-broker/src/installation-access-token-request.ts";
 
 const fixtureSourceRepository = "fixture-owner/fixture-source-repository";
 export const fixtureSourceResource = `https://api.github.com/repos/${fixtureSourceRepository}`;

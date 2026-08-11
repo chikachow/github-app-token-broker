@@ -3,9 +3,9 @@ import type {
   OidcIdTokenAuthenticator,
   OidcVerificationEvidence,
   VerifiedSubjectToken,
-} from "@cyspbot/oidc/id-token-authenticator";
+} from "@github-app-token-broker/oidc/id-token-authenticator";
 
-export type { VerifiedSubjectToken } from "@cyspbot/oidc/id-token-authenticator";
+export type { VerifiedSubjectToken } from "@github-app-token-broker/oidc/id-token-authenticator";
 
 export interface AuthenticatedContext {
   readonly verificationEvidence: OidcVerificationEvidence;

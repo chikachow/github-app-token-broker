@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import type {
   OidcIdTokenAuthenticationResult,
   OidcIdTokenAuthenticator,
-} from "@cyspbot/oidc/id-token-authenticator";
-import { authenticateOidcIdToken } from "../workers/cyspbot-token-exchange/src/authentication.ts";
+} from "@github-app-token-broker/oidc/id-token-authenticator";
+import { authenticateOidcIdToken } from "../workers/github-app-token-broker/src/authentication.ts";
 
 type AuthenticationFailure = Extract<OidcIdTokenAuthenticationResult, { ok: false }>;
 
@@ -47,7 +47,7 @@ describe("OIDC authentication HTTP boundary", () => {
       "invalid_token",
     ],
   ])("maps %s", async (_description, failure, reason) => {
-    const request = new Request("https://cyspbot.example/token");
+    const request = new Request("https://github-app-token-broker.example/token");
     const authenticator: OidcIdTokenAuthenticator = {
       authenticateIdToken: async () => failure,
     };

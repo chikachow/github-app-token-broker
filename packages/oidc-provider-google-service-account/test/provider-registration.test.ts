@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { VerifiedOidcIdTokenClaims } from "@cyspbot/oidc/verified-id-token";
+import type { VerifiedOidcIdTokenClaims } from "@github-app-token-broker/oidc/verified-id-token";
 
 import { googleServiceAccountOidcProviderRegistration } from "../src/provider-registration.ts";
 
@@ -42,7 +42,7 @@ describe("Google service-account OIDC Provider Registration", () => {
 
 function createClaims(overrides: Record<string, unknown>): VerifiedOidcIdTokenClaims {
   return {
-    aud: "cyspbot",
+    aud: "github-app-token-broker",
     exp: 2,
     iat: 1,
     iss: googleServiceAccountOidcProviderRegistration.issuer,

@@ -1,4 +1,5 @@
 import { githubActionsOidcProviderRegistration } from "../configured-oidc-provider-registrations.ts";
+import { createGitHubRepositoryResource } from "../installation-access-token-request.ts";
 import {
   claimEquals,
   claimOneOf,
@@ -33,6 +34,13 @@ const pullRequestAuthoringPermissions = {
 } as const;
 
 export const configuredTokenIssuancePolicy = compileTokenIssuancePolicy([
+  dependencyUpdatePermitStatement("chikachow/github-app-token-broker", "pnpm-up.yml"),
+  ...deploymentRepositoryUpdatePermitStatements({
+    deploymentRepositoryFullName: "chikachow/github-app-token-broker-deploy",
+    updateTriggerWorkflowFileName: "run-github-app-token-broker-deploy-update.yml",
+    updateTriggerRepositoryFullName: "chikachow/github-app-token-broker",
+    updateWorkflowFileName: "update-github-app-token-broker.yml",
+  }),
   dependencyUpdatePermitStatement("chikachow/cyspbot", "pnpm-up.yml"),
   ...deploymentRepositoryUpdatePermitStatements({
     deploymentRepositoryFullName: "chikachow/cyspbot-deploy",
@@ -105,9 +113,14 @@ function deploymentRepositoryUpdatePermitStatements(
 function githubActionsMainBranchWorkflowPermitStatement(
   options: GitHubActionsMainBranchWorkflowPermitStatementOptions,
 ): PermitStatementDefinition {
-  const [resourceOwner, resourceRepository] = splitGitHubRepositoryFullName(
-    options.resourceRepositoryFullName,
-  );
+  const resourceParts = parseGitHubRepositoryFullName(options.resourceRepositoryFullName);
+  const workflowParts = parseGitHubRepositoryFullName(options.workflowRepositoryFullName);
+
+  if (resourceParts === null || workflowParts === null) {
+    throw new TypeError("invalid GitHub repository full_name");
+  }
+
+  const [resourceOwner, resourceRepository] = resourceParts;
 
   return {
     permissions: options.permissions,
@@ -126,8 +139,23 @@ function githubActionsMainBranchWorkflowPermitStatement(
   };
 }
 
-function splitGitHubRepositoryFullName(
-  fullName: GitHubRepositoryFullName,
-): readonly [owner: string, repository: string] {
-  return fullName.split("/", 2) as [owner: string, repository: string];
+export function parseGitHubRepositoryFullName(
+  fullName: string,
+): readonly [owner: string, repository: string] | null {
+  const parts = fullName.split("/");
+
+  if (parts.length !== 2 || parts[0] === undefined || parts[1] === undefined) {
+    return null;
+  }
+
+  try {
+    const resource = createGitHubRepositoryResource({
+      owner: parts[0],
+      repository: parts[1],
+    });
+
+    return [resource.owner, resource.repository];
+  } catch {
+    return null;
+  }
 }

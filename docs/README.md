@@ -1,43 +1,14 @@
-# cyspbot Documentation
+# github-app-token-broker documentation
 
-This directory documents the current cyspbot implementation and public service contract.
+- [Service contract](service-contract.md): authoritative public API, security boundaries, provider inventory, policy inventory, runtime bindings, and errors.
+- [Implementation](implementation.md): package layout, composition seam, request flow, and validation commands.
+- [Deployment](deployment.md): interface between this public source repository and the dedicated private deployment repository.
+- [Release checklist](release.md): public-source and publish-readiness checks.
+- [Domain glossary](../CONTEXT.md): project terminology.
+- [OIDC authentication decision](decisions/oidc-id-token-authentication.md), [CEL-free policy decision](decisions/cel-free-token-issuance-policy.md), and [GitHub failure-classification decision](decisions/github-api-failure-classification.md): durable security rationale.
 
-## Documents
+Decision records may describe source-supported capabilities, but only the service contract and checked-in deployment composition define currently configured trust and authorization.
 
-- [Service contract](service-contract.md) is reference material for the public API, security boundaries, and externally observable behaviour.
-- [Implementation](implementation.md) explains the workspace packages, Worker entrypoints, request flows, bindings, and verification commands.
-- [Deployment](deployment.md) explains the source repository boundary and confirms deployment is handled outside this codebase.
-- [OIDC ID Token authentication decision](decisions/oidc-id-token-authentication.md) records the durable trust, discovery, and configuration-ownership rationale behind the implementation.
-- [CEL-free Token Issuance Policy decision](decisions/cel-free-token-issuance-policy.md) records the closed authorization language, extensible permission names, permission-level composition, and trust in Subject Token Claims.
-- [GitHub API Failure Classification decision](decisions/github-api-failure-classification.md) records how service-owned credentials, ambiguous upstream failures, rate limits, and transport failures map to cyspbot Token Endpoint responses.
-- [Release checklist](release.md) is a publish-readiness checklist to run before making the repository public or tagging a release.
-- [Repository README](../README.md) is the setup and local development entrypoint.
-- [Domain glossary](../CONTEXT.md) defines project terminology used by the code and docs.
+The source-supported Fly OIDC registration capability is documented in the [service contract](service-contract.md#source-supported-fly-oidc-registration), [implementation reference](implementation.md#oidc-security-boundary), and [domain glossary](../CONTEXT.md). It is not part of the default production registration or policy inventory.
 
-## Capability and Configured Policy
-
-Decision records may describe capabilities that the source supports without
-asserting that production currently configures those capabilities. Capability
-statements use conditional language and identify themselves as capabilities.
-The service contract and implementation reference own the current production
-registration and Token Issuance Policy inventory. A capability is not a
-configured policy merely because an accepted decision documents it.
-
-## Unsupported Behaviour
-
-Current implementation:
-
-- OAuth token exchange at `POST /token`
-- signed webhook acknowledgement at `POST /github/webhooks`
-- deployable Cloudflare Worker packages under `workers/*`
-
-cyspbot does not implement:
-
-- Client-selected arbitrary repositories
-- GitHub permission requests that bypass checked-in Permit Statement coverage
-- Client-defined GitHub permission profiles or aliases
-- multi-audience subject tokens or multi-resource token requests
-- actor-token delegation or client-authenticated token exchange
-- dynamic issuer discovery from untrusted tokens
-- raw webhook payload archival or replay
-- product-specific webhook event processing
+The implemented public service surface is only `POST /token`.

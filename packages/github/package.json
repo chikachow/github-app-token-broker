@@ -1,5 +1,5 @@
 {
-  "name": "@cyspbot/github",
+  "name": "@github-app-token-broker/github",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -9,7 +9,7 @@
     "./secrets": "./src/secrets.ts"
   },
   "dependencies": {
-    "@cyspbot/http": "workspace:*",
+    "@github-app-token-broker/http": "workspace:*",
     "jose": "6.2.5",
     "zod": "4.4.3"
   }

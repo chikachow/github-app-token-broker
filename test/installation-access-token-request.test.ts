@@ -9,7 +9,7 @@ import {
   parseGitHubRepositoryResource,
   unionGitHubInstallationPermissions,
   type GitHubInstallationPermissionLevel,
-} from "../workers/cyspbot-token-exchange/src/installation-access-token-request.ts";
+} from "../workers/github-app-token-broker/src/installation-access-token-request.ts";
 import {
   fixtureSourceResource,
   fixtureTargetResource,
@@ -37,12 +37,6 @@ const malformedRuntimePermissionCases = [
 
 describe("InstallationAccessTokenRequest normalization", () => {
   it.each([
-    {
-      expectedPermissions: { contents: "write", pull_requests: "write" },
-      expectedScope: "contents:write pull_requests:write",
-      name: "omitted scope",
-      scope: null,
-    },
     {
       expectedPermissions: { contents: "write", pull_requests: "write" },
       expectedScope: "contents:write pull_requests:write",
@@ -103,6 +97,7 @@ describe("InstallationAccessTokenRequest normalization", () => {
   });
 
   it.each([
+    null,
     "",
     " ",
     " actions:write",
@@ -118,7 +113,7 @@ describe("InstallationAccessTokenRequest normalization", () => {
     "ümlaut:read",
     "contents:maintain",
     "actions",
-  ])("rejects unsupported scope %s", (scope) => {
+  ])("rejects missing or unsupported scope %s", (scope) => {
     expect(
       normalizeInstallationAccessTokenRequest({
         resource: fixtureTargetResource,

@@ -4,7 +4,7 @@ import { githubActionsOidcProviderRegistration } from "../src/provider-registrat
 
 describe("GitHub Actions OIDC Provider Registration", () => {
   const claims = {
-    aud: "cyspbot",
+    aud: "github-app-token-broker",
     exp: 2,
     iat: 1,
     iss: githubActionsOidcProviderRegistration.issuer,
@@ -29,7 +29,7 @@ describe("GitHub Actions OIDC Provider Registration", () => {
     expect(
       idTokenProfile.validate({
         ...claims,
-        azp: "cyspbot",
+        azp: "github-app-token-broker",
       }),
     ).toBe(true);
   });

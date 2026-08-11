@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 
 import { testPrivateKeyPem } from "./rsa-test-key-pair.ts";
 
-type TestEnv = GitHubWebhookReceiverEnv & TokenExchangeEnv;
+type TestEnv = TokenExchangeEnv;
 
 const workerEnv = env as unknown as TestEnv;
 
@@ -13,6 +13,6 @@ const testTokenExchangeRateLimit = {
 export const testEnv: TestEnv = {
   ...workerEnv,
   GITHUB_APP_PRIVATE_KEY: testPrivateKeyPem,
-  GITHUB_WEBHOOK_SECRET: "test-webhook-secret",
+  TOKEN_BROKER_AUDIENCE: "https://cyspbot.chikachow.org",
   TOKEN_EXCHANGE_RATE_LIMIT: testTokenExchangeRateLimit,
 };

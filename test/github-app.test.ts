@@ -91,7 +91,7 @@ describe("GitHub App authentication", () => {
 
           const headers = new Headers(init?.headers);
           expect(headers.get("accept")).toBe("application/vnd.github+json");
-          expect(headers.get("user-agent")).toBe("cyspbot");
+          expect(headers.get("user-agent")).toBe("github-app-token-broker");
           expect(headers.get("x-github-api-version")).toBe("2022-11-28");
           expect(headers.get("authorization")).toMatch(/^Bearer /u);
 

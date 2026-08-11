@@ -1,8 +1,0 @@
-{
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "lib": ["ES2024"],
-    "types": ["./src/runtime.generated.d.ts"]
-  },
-  "include": ["src/**/*.ts"]
-}

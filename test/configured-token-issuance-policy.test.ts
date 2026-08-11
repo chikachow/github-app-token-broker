@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { configuredTokenIssuancePolicy } from "../workers/cyspbot-token-exchange/src/policy/configured-token-issuance-policy.ts";
-import { tokenIssuancePolicyPermits } from "../workers/cyspbot-token-exchange/src/policy/token-issuance-policy.ts";
-import type { GitHubInstallationPermissions } from "../workers/cyspbot-token-exchange/src/installation-access-token-request.ts";
+import { configuredTokenIssuancePolicy } from "../workers/github-app-token-broker/src/policy/configured-token-issuance-policy.ts";
+import { tokenIssuancePolicyPermits } from "../workers/github-app-token-broker/src/policy/token-issuance-policy.ts";
+import type { GitHubInstallationPermissions } from "../workers/github-app-token-broker/src/installation-access-token-request.ts";
 import {
   configuredPermitStatementExpectations,
   requestForExpectation,
@@ -29,7 +29,7 @@ describe("configured Token Issuance Policy", () => {
       }
     }
 
-    expect(acceptedEvents).toBe(24);
+    expect(acceptedEvents).toBe(29);
   });
 
   it("does not permit permissions beyond each configured expectation", () => {
@@ -67,7 +67,7 @@ describe("configured Token Issuance Policy", () => {
       permissionDenials += 1;
     }
 
-    expect(permissionDenials).toBe(13 * 4);
+    expect(permissionDenials).toBe(16 * 4);
   });
 
   it("does not permit issuer, selected-Claim, Claim-type, or Repository Resource mutations", () => {
@@ -135,7 +135,7 @@ describe("configured Token Issuance Policy", () => {
       mutations += 1;
     }
 
-    expect(mutations).toBe(13 * (5 * 7 + 2 + 1));
+    expect(mutations).toBe(16 * (5 * 7 + 2 + 1));
   });
 
   it("permits every legacy, immutable, customized, missing, and malformed sub form", () => {
