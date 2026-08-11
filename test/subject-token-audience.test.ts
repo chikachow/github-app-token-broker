@@ -4,7 +4,7 @@ import { parseSubjectTokenAudience } from "../workers/github-app-token-broker/sr
 
 describe("subject-token audience configuration", () => {
   it.each([
-    "https://cyspbot.chikachow.org",
+    "https://broker.example",
     "https://github.example/apps/foo",
     "github-app-token-broker",
     "urn:example:token-broker",
@@ -18,7 +18,7 @@ describe("subject-token audience configuration", () => {
     ["empty", "", "is required"],
     ["whitespace", "   ", "is required"],
     ["non-string", 42, "is required"],
-    ["plural", ["https://cyspbot.chikachow.org"], "is required"],
+    ["plural", ["https://broker.example"], "is required"],
     ["carriage return", "first\rsecond", "exact single-line string"],
     ["line feed", "first\nsecond", "exact single-line string"],
     ["line separator", "first\u2028second", "exact single-line string"],

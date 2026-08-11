@@ -40,7 +40,7 @@ Important invariants:
 - the configured GitHub App installation remains the upper bound on repositories and permissions
 - OAuth token responses are non-cacheable and raw subject/access tokens are not logged
 
-See [the service contract](docs/service-contract.md) for complete request, response, error, provider, and policy behavior; [implementation](docs/implementation.md) for code boundaries; and [deployment](docs/deployment.md) for the public-source/private-deploy interface.
+See [the service contract](docs/service-contract.md) for complete request, response, error, provider, and policy behavior; [implementation](docs/implementation.md) for code boundaries; and [deployment](docs/deployment.md) for the public-source/external-deployment interface.
 
 ## Configuration
 
@@ -49,7 +49,7 @@ The Worker consumes one App identity per deployment:
 - `GITHUB_APP_ID`: non-secret GitHub App identifier
 - `GITHUB_APP_PRIVATE_KEY`: Worker secret or Secrets Store binding containing its PKCS#8 private key
 - `GITHUB_API_BASE_URL`: public-safe GitHub API base URL, normally `https://api.github.com`
-- `TOKEN_BROKER_AUDIENCE`: required non-secret exact scalar subject-token audience; initially `https://cyspbot.chikachow.org`
+- `TOKEN_BROKER_AUDIENCE`: required non-secret exact scalar Subject-Token Audience supplied by the deployment
 - `TOKEN_EXCHANGE_RATE_LIMIT`: Cloudflare rate-limit binding
 
 The audience must be a non-empty, non-whitespace, single-line string and is validated before request routing. It is an identity, not a Worker location binding: the Worker never derives it from the incoming URL, `Host`, forwarded headers, or `/token` route. Provider registrations and Token Issuance Policy are source-reviewed values in [`configured-token-exchange-composition.ts`](workers/github-app-token-broker/src/configured-token-exchange-composition.ts) and are compiled into the Worker artifact; neither is a runtime deployment binding or Client input.
@@ -73,13 +73,7 @@ Do not commit keys, `.dev.vars`, `.env`, `.wrangler/`, `.local-secrets/`, or pri
 
 ## Deployment boundary
 
-This public repository does not deploy the service. The dedicated private `chikachow/github-app-token-broker-deploy` repository exists and is preparing a pipeline that pins a reviewed source commit, runs the full source checks, supplies deployment-owned identifiers/routes/secrets, deploys the one Worker, and smoke-tests `POST /token`.
-
-After successful CI on `main`, `.github/workflows/run-github-app-token-broker-deploy-update.yml` uses an immutable release of `chikachow/cyspbot-app-token-action` to request an explicitly scoped `actions:write` installation token for that private repository and dispatch its `update-github-app-token-broker.yml` workflow. The action always requests GitHub OIDC for the fixed logical audience `https://cyspbot.chikachow.org`. Its default POST destination is that audience plus `/token`; optional source-repository variable `TOKEN_BROKER_URL` overrides only the exact HTTPS destination and never the audience. Both source workflows supply their resource and scope explicitly, so the broker remains the authority that validates every requested target and permission. Repository creation is complete, but the deployment pipeline must be accepted, its secrets and configuration must be provisioned, and an initial broker deployment must establish the public route before this handoff can operate. The source repository does not create or configure deployment resources and does not deploy a Worker.
-
-## History
-
-This repository began from the exact `chikachow/cyspbot` `origin/main` commit `0c6dc8c5ef37b2fa3cf5a4757eaf67369ba780e2`. The commit ancestry was preserved directly without GitHub fork metadata; subsequent commits intentionally diverge as the standalone broker.
+This public repository does not deploy the service. A deployment system outside this repository must pin a reviewed source revision, run the source checks, supply deployment-owned configuration and secrets, deploy the Worker, and verify `POST /token`.
 
 ## External references
 

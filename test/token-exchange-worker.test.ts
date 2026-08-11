@@ -24,7 +24,7 @@ import {
   oidcSubjectTokenConstraint,
 } from "../workers/github-app-token-broker/src/policy/token-issuance-policy.ts";
 
-const tokenBrokerAudience = "https://cyspbot.chikachow.org";
+const tokenBrokerAudience = "https://broker.example";
 
 describe("github-app-token-broker-token-exchange", () => {
   it("rejects non-POST token requests before authentication or exchange", async () => {

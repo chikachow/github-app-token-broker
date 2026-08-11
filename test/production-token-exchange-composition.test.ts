@@ -28,7 +28,7 @@ describe("production token-exchange composition", () => {
         scope: "pull_requests:read contents:read",
       },
       tokenOptions: {
-        audience: productionTokenBrokerAudience,
+        audience: testSubjectTokenAudience,
       },
     });
 
@@ -85,7 +85,7 @@ describe("production token-exchange composition", () => {
         scope: "contents:read",
       },
       tokenOptions: {
-        audience: productionTokenBrokerAudience,
+        audience: testSubjectTokenAudience,
       },
     });
 
@@ -97,9 +97,9 @@ describe("production token-exchange composition", () => {
   it.each([
     ["service name", "github-app-token-broker"],
     ["GitHub App URL", "https://github.com/apps/github-app-token-broker"],
-    ["token endpoint URL", productionTokenBrokerUrl],
-    ["mismatched hosted origin", "https://broker.example"],
-    ["plural audience", [productionTokenBrokerAudience, "https://broker.example"] as string[]],
+    ["token endpoint URL", testTokenExchangeEndpointUrl],
+    ["mismatched hosted origin", "https://other-broker.example"],
+    ["plural audience", [testSubjectTokenAudience, "https://other-broker.example"] as string[]],
   ] as const)("rejects the %s subject-token audience", async (_caseName, audience) => {
     const fixture = createProductionTokenExchangeFixture();
     const response = await fixture.fetchTokenExchange({
@@ -168,7 +168,7 @@ describe("production token-exchange composition", () => {
   it("rejects an audience binding change within one Worker isolate", async () => {
     const fixture = createProductionTokenExchangeFixture();
     const firstResponse = await fixture.fetchTokenExchange({
-      tokenOptions: { audience: productionTokenBrokerAudience },
+      tokenOptions: { audience: testSubjectTokenAudience },
     });
 
     expect(firstResponse.status).toBe(400);
@@ -183,7 +183,7 @@ function createProductionTokenExchangeFixture(
     readonly tokenBrokerAudience?: string;
   } = {},
 ) {
-  const tokenBrokerAudience = configuration.tokenBrokerAudience ?? productionTokenBrokerAudience;
+  const tokenBrokerAudience = configuration.tokenBrokerAudience ?? testSubjectTokenAudience;
   const githubRequests: string[] = [];
   const installationAccessTokenRequests: unknown[] = [];
   const fetchExternal: typeof fetch = async (input, init) => {
@@ -284,8 +284,8 @@ const oidcProviderHostnames = new Set([
   "www.googleapis.com",
 ]);
 
-const productionTokenBrokerUrl = "https://cyspbot.chikachow.org/token";
-const productionTokenBrokerAudience = "https://cyspbot.chikachow.org";
+const testTokenExchangeEndpointUrl = "https://broker.example/token";
+const testSubjectTokenAudience = "https://broker.example";
 
 function tokenExchangeEnv(tokenBrokerAudience: string): TokenExchangeEnv {
   return {

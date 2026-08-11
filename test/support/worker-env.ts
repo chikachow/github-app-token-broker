@@ -13,6 +13,6 @@ const testTokenExchangeRateLimit = {
 export const testEnv: TestEnv = {
   ...workerEnv,
   GITHUB_APP_PRIVATE_KEY: testPrivateKeyPem,
-  TOKEN_BROKER_AUDIENCE: "https://cyspbot.chikachow.org",
+  TOKEN_BROKER_AUDIENCE: "https://broker.example",
   TOKEN_EXCHANGE_RATE_LIMIT: testTokenExchangeRateLimit,
 };

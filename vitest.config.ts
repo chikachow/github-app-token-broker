@@ -17,7 +17,7 @@ export default defineConfig({
             miniflare: {
               bindings: {
                 GITHUB_APP_ID: "000000",
-                TOKEN_BROKER_AUDIENCE: "https://cyspbot.chikachow.org",
+                TOKEN_BROKER_AUDIENCE: "https://broker.example",
               },
             },
             remoteBindings: false,
@@ -40,7 +40,7 @@ export default defineConfig({
               bindings: {
                 GITHUB_APP_PRIVATE_KEY: "unused-because-token-issuance-policy-denies",
                 OIDC_TEST_PRIVATE_KEY: tokenExchangeOidcNodeFixture.privateKeyPem,
-                TOKEN_BROKER_AUDIENCE: "https://cyspbot.chikachow.org",
+                TOKEN_BROKER_AUDIENCE: "https://broker.example",
               },
               outboundService: tokenExchangeOidcNodeFixture.outboundService,
             },
