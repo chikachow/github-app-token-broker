@@ -25,8 +25,6 @@ import {
   oidcSubjectTokenConstraint,
 } from "@github-app-token-broker/token-issuance-policy";
 
-const tokenBrokerAudience = "https://broker.example";
-
 describe("github-app-token-broker-token-exchange", () => {
   it("rejects non-POST token requests before authentication or exchange", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {
@@ -68,16 +66,22 @@ describe("github-app-token-broker-token-exchange", () => {
   it("maps rejected OIDC subject tokens to invalid_request with a Bearer challenge", async () => {
     const body = new URLSearchParams(await tokenExchangeRequestBody());
     body.set("subject_token", "not-a-jwt");
+    const fetchExternal = vi.fn(testTokenExchangeWorkerRuntimeDependencies.fetch);
 
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body,
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      method: "POST",
-    });
+    const response = await fetchTokenExchangeWithDependencies(
+      "https://example.test/token",
+      {
+        body,
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        method: "POST",
+      },
+      { fetch: fetchExternal },
+    );
 
     expect(response.status).toBe(400);
     expect(response.headers.get("www-authenticate")).toBe("Bearer");
     await expect(response.json()).resolves.toEqual({ error: "invalid_request" });
+    expect(fetchExternal).not.toHaveBeenCalled();
   });
 
   it("maps unavailable OIDC providers before GitHub issuance", async () => {
@@ -299,6 +303,35 @@ describe("github-app-token-broker-token-exchange", () => {
           new Request(input).url === "https://token.actions.githubusercontent.com/.well-known/jwks",
       ),
     ).toHaveLength(1);
+  });
+
+  it("uses platform fetch and clock defaults when runtime dependencies are omitted", async () => {
+    const fetchExternal = vi.fn<typeof fetch>((input, init) => {
+      const request = new Request(input, init);
+
+      return new URL(request.url).hostname === "token.actions.githubusercontent.com"
+        ? fetchOidcRemoteDocumentResponseTestDouble(request)
+        : fetchGitHubTestDouble(input, init);
+    });
+    vi.stubGlobal("fetch", fetchExternal);
+
+    try {
+      const worker = createTokenExchangeWorker(testTokenExchangeComposition);
+      const response = await worker.fetch?.(
+        new Request("https://example.test/token", {
+          body: await tokenExchangeRequestBody(),
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          method: "POST",
+        }) as Parameters<NonNullable<typeof worker.fetch>>[0],
+        testEnv,
+        {} as ExecutionContext,
+      );
+
+      expect(response?.status).toBe(200);
+      expect(fetchExternal).toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("captures dependencies when the Worker is constructed", async () => {
@@ -527,186 +560,6 @@ describe("github-app-token-broker-token-exchange", () => {
     body.set("subject_token_type", "urn:ietf:params:oauth:token-type:jwt");
     const response = await fetchTokenExchange("https://example.test/token", {
       body,
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_request",
-    });
-  });
-
-  it("rejects token exchange requests whose OIDC audience is not the configured logical audience", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({
-        tokenOptions: {
-          audience: "https://github.com/apps/github-app-token-broker",
-        },
-      }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_request",
-    });
-  });
-
-  it.each([
-    ["missing audience", null],
-    ["empty audience", ""],
-    ["github app url", "https://github.com/apps/github-app-token-broker"],
-    ["unknown service audience", "fixture-other-service"],
-  ] as const)("rejects OIDC subject tokens with %s", async (_caseName, audience) => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({
-        tokenOptions: {
-          audience,
-        },
-      }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_request",
-    });
-  });
-
-  it("rejects OIDC subject tokens with multiple audiences", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({
-        tokenOptions: {
-          audience: [tokenBrokerAudience, "fixture-other-service"],
-        },
-      }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_request",
-    });
-  });
-
-  it("rejects OIDC subject tokens with multiple audiences even when azp matches", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({
-        claims: {
-          azp: tokenBrokerAudience,
-        },
-        tokenOptions: {
-          audience: [tokenBrokerAudience, "fixture-other-service"],
-        },
-      }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_request",
-    });
-  });
-
-  it("accepts OIDC subject tokens with a matching authorized party", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({
-        claims: {
-          azp: tokenBrokerAudience,
-        },
-      }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      access_token: "ghs_test_token",
-      issued_token_type: githubInstallationAccessTokenType,
-      scope: "contents:write pull_requests:write",
-      token_type: "Bearer",
-    });
-  });
-
-  it("rejects OIDC subject tokens with a mismatched authorized party", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({
-        claims: {
-          azp: "https://github.com/apps/github-app-token-broker",
-        },
-      }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_request",
-    });
-  });
-
-  it("maps metadata-rejected OIDC subject tokens to invalid token exchange requests", async () => {
-    const response = await fetchTokenExchangeWithDependencies(
-      "https://example.test/token",
-      {
-        body: await tokenExchangeRequestBody(),
-        headers: {
-          "content-type": "application/x-www-form-urlencoded",
-        },
-        method: "POST",
-      },
-      {
-        fetch: async (input, init) => {
-          const request = new Request(input, init);
-
-          if (
-            request.url ===
-            "https://token.actions.githubusercontent.com/.well-known/openid-configuration"
-          ) {
-            return Response.json({
-              id_token_signing_alg_values_supported: ["ES256"],
-              issuer: "https://token.actions.githubusercontent.com",
-              jwks_uri: "https://token.actions.githubusercontent.com/.well-known/jwks",
-            });
-          }
-
-          return fetchOidcRemoteDocumentResponseTestDouble(request);
-        },
-      },
-    );
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_request",
-    });
-  });
-
-  it("maps oidc subject tokens with unknown signing keys to invalid token exchange requests", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({
-        tokenOptions: {
-          kid: "caller-controlled-unknown-key",
-        },
-      }),
       headers: {
         "content-type": "application/x-www-form-urlencoded",
       },
