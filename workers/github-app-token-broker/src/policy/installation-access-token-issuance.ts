@@ -26,12 +26,23 @@ export type InstallationAccessTokenIssuanceResult =
   | { expiresAt: string; ok: true; token: string }
   | { ok: false; reason: InstallationAccessTokenIssuanceFailureReason };
 
+export interface InstallationAccessTokenIssuanceOperations {
+  readonly createInstallationAccessTokenForRepositoryName: typeof createInstallationAccessTokenForRepositoryName;
+  readonly resolveInstallationForRepository: typeof resolveInstallationForRepository;
+}
+
+const defaultInstallationAccessTokenIssuanceOperations = {
+  createInstallationAccessTokenForRepositoryName,
+  resolveInstallationForRepository,
+} satisfies InstallationAccessTokenIssuanceOperations;
+
 export async function issueInstallationAccessTokenForContext(
   githubApp: GitHubAppEnv,
   tokenIssuancePolicy: TokenIssuancePolicy,
   authenticationContext: AuthenticatedContext,
   installationAccessTokenRequest: InstallationAccessTokenRequest,
   dependencies: GitHubAppDependencies,
+  operations: InstallationAccessTokenIssuanceOperations = defaultInstallationAccessTokenIssuanceOperations,
 ): Promise<InstallationAccessTokenIssuanceResult> {
   const { verifiedSubjectToken } = authenticationContext;
   const policyPermitted = tokenIssuancePolicyPermits(
@@ -85,13 +96,13 @@ export async function issueInstallationAccessTokenForContext(
 
   try {
     const requestedResourceName = `${installationAccessTokenRequest.resource.owner}/${installationAccessTokenRequest.resource.repository}`;
-    const targetInstallation = await resolveInstallationForRepository(
+    const targetInstallation = await operations.resolveInstallationForRepository(
       githubApp,
       requestedResourceName,
       dependencies,
     );
     targetInstallationId = targetInstallation.id;
-    const installationAccessToken = await createInstallationAccessTokenForRepositoryName(
+    const installationAccessToken = await operations.createInstallationAccessTokenForRepositoryName(
       githubApp,
       targetInstallation.id,
       installationAccessTokenRequest.resource.repository,
