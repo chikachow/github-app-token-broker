@@ -165,36 +165,25 @@ describe("Installation Access Token Issuance", () => {
       token: "ghs_test_token",
     });
 
-    expect(consoleInfo).toHaveBeenCalledWith({
+    expect(consoleInfo).toHaveBeenCalledOnce();
+    expect(consoleInfo.mock.calls[0]?.[0]).toMatchObject({
       event: "installation_access_token_issuance_succeeded",
-      expires_at: "2030-01-01T00:00:00Z",
-      subject_token: expect.objectContaining({
+      subject_token: {
         issuer: "https://token.actions.githubusercontent.com",
         resolved_key_id: "test-key-1",
         sub: "repo:fixture-owner/fixture-source-repository:ref:refs/heads/fixture-base-branch",
         subject_token_type: "id_token",
-      }),
-      target_installation: {
-        id: 67890,
-        repository: testRepository,
       },
-      token_issuance_policy: {
-        permitted: true,
-      },
+      target_installation: { id: 67890, repository: testRepository },
+      token_issuance_policy: { permitted: true },
       installation_access_token_request: {
-        permissions: {
-          contents: "write",
-          pull_requests: "write",
-        },
-        resource: "https://api.github.com/repos/fixture-owner/fixture-source-repository",
-        scope: "contents:write pull_requests:write",
+        permissions: tokenRequest.permissions,
+        resource: tokenRequest.resource.href,
+        scope: tokenRequest.scope,
       },
+      expires_at: "2030-01-01T00:00:00Z",
     });
-    expect(JSON.stringify(consoleInfo.mock.calls)).not.toContain("ghs_test_token");
-    expectLogsNotToContainGitHubAppCredentials(consoleInfo.mock.calls);
-    expect(JSON.stringify(consoleInfo.mock.calls)).not.toMatch(
-      /rule_id|deny_reasons|matched|"claims"/u,
-    );
+    expectSafeIssuanceLog(consoleInfo.mock.calls, "ghs_test_token");
   });
 
   it.each([
@@ -270,31 +259,12 @@ describe("Installation Access Token Issuance", () => {
       });
 
       expect(fetchGitHub).toHaveBeenCalledOnce();
-      expect(consoleError).toHaveBeenCalledWith(
-        expect.objectContaining({
-          error: {
-            message: `GitHub API request failed: /repos/${testRepository}/installation`,
-            name: "Error",
-            status: githubStatus,
-          },
-          event: "installation_access_token_issuance_failed",
-          subject_token: expect.objectContaining({
-            issuer: "https://token.actions.githubusercontent.com",
-            resolved_key_id: "test-key-1",
-            sub: "repo:fixture-owner/fixture-source-repository:ref:refs/heads/fixture-base-branch",
-            subject_token_type: "id_token",
-          }),
-          target_installation: { id: undefined },
-          token_issuance_policy: { permitted: true },
-        }),
-      );
-      expect(JSON.stringify(consoleError.mock.calls)).not.toMatch(
-        /rule_id|deny_reasons|matched|"claims"/u,
-      );
-      if (typeof responseBody === "string") {
-        expect(JSON.stringify(consoleError.mock.calls)).not.toContain(responseBody);
-      }
-      expectLogsNotToContainGitHubAppCredentials(consoleError.mock.calls);
+      expectIssuanceErrorLog(consoleError.mock.calls, {
+        path: `/repos/${testRepository}/installation`,
+        status: githubStatus,
+        targetInstallationId: undefined,
+        forbiddenValues: typeof responseBody === "string" ? [responseBody] : [],
+      });
     },
   );
 
@@ -316,21 +286,11 @@ describe("Installation Access Token Issuance", () => {
     ).resolves.toEqual({ ok: false, reason: "internal_failure" });
 
     expect(fetchGitHub).not.toHaveBeenCalled();
-    expect(consoleError).toHaveBeenCalledWith(
-      expect.objectContaining({
-        error: {
-          message: "invalid GitHub App configuration",
-          name: "GitHubAppConfigurationError",
-          status: undefined,
-        },
-        target_installation: { id: undefined },
-        token_issuance_policy: { permitted: true },
-      }),
-    );
-    if (privateKey.length > 0) {
-      expect(JSON.stringify(consoleError.mock.calls)).not.toContain(privateKey);
-    }
-    expectLogsNotToContainGitHubAppCredentials(consoleError.mock.calls);
+    expectIssuanceErrorLog(consoleError.mock.calls, {
+      message: "invalid GitHub App configuration",
+      targetInstallationId: undefined,
+      forbiddenValues: privateKey.length > 0 ? [privateKey] : [],
+    });
   });
 
   it.each([
@@ -358,17 +318,11 @@ describe("Installation Access Token Issuance", () => {
         }),
       ).resolves.toEqual({ ok: false, reason: issuanceReason });
 
-      expect(consoleError).toHaveBeenCalledWith(
-        expect.objectContaining({
-          error: {
-            message: `GitHub API request failed: /app/installations/${testInstallationId}/access_tokens`,
-            name: "Error",
-            status: githubStatus,
-          },
-          target_installation: { id: testInstallationId },
-          token_issuance_policy: { permitted: true },
-        }),
-      );
+      expectIssuanceErrorLog(consoleError.mock.calls, {
+        path: `/app/installations/${testInstallationId}/access_tokens`,
+        status: githubStatus,
+        targetInstallationId: testInstallationId,
+      });
     },
   );
 
@@ -383,21 +337,11 @@ describe("Installation Access Token Issuance", () => {
       }),
     ).resolves.toEqual({ ok: false, reason: "upstream_unavailable" });
 
-    expect(consoleError).toHaveBeenCalledWith(
-      expect.objectContaining({
-        error: {
-          message:
-            "GitHub API request failed: /repos/fixture-owner/fixture-source-repository/installation",
-          name: "GitHubApiTransportError",
-          status: undefined,
-        },
-        target_installation: { id: undefined },
-        token_issuance_policy: { permitted: true },
-      }),
-    );
-    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(
-      "private network failure details",
-    );
+    expectIssuanceErrorLog(consoleError.mock.calls, {
+      path: "/repos/fixture-owner/fixture-source-repository/installation",
+      targetInstallationId: undefined,
+      forbiddenValues: ["private network failure details"],
+    });
   });
 
   it("maps an unreadable successful installation response body to upstream unavailability", async () => {
@@ -413,22 +357,11 @@ describe("Installation Access Token Issuance", () => {
       }),
     ).resolves.toEqual({ ok: false, reason: "upstream_unavailable" });
 
-    expect(consoleError).toHaveBeenCalledWith(
-      expect.objectContaining({
-        error: {
-          message:
-            "GitHub API request failed: /repos/fixture-owner/fixture-source-repository/installation",
-          name: "GitHubApiTransportError",
-          status: undefined,
-        },
-        target_installation: { id: undefined },
-        token_issuance_policy: { permitted: true },
-      }),
-    );
-    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(privateStreamError);
-    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(privateResponseContent);
-    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(privateResponseToken);
-    expectLogsNotToContainGitHubAppCredentials(consoleError.mock.calls);
+    expectIssuanceErrorLog(consoleError.mock.calls, {
+      path: "/repos/fixture-owner/fixture-source-repository/installation",
+      targetInstallationId: undefined,
+      forbiddenValues: [privateStreamError, privateResponseContent, privateResponseToken],
+    });
   });
 
   it("maps malformed successful GitHub JSON to an upstream failure", async () => {
@@ -441,20 +374,13 @@ describe("Installation Access Token Issuance", () => {
       }),
     ).resolves.toEqual({ ok: false, reason: "upstream_failure" });
 
-    expect(consoleError).toHaveBeenCalledWith(
-      expect.objectContaining({
-        error: {
-          message:
-            "GitHub API returned an invalid response: /repos/fixture-owner/fixture-source-repository/installation",
-          name: "Error",
-          status: 200,
-        },
-        target_installation: { id: undefined },
-        token_issuance_policy: { permitted: true },
-      }),
-    );
-    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(malformedResponseBody);
-    expectLogsNotToContainGitHubAppCredentials(consoleError.mock.calls);
+    expectIssuanceErrorLog(consoleError.mock.calls, {
+      message:
+        "GitHub API returned an invalid response: /repos/fixture-owner/fixture-source-repository/installation",
+      status: 200,
+      targetInstallationId: undefined,
+      forbiddenValues: [malformedResponseBody],
+    });
   });
 
   it("maps a token-minting network error to upstream unavailability", async () => {
@@ -474,15 +400,11 @@ describe("Installation Access Token Issuance", () => {
       }),
     ).resolves.toEqual({ ok: false, reason: "upstream_unavailable" });
 
-    expect(consoleError).toHaveBeenCalledWith(
-      expect.objectContaining({
-        target_installation: { id: testInstallationId },
-        token_issuance_policy: { permitted: true },
-      }),
-    );
-    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(
-      "private token-minting network failure details",
-    );
+    expectIssuanceErrorLog(consoleError.mock.calls, {
+      path: `/app/installations/${testInstallationId}/access_tokens`,
+      targetInstallationId: testInstallationId,
+      forbiddenValues: ["private token-minting network failure details"],
+    });
   });
 
   it("maps an unreadable successful token-mint response body to upstream unavailability", async () => {
@@ -503,21 +425,11 @@ describe("Installation Access Token Issuance", () => {
       }),
     ).resolves.toEqual({ ok: false, reason: "upstream_unavailable" });
 
-    expect(consoleError).toHaveBeenCalledWith(
-      expect.objectContaining({
-        error: {
-          message: `GitHub API request failed: /app/installations/${testInstallationId}/access_tokens`,
-          name: "GitHubApiTransportError",
-          status: undefined,
-        },
-        target_installation: { id: testInstallationId },
-        token_issuance_policy: { permitted: true },
-      }),
-    );
-    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(privateStreamError);
-    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(privateResponseContent);
-    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(privateResponseToken);
-    expectLogsNotToContainGitHubAppCredentials(consoleError.mock.calls);
+    expectIssuanceErrorLog(consoleError.mock.calls, {
+      path: `/app/installations/${testInstallationId}/access_tokens`,
+      targetInstallationId: testInstallationId,
+      forbiddenValues: [privateStreamError, privateResponseContent, privateResponseToken],
+    });
   });
 
   it("logs when policy does not permit issuance without requesting GitHub", async () => {
@@ -550,15 +462,16 @@ describe("Installation Access Token Issuance", () => {
           issuer: "https://token.actions.githubusercontent.com",
           sub: "repo:fixture-owner/fixture-source-repository:ref:refs/heads/fixture-base-branch",
         }),
-        token_issuance_policy: {
-          permitted: false,
+        token_issuance_policy: { permitted: false },
+        installation_access_token_request: {
+          permissions: tokenRequest.permissions,
+          resource: tokenRequest.resource.href,
+          scope: tokenRequest.scope,
         },
       }),
     );
     expect(fetchGitHub).not.toHaveBeenCalled();
-    expect(JSON.stringify(consoleError.mock.calls)).not.toMatch(
-      /rule_id|deny_reasons|matched|"claims"/u,
-    );
+    expectSafeIssuanceLog(consoleError.mock.calls);
   });
 });
 
@@ -590,6 +503,54 @@ function unreadableResponseBody(
       controller.error(new Error(errorMessage));
     },
   });
+}
+
+interface IssuanceErrorLogOptions {
+  readonly forbiddenValues?: readonly string[];
+  readonly message?: string;
+  readonly path?: string;
+  readonly status?: number;
+  readonly targetInstallationId: number | undefined;
+}
+
+function expectIssuanceErrorLog(logCalls: unknown, options: IssuanceErrorLogOptions): void {
+  const message =
+    options.message ??
+    (options.path === undefined ? undefined : `GitHub API request failed: ${options.path}`);
+
+  expect(logCalls).toContainEqual([
+    expect.objectContaining({
+      error: expect.objectContaining({
+        ...(message === undefined ? {} : { message }),
+        status: options.status,
+      }),
+      event: "installation_access_token_issuance_failed",
+      subject_token: expect.objectContaining({
+        issuer: verifiedSubjectToken.issuer,
+        resolved_key_id: verificationEvidence.resolvedKeyId,
+        sub: verifiedSubjectToken.claims.sub,
+        subject_token_type: "id_token",
+      }),
+      target_installation: { id: options.targetInstallationId },
+      token_issuance_policy: { permitted: true },
+      installation_access_token_request: {
+        permissions: tokenRequest.permissions,
+        resource: tokenRequest.resource.href,
+        scope: tokenRequest.scope,
+      },
+    }),
+  ]);
+  expectSafeIssuanceLog(logCalls, ...(options.forbiddenValues ?? []));
+}
+
+function expectSafeIssuanceLog(logCalls: unknown, ...forbiddenValues: readonly string[]): void {
+  const serializedLogCalls = JSON.stringify(logCalls);
+
+  expect(serializedLogCalls).not.toMatch(/rule_id|deny_reasons|matched|"claims"/u);
+  for (const forbiddenValue of forbiddenValues) {
+    expect(serializedLogCalls).not.toContain(forbiddenValue);
+  }
+  expectLogsNotToContainGitHubAppCredentials(logCalls);
 }
 
 function expectLogsNotToContainGitHubAppCredentials(logCalls: unknown): void {

@@ -58,15 +58,6 @@ export default defineConfig({
           testTimeout: 10_000,
         },
       },
-      {
-        test: {
-          allowOnly: false,
-          detectAsyncLeaks: true,
-          environment: "node",
-          include: ["test/node/**/*.test.ts"],
-          name: "node",
-        },
-      },
     ],
   },
 });

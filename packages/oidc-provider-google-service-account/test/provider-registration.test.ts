@@ -8,8 +8,9 @@ describe("Google service-account OIDC Provider Registration", () => {
   it("registers the exact issuer and its provider-specific algorithm allowlist", () => {
     expect(googleServiceAccountOidcProviderRegistration).toMatchObject({
       acceptedIdTokenSigningAlgorithms: ["RS256"],
-      issuer: googleServiceAccountOidcProviderRegistration.issuer,
+      issuer: "https://accounts.google.com",
     });
+    expect(googleServiceAccountOidcProviderRegistration.idTokenProfile).not.toBeNull();
   });
 
   it.each(["107517467455664443765", "opaque-service-account-id"])(

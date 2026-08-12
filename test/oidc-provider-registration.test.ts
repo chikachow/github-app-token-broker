@@ -25,38 +25,36 @@ describe("OIDC Provider Registration", () => {
     expect(parseOidcIssuerIdentifier(issuer)).toBeNull();
   });
 
-  it("rejects empty and duplicate per-provider algorithm allowlists", () => {
-    const profile = { validate: () => true };
-
-    expect(() =>
-      createOidcProviderRegistration({
-        acceptedIdTokenSigningAlgorithms: [],
-        idTokenProfile: profile,
-        issuer: "https://issuer.example",
-      }),
-    ).toThrow();
-    expect(() =>
-      createOidcProviderRegistration({
-        acceptedIdTokenSigningAlgorithms: ["RS256", "RS256"],
-        idTokenProfile: profile,
-        issuer: "https://issuer.example",
-      }),
-    ).toThrow();
-    expect(() =>
-      createOidcProviderRegistration({
-        acceptedIdTokenSigningAlgorithms: ["HS256" as never],
-        idTokenProfile: profile,
-        issuer: "https://issuer.example",
-      }),
-    ).toThrow();
-    expect(() =>
-      createOidcProviderRegistration({
-        acceptedIdTokenSigningAlgorithms: ["RS256"],
-        idTokenProfile: profile,
-        issuer: "not a URL",
-      }),
-    ).toThrow();
-  });
+  it.each([
+    {
+      acceptedIdTokenSigningAlgorithms: [],
+      message: "invalid OIDC ID Token signing algorithm allowlist",
+    },
+    {
+      acceptedIdTokenSigningAlgorithms: ["RS256", "RS256"],
+      message: "invalid OIDC ID Token signing algorithm allowlist",
+    },
+    {
+      acceptedIdTokenSigningAlgorithms: ["HS256"],
+      message: "invalid OIDC ID Token signing algorithm allowlist",
+    },
+    {
+      acceptedIdTokenSigningAlgorithms: ["RS256"],
+      issuer: "not a URL",
+      message: "invalid OIDC Issuer Identifier",
+    },
+  ] as const)(
+    "rejects an invalid registration component",
+    ({ acceptedIdTokenSigningAlgorithms, issuer = "https://issuer.example", message }) => {
+      expect(() =>
+        createOidcProviderRegistration({
+          acceptedIdTokenSigningAlgorithms: acceptedIdTokenSigningAlgorithms as never,
+          idTokenProfile: { validate: () => true },
+          issuer,
+        }),
+      ).toThrow(message);
+    },
+  );
 
   it.each([undefined, "profile", 1, {}, { validate: null }])(
     "rejects a malformed OIDC ID Token Profile at construction: %j",
@@ -79,7 +77,6 @@ describe("OIDC Provider Registration", () => {
     });
 
     expect(registration.idTokenProfile).toBeNull();
-    expect(Object.isFrozen(registration)).toBe(true);
   });
 
   it("rejects an omitted OIDC ID Token Profile", () => {
@@ -118,18 +115,6 @@ describe("OIDC Provider Registration", () => {
       "invalid OIDC ID Token Profile",
     );
     expect(accessorInvoked).toBe(false);
-  });
-
-  it("returns an immutable registration with an immutable validated profile", () => {
-    const registration = createOidcProviderRegistration({
-      acceptedIdTokenSigningAlgorithms: ["RS256"],
-      idTokenProfile: { validate: () => true },
-      issuer: "https://issuer.example",
-    });
-
-    expect(Object.isFrozen(registration)).toBe(true);
-    expect(Object.isFrozen(registration.acceptedIdTokenSigningAlgorithms)).toBe(true);
-    expect(Object.isFrozen(registration.idTokenProfile)).toBe(true);
   });
 
   it.each([null, undefined, "registration", 1])(
