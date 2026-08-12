@@ -4,8 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/provider-registration.ts",
-    "./provider-registration": "./src/provider-registration.ts"
+    ".": "./src/provider-registration.ts"
   },
   "dependencies": {
     "@github-app-token-broker/oidc": "workspace:*"

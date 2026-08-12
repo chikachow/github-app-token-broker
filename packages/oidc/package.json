@@ -4,7 +4,6 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/id-token-authenticator.ts",
     "./id-token-authenticator": "./src/id-token-authenticator.ts",
     "./provider-metadata": "./src/provider-metadata.ts",
     "./provider-registration": "./src/provider-registration.ts",

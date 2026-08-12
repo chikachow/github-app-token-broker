@@ -1,15 +1,13 @@
 import { problemResponse } from "@github-app-token-broker/http/problem-details";
+import { createOidcIdTokenAuthenticator } from "@github-app-token-broker/oidc/id-token-authenticator";
 import type { SecretTextBinding } from "@github-app-token-broker/github/secrets";
 import type { InstallationAccessTokenExchange } from "./installation-access-token-exchange.ts";
+import { createInstallationAccessTokenExchange } from "./installation-access-token-exchange.ts";
 import { parseSubjectTokenAudience } from "./subject-token-audience.ts";
 import {
   handleTokenExchangeRequest,
   tokenExchangeMethodNotAllowedResponse,
 } from "./token-exchange.ts";
-import {
-  createInstallationAccessTokenExchangeForWorker,
-  defaultTokenExchangeWorkerRuntimeDependencies,
-} from "./dependencies.ts";
 import {
   assertTokenIssuancePolicyIssuersAreRegistered,
   type TokenIssuancePolicy,
@@ -38,7 +36,10 @@ export interface TokenExchangeWorkerEnv {
 
 export function createTokenExchangeWorker(
   composition: TokenExchangeComposition,
-  runtimeDependencies: TokenExchangeWorkerRuntimeDependencies = defaultTokenExchangeWorkerRuntimeDependencies,
+  runtimeDependencies: TokenExchangeWorkerRuntimeDependencies = {
+    fetch: (input, init) => fetch(input, init),
+    now: () => new Date(),
+  },
 ): ExportedHandler<TokenExchangeWorkerEnv> {
   const oidcProviderRegistrations = Object.freeze([...composition.oidcProviderRegistrations]);
   assertOidcProviderRegistrationIssuersAreUnique(oidcProviderRegistrations);
@@ -62,7 +63,21 @@ export function createTokenExchangeWorker(
       const audience = parseSubjectTokenAudience(env.TOKEN_BROKER_AUDIENCE);
       configuredRuntime ??= {
         audience,
-        tokenExchange: createInstallationAccessTokenExchangeForWorker(workerDependencies, audience),
+        tokenExchange: createInstallationAccessTokenExchange({
+          githubAppDependencies: workerDependencies,
+          oidcIdTokenAuthenticator: createOidcIdTokenAuthenticator(
+            {
+              providerRegistrations: workerDependencies.oidcProviderRegistrations,
+              subjectTokenAudience: audience,
+            },
+            {
+              fetch: (input, init) => workerDependencies.fetch(input, init),
+              now: () => workerDependencies.now(),
+              observe: (event) => console.warn(event),
+            },
+          ),
+          tokenIssuancePolicy: workerDependencies.tokenIssuancePolicy,
+        }),
       };
 
       if (configuredRuntime.audience !== audience) {
