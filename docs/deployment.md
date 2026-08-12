@@ -33,7 +33,7 @@ The deployment system is maintained outside this repository. It must:
 
 The deployment system owns the Worker audience and public route. It must bind `TOKEN_BROKER_AUDIENCE` to the exact value requested in Clients' subject tokens and independently verify that Clients send requests to the intended Token Exchange Endpoint. Neither identity nor location may be inferred from an incoming `Host` header.
 
-Source maintenance workflows pin an immutable external action release and explicitly provide their Repository Resource and least-privilege Requested Permissions. The workflow files are authoritative for that caller-side contract. Direct Clients must supply a non-empty scope because the broker has no permission default.
+Source maintenance workflows pin an immutable external action release and use its caller-side broker request defaults where appropriate; workflows targeting a different Repository Resource or Requested Permissions explicitly override them. The workflow files are authoritative for that caller-side contract. Direct Clients must supply a non-empty scope because the broker has no permission default.
 
 ## Public source boundary
 

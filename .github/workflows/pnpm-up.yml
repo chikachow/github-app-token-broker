@@ -16,11 +16,7 @@ jobs:
 
     steps:
       - uses: chikachow/cyspbot-app-token-action@bf8d299cd20f755c47feb733e3c0f56331a4b49e # v0.0.12
-        id: broker
-        with:
-          cyspbot-token-url: ${{ vars.TOKEN_BROKER_URL }}
-          resource: https://api.github.com/repos/chikachow/github-app-token-broker
-          scope: contents:write pull_requests:write
+        id: cyspbot
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -39,7 +35,7 @@ jobs:
 
       - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
-          token: ${{ steps.broker.outputs.token }}
+          token: ${{ steps.cyspbot.outputs.token }}
           commit-message: "chore(deps): bump transitive dependencies"
           title: "chore(deps): bump transitive dependencies"
           body: ""

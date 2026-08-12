@@ -24,7 +24,7 @@ The optional `TokenExchangeWorkerRuntimeDependencies` parameter is a constructio
 
 The deployment supplies one non-secret `TOKEN_BROKER_AUDIENCE` Worker binding. Before routing any request, the Worker-local `parseSubjectTokenAudience` function validates it as an exact non-empty, non-whitespace, single-line scalar. `worker.ts` constructs and caches the exchange with that explicit audience and rejects an audience change within an isolate. It owns no public endpoint-location binding and does not derive the audience from the incoming request URL, headers, or source-owned `/token` route. The OIDC ID Token Authenticator accepts this composed audience rather than embedding a project name, preserving reuse and exact scalar-audience validation.
 
-Source GitHub Actions workflows use a pinned external action as their transport seam and always pass explicit Repository Resources and least-privilege Requested Permissions. The workflow files are authoritative for that caller-side contract; the broker does not own a permission default.
+Source GitHub Actions workflows use a pinned external action as their transport seam, relying on its caller-side Repository Resource and least-privilege Requested Permissions defaults where appropriate and explicitly overriding them when needed. The workflow files are authoritative for that caller-side contract; the broker does not own a permission default.
 
 App credentials remain Worker environment bindings. One Worker instance receives one App ID/private key pair. The request surface never selects an App.
 
