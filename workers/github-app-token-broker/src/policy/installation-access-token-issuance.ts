@@ -200,7 +200,7 @@ function subjectTokenLogFields(
     issuer: authenticationContext.verifiedSubjectToken.issuer,
     resolved_key_id: authenticationContext.verificationEvidence.resolvedKeyId,
     sub: authenticationContext.verifiedSubjectToken.claims.sub,
-    subject_token_type: "id_token",
+    subject_token_kind: "id_token",
   };
 }
 

@@ -14,7 +14,8 @@ import { testEnv } from "./worker-env.ts";
 
 export {
   authorizationHeaders,
-  githubInstallationAccessTokenType,
+  accessTokenType,
+  legacyGithubInstallationAccessTokenType,
   tokenExchangeRequestBody,
 } from "./oidc.ts";
 export { testEnv };

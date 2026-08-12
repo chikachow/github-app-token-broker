@@ -100,7 +100,7 @@ describe("worker entrypoint shapes", () => {
       );
 
       expect(response.status).toBe(400);
-      expect(response.headers.get("www-authenticate")).toBe("Bearer");
+      expect(response.headers.get("www-authenticate")).toBeNull();
       await expect(response.json()).resolves.toEqual({ error: "invalid_request" });
       expect(fetchExternal).not.toHaveBeenCalled();
     } finally {

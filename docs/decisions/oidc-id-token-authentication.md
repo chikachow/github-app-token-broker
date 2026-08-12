@@ -30,6 +30,12 @@ and `temporarily_unavailable` as github-app-token-broker Token Endpoint extensio
 claims of compliance with RFC 6749 section 5.2. This clarification governs the
 original text's historical reference to an “OAuth response contract.”
 
+The historical phrase “repository-scoped GitHub App installation access
+token” means that issuance was narrowed to one selected repository. It does
+not exclude Requested Permissions whose GitHub permission keys apply at an
+organization or account level. Current terminology and behavior are defined by
+the [domain glossary](../../CONTEXT.md) and [service contract](../service-contract.md).
+
 The original decision text is retained below so the record continues to show
 the architecture and policy boundary that was accepted before this amendment.
 

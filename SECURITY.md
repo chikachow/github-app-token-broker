@@ -8,7 +8,7 @@ If private vulnerability reporting is unavailable, contact the repository mainta
 
 ## Security Boundary
 
-github-app-token-broker accepts Client-presented OpenID Connect ID Tokens from configured issuers and exchanges only the resulting Verified Subject Tokens for repository-scoped GitHub App installation access tokens. The Client is not authenticated and is not assumed to be the ID Token Subject. The important security properties are:
+github-app-token-broker accepts Client-presented OpenID Connect ID Tokens from configured issuers and exchanges only the resulting Verified Subject Tokens for GitHub App installation access tokens narrowed to one selected repository and the Requested Permissions. Requested permission keys may include GitHub organization- or account-level permissions; repository selection and permission narrowing are independent controls. The Client is not authenticated and is not assumed to be the ID Token Subject. The important security properties are:
 
 - issuer trust is configured, not discovered from Client-presented tokens
 - the Verified Subject Token is derived only from Subject Token Claims in an ID Token accepted through an exact OIDC Provider Registration and, when non-null, its OIDC ID Token Profile

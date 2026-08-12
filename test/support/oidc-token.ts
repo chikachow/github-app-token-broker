@@ -1,7 +1,7 @@
 import { importPKCS8, SignJWT } from "jose";
 
 import {
-  githubInstallationAccessTokenType,
+  accessTokenType,
   oidcIdTokenType,
   testRepository,
   tokenExchangeGrantType,
@@ -28,7 +28,7 @@ export async function createTokenExchangeRequestBody(
   {
     claims,
     form: formOptions,
-    requestedTokenType = githubInstallationAccessTokenType,
+    requestedTokenType = accessTokenType,
     tokenOptions,
   }: TokenExchangeRequestBodyOptions = {},
 ): Promise<string> {

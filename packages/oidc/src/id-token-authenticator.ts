@@ -19,8 +19,8 @@ import {
   type ValidatedOidcProviderMetadata,
 } from "./provider-metadata.ts";
 import {
-  createOidcProviderRegistration,
   isOidcIdTokenSigningAlgorithm,
+  snapshotOidcProviderRegistrations,
   type OidcIssuerIdentifier,
   type OidcIdTokenSigningAlgorithm,
   type OidcProviderRegistration,
@@ -225,18 +225,9 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
 
     const providerRegistrations = new Map<OidcIssuerIdentifier, OidcProviderRegistration>();
 
-    for (const unvalidatedProviderRegistration of trust.providerRegistrations) {
-      const providerRegistration = createOidcProviderRegistration({
-        acceptedIdTokenSigningAlgorithms:
-          unvalidatedProviderRegistration.acceptedIdTokenSigningAlgorithms,
-        idTokenProfile: unvalidatedProviderRegistration.idTokenProfile,
-        issuer: unvalidatedProviderRegistration.issuer,
-      });
-
-      if (providerRegistrations.has(providerRegistration.issuer)) {
-        throw new TypeError("duplicate OIDC Provider Registration issuer");
-      }
-
+    for (const providerRegistration of snapshotOidcProviderRegistrations(
+      trust.providerRegistrations,
+    )) {
       providerRegistrations.set(providerRegistration.issuer, providerRegistration);
       this.#providerStates.set(providerRegistration.issuer, { metadataGeneration: 0 });
     }

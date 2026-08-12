@@ -5,7 +5,8 @@ import {
   fetchTokenExchange,
   fetchTokenExchangeWithDependencies,
   fetchTokenExchangeWithEnv,
-  githubInstallationAccessTokenType,
+  accessTokenType,
+  legacyGithubInstallationAccessTokenType,
   testEnv,
   tokenExchangeRequestBody,
   testTokenExchangeComposition,
@@ -63,7 +64,7 @@ describe("github-app-token-broker-token-exchange", () => {
     await expect(response.json()).resolves.toEqual({ error: "server_error" });
   });
 
-  it("maps rejected OIDC subject tokens to invalid_request with a Bearer challenge", async () => {
+  it("maps rejected OIDC subject tokens to invalid_request without a client challenge", async () => {
     const body = new URLSearchParams(await tokenExchangeRequestBody());
     body.set("subject_token", "not-a-jwt");
     const fetchExternal = vi.fn(testTokenExchangeWorkerRuntimeDependencies.fetch);
@@ -79,7 +80,7 @@ describe("github-app-token-broker-token-exchange", () => {
     );
 
     expect(response.status).toBe(400);
-    expect(response.headers.get("www-authenticate")).toBe("Bearer");
+    expect(response.headers.get("www-authenticate")).toBeNull();
     await expect(response.json()).resolves.toEqual({ error: "invalid_request" });
     expect(fetchExternal).not.toHaveBeenCalled();
   });
@@ -108,12 +109,12 @@ describe("github-app-token-broker-token-exchange", () => {
     );
 
     expect(response.status).toBe(503);
-    expect(response.headers.get("www-authenticate")).toBe("Bearer");
+    expect(response.headers.get("www-authenticate")).toBeNull();
     await expect(response.json()).resolves.toEqual({ error: "temporarily_unavailable" });
     expect(githubRequests).toEqual([]);
   });
 
-  it("maps internal OIDC failures to server_error with a Bearer challenge", async () => {
+  it("maps internal OIDC failures to server_error without a client challenge", async () => {
     const fetchExternal = vi.fn(testTokenExchangeWorkerRuntimeDependencies.fetch);
     const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
 
@@ -134,7 +135,7 @@ describe("github-app-token-broker-token-exchange", () => {
       );
 
       expect(response.status).toBe(500);
-      expect(response.headers.get("www-authenticate")).toBe("Bearer");
+      expect(response.headers.get("www-authenticate")).toBeNull();
       expect(response.headers.get("cache-control")).toBe("no-store");
       expect(response.headers.get("pragma")).toBe("no-cache");
       await expect(response.json()).resolves.toEqual({ error: "server_error" });
@@ -196,11 +197,27 @@ describe("github-app-token-broker-token-exchange", () => {
       token_type: string;
     };
     expect(body.access_token).toBe("ghs_test_token");
-    expect(body.issued_token_type).toBe(githubInstallationAccessTokenType);
+    expect(body.issued_token_type).toBe(accessTokenType);
     expect(body.scope).toBe("contents:write pull_requests:write");
     expect(body.token_type).toBe("Bearer");
     expect(body.expires_in).toEqual(expect.any(Number));
     expect(body.expires_in).toBeGreaterThan(0);
+  });
+
+  it("preserves the legacy token-type contract for pinned v0.0.12 action clients", async () => {
+    const requestedTokenType = legacyGithubInstallationAccessTokenType;
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body: await tokenExchangeRequestBody({ requestedTokenType }),
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      access_token: "ghs_test_token",
+      issued_token_type: requestedTokenType,
+      token_type: "Bearer",
+    });
   });
 
   it("exchanges an actions-write permission request for a token scoped to the target repository", async () => {
@@ -220,7 +237,7 @@ describe("github-app-token-broker-token-exchange", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       access_token: "ghs_test_workflow_dispatch_token",
-      issued_token_type: githubInstallationAccessTokenType,
+      issued_token_type: accessTokenType,
       scope: "actions:write",
       token_type: "Bearer",
     });
@@ -394,7 +411,7 @@ describe("github-app-token-broker-token-exchange", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       access_token: "ghs_test_read_token",
-      issued_token_type: githubInstallationAccessTokenType,
+      issued_token_type: accessTokenType,
       scope: "contents:read pull_requests:read",
       token_type: "Bearer",
     });
@@ -522,10 +539,10 @@ describe("github-app-token-broker-token-exchange", () => {
     },
   );
 
-  it("rejects the generic oauth access token type as a requested token hint", async () => {
+  it("rejects an unsupported requested token type URI", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
-        requestedTokenType: "urn:ietf:params:oauth:token-type:access_token",
+        requestedTokenType: "https://tokens.example/unsupported",
       }),
       headers: {
         "content-type": "application/x-www-form-urlencoded",
@@ -747,7 +764,7 @@ describe("github-app-token-broker-token-exchange", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       access_token: "ghs_test_token",
-      issued_token_type: githubInstallationAccessTokenType,
+      issued_token_type: accessTokenType,
       scope: "contents:write pull_requests:write",
       token_type: "Bearer",
     });
@@ -800,7 +817,7 @@ describe("github-app-token-broker-token-exchange", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       access_token: "ghs_test_token",
-      issued_token_type: githubInstallationAccessTokenType,
+      issued_token_type: accessTokenType,
       scope: "contents:write pull_requests:write",
       token_type: "Bearer",
     });
@@ -1063,7 +1080,7 @@ describe("github-app-token-broker-token-exchange", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       access_token: "ghs_test_token",
-      issued_token_type: githubInstallationAccessTokenType,
+      issued_token_type: accessTokenType,
     });
   });
 
@@ -1087,7 +1104,7 @@ describe("github-app-token-broker-token-exchange", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       access_token: "ghs_test_token",
-      issued_token_type: githubInstallationAccessTokenType,
+      issued_token_type: accessTokenType,
     });
   });
 
@@ -1108,7 +1125,7 @@ describe("github-app-token-broker-token-exchange", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       access_token: "ghs_test_token",
-      issued_token_type: githubInstallationAccessTokenType,
+      issued_token_type: accessTokenType,
     });
   });
 
@@ -1128,7 +1145,7 @@ describe("github-app-token-broker-token-exchange", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       access_token: "ghs_test_token",
-      issued_token_type: githubInstallationAccessTokenType,
+      issued_token_type: accessTokenType,
       scope: "contents:write pull_requests:write",
     });
   });
@@ -1152,7 +1169,7 @@ describe("github-app-token-broker-token-exchange", () => {
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toMatchObject({
         access_token: "ghs_test_token",
-        issued_token_type: githubInstallationAccessTokenType,
+        issued_token_type: accessTokenType,
         scope: "contents:write pull_requests:write",
       });
     },
@@ -1178,7 +1195,7 @@ describe("github-app-token-broker-token-exchange", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       access_token: "ghs_test_token",
-      issued_token_type: githubInstallationAccessTokenType,
+      issued_token_type: accessTokenType,
       scope: "contents:write pull_requests:write",
     });
   });
@@ -1204,7 +1221,7 @@ describe("github-app-token-broker-token-exchange", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       access_token: "ghs_test_token",
-      issued_token_type: githubInstallationAccessTokenType,
+      issued_token_type: accessTokenType,
     });
   });
 
@@ -1235,7 +1252,7 @@ describe("github-app-token-broker-token-exchange", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       access_token: "ghs_test_token",
-      issued_token_type: githubInstallationAccessTokenType,
+      issued_token_type: accessTokenType,
     });
   });
 

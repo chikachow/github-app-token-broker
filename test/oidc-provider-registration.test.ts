@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   createOidcProviderRegistration,
   parseOidcIssuerIdentifier,
+  snapshotOidcProviderRegistrations,
+  type OidcIdTokenSigningAlgorithm,
 } from "@github-app-token-broker/oidc/provider-registration";
 
 describe("OIDC Provider Registration", () => {
@@ -86,6 +88,44 @@ describe("OIDC Provider Registration", () => {
         issuer: "https://issuer.example",
       } as never),
     ).toThrow("invalid OIDC ID Token Profile");
+  });
+
+  it("validates and snapshots a unique registration collection", () => {
+    const acceptedIdTokenSigningAlgorithms: OidcIdTokenSigningAlgorithm[] = ["RS256"];
+    const issuer = parseOidcIssuerIdentifier("https://issuer.example");
+
+    if (issuer === null) {
+      throw new Error("expected valid test issuer");
+    }
+
+    const input = {
+      acceptedIdTokenSigningAlgorithms,
+      idTokenProfile: null,
+      issuer,
+    };
+    const snapshot = snapshotOidcProviderRegistrations([input]);
+
+    acceptedIdTokenSigningAlgorithms.splice(0);
+
+    expect(snapshot).toMatchObject([
+      { acceptedIdTokenSigningAlgorithms: ["RS256"], issuer: "https://issuer.example" },
+    ]);
+    expect(Object.isFrozen(snapshot)).toBe(true);
+    expect(Object.isFrozen(snapshot[0])).toBe(true);
+    expect(Object.isFrozen(snapshot[0]?.acceptedIdTokenSigningAlgorithms)).toBe(true);
+    expect(snapshot[0]).not.toBe(input);
+  });
+
+  it("rejects duplicate issuers while snapshotting a registration collection", () => {
+    const registration = createOidcProviderRegistration({
+      acceptedIdTokenSigningAlgorithms: ["RS256"],
+      idTokenProfile: null,
+      issuer: "https://issuer.example",
+    });
+
+    expect(() => snapshotOidcProviderRegistrations([registration, registration])).toThrow(
+      "duplicate OIDC Provider Registration issuer",
+    );
   });
 
   it("rejects inherited and accessor-backed OIDC ID Token Profiles without invoking accessors", () => {
