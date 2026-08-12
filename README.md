@@ -22,12 +22,18 @@ The endpoint implements the repository's RFC 8693 profile using `application/x-w
 
 ```http
 grant_type=urn:ietf:params:oauth:grant-type:token-exchange
-requested_token_type=urn:chikachow:github-app-installation-access-token
+requested_token_type=urn:ietf:params:oauth:token-type:access_token
 resource=https://api.github.com/repos/{owner}/{repo}
 subject_token=<openid-connect-id-token>
 subject_token_type=urn:ietf:params:oauth:token-type:id_token
 scope=contents:read
 ```
+
+The standards-defined access-token identifier is canonical for new Clients. The
+deprecated `urn:chikachow:github-app-installation-access-token` request value
+remains accepted for compatibility with pinned action releases; the response
+echoes whichever supported identifier the Client requested in
+`issued_token_type`.
 
 Important invariants:
 

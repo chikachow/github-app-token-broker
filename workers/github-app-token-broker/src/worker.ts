@@ -12,7 +12,10 @@ import {
   assertTokenIssuancePolicyIssuersAreRegistered,
   type TokenIssuancePolicy,
 } from "@github-app-token-broker/token-issuance-policy";
-import type { OidcProviderRegistration } from "@github-app-token-broker/oidc/provider-registration";
+import {
+  snapshotOidcProviderRegistrations,
+  type OidcProviderRegistration,
+} from "@github-app-token-broker/oidc/provider-registration";
 
 export interface TokenExchangeComposition {
   readonly oidcProviderRegistrations: readonly OidcProviderRegistration[];
@@ -41,8 +44,9 @@ export function createTokenExchangeWorker(
     now: () => new Date(),
   },
 ): ExportedHandler<TokenExchangeWorkerEnv> {
-  const oidcProviderRegistrations = Object.freeze([...composition.oidcProviderRegistrations]);
-  assertOidcProviderRegistrationIssuersAreUnique(oidcProviderRegistrations);
+  const oidcProviderRegistrations = snapshotOidcProviderRegistrations(
+    composition.oidcProviderRegistrations,
+  );
   const tokenIssuancePolicy = composition.tokenIssuancePolicy;
   assertTokenIssuancePolicyIssuersAreRegistered(tokenIssuancePolicy, oidcProviderRegistrations);
   const workerDependencies = Object.freeze({
@@ -112,20 +116,6 @@ export function createTokenExchangeWorker(
       });
     },
   };
-}
-
-function assertOidcProviderRegistrationIssuersAreUnique(
-  registrations: readonly OidcProviderRegistration[],
-): void {
-  const issuers = new Set<string>();
-
-  for (const registration of registrations) {
-    if (issuers.has(registration.issuer)) {
-      throw new TypeError("duplicate OIDC Provider Registration issuer");
-    }
-
-    issuers.add(registration.issuer);
-  }
 }
 
 function githubApp(env: TokenExchangeWorkerEnv) {

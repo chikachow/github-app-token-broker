@@ -7,7 +7,9 @@ import type { InstallationAccessTokenIssuanceFailureReason } from "./policy/inst
 
 const maxTokenExchangeBodyBytes = 64 * 1024;
 const tokenExchangeGrantType = "urn:ietf:params:oauth:grant-type:token-exchange";
-const githubInstallationAccessTokenType = "urn:chikachow:github-app-installation-access-token";
+const accessTokenType = "urn:ietf:params:oauth:token-type:access_token";
+const legacyGithubInstallationAccessTokenType =
+  "urn:chikachow:github-app-installation-access-token";
 const oidcIdTokenType = "urn:ietf:params:oauth:token-type:id_token";
 const unknownRateLimitKey = "unknown";
 const unsupportedInvalidTargetParameters = ["audience"];
@@ -84,7 +86,10 @@ export async function handleTokenExchangeRequest(
     return oauthErrorResponse(400, "invalid_request");
   }
 
-  if (requestedTokenType !== githubInstallationAccessTokenType) {
+  if (
+    requestedTokenType !== accessTokenType &&
+    requestedTokenType !== legacyGithubInstallationAccessTokenType
+  ) {
     return oauthErrorResponse(400, "invalid_request");
   }
 
@@ -107,17 +112,13 @@ export async function handleTokenExchangeRequest(
   if (!result.ok) {
     const failure = oauthErrorForTokenExchangeFailure(result);
 
-    return oauthErrorResponse(
-      failure.status,
-      failure.error,
-      result.stage === "authentication" ? { "www-authenticate": "Bearer" } : undefined,
-    );
+    return oauthErrorResponse(failure.status, failure.error);
   }
 
   return oauthTokenResponse({
     access_token: result.token,
     expires_in: expiresInSeconds(result.expiresAt, runtime.now()),
-    issued_token_type: githubInstallationAccessTokenType,
+    issued_token_type: requestedTokenType,
     scope: tokenRequest.tokenRequest.scope,
     token_type: "Bearer",
   });

@@ -153,13 +153,14 @@ the requested output-token targets. Policy directly selects the Subject Token Cl
 that are material to authorization; it does not reconstruct one signed representation
 from another merely to check their consistency.
 
-GitHub Actions policy therefore selects exact signed `repository`,
-`event_name`, `ref_type`, `ref`, and `workflow_ref` values without constraining
-`sub`, `repository_id`, or `repository_owner_id` unless one becomes an actual
-policy key. GitHub supports replacing the complete default `sub` format with a
-configured Claim template, so treating the default format as a mandatory
-consistency checksum rejects legitimate tokens without adding protection
-against payload tampering or issuer compromise.
+A reviewed application composition can select any signed GitHub Actions Claims
+material to its authorization, such as `repository`, `event_name`, `ref_type`,
+`ref`, or `workflow_ref`. Claims including `sub`, `repository_id`, and
+`repository_owner_id` remain unconstrained unless the composition selects them
+with Claim Predicates. GitHub supports replacing the complete default `sub`
+format with a configured Claim template, so treating the default format as a
+mandatory consistency checksum rejects legitimate tokens without adding
+protection against payload tampering or issuer compromise.
 
 The Fly provider capability uses no additional OIDC ID Token Profile. The
 former checks that `org_name` matched the issuer organization slug and that
@@ -213,7 +214,7 @@ mechanism, callback registry, or service-specific base implementation.
   Permissions without changing the request sent to GitHub.
 - The authorization model is deliberately closed under pointwise permission
   union.
-- GitHub Actions policy, and any configured Fly policy, trust verified Subject
+- Configured GitHub Actions and Fly Permit Statements trust verified Subject
   Token Claims rather than imposing redundant cross-Claim consistency checks.
 - A policy result that does not permit issuance is direct Boolean control flow.
 - Operational logs retain the verified subject-token and normalized request

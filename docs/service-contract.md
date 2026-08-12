@@ -19,7 +19,7 @@ Unknown routes return `404` problem details. Unsupported methods on `/token` ret
 - `grant_type=urn:ietf:params:oauth:grant-type:token-exchange`
 - `subject_token=<openid-connect-id-token>`
 - `subject_token_type=urn:ietf:params:oauth:token-type:id_token`
-- `requested_token_type=urn:chikachow:github-app-installation-access-token`
+- `requested_token_type=urn:ietf:params:oauth:token-type:access_token`
 - `resource=<canonical-github-repository-api-uri>`
 - `scope=<github-permission-request-list>`
 
@@ -53,12 +53,18 @@ github-app-token-broker does not support RFC 8693 `audience`, `actor_token`, or 
 
 github-app-token-broker also does not support OAuth client authentication or Rich Authorization Requests at `/token`. Requests containing non-empty `client_id`, `client_secret`, `client_assertion`, `client_assertion_type`, or `authorization_details` fields are rejected with `invalid_request` rather than silently ignored. Requests containing an `Authorization` header are rejected with `401 {"error":"invalid_client"}` and a matching `WWW-Authenticate` challenge. Value-less form parameters are treated as omitted, and other unrecognized extension parameters are ignored, according to OAuth token endpoint rules.
 
+The standards-defined access-token identifier is canonical for new Clients.
+The deprecated `urn:chikachow:github-app-installation-access-token` literal is
+also accepted as a requested-token-type compatibility alias for pinned action
+releases. A successful response returns the supported identifier supplied by
+the Client as `issued_token_type`. No other requested token type is accepted.
+
 Successful ID Token verification establishes that the configured issuer signed the token for the exact deployment-owned logical audience and establishes its Subject Token Claims; it does not authenticate the Client. The service owns the configured GitHub App credentials; `resource` names the GitHub API repository target where the issued token will be used; and Token Issuance Policy decides whether issuance is permitted for the resulting Verified Subject Token and Installation Access Token Request. Plural subject-token audiences are rejected rather than interpreted by containment. The Worker reads the trusted audience only from `TOKEN_BROKER_AUDIENCE`; it owns no endpoint-location binding and never derives identity from the request URL, `Host`, forwarded headers, or `/token` path.
 
 When Token Issuance Policy does not permit issuance, github-app-token-broker distinguishes the
 Token Endpoint failure at the protocol boundary. An unsupported Repository Resource
-receives `400 {"error":"invalid_target"}`. Requested Permissions that checked-in
-Permit Statements cannot cover for a supported resource receive `400
+receives `400 {"error":"invalid_target"}`. Requested Permissions that the
+artifact's compiled Permit Statements cannot cover for a supported resource receive `400
 {"error":"invalid_scope"}`. This policy rejection is distinct from GitHub
 rejecting a name or level after policy approval. When both the resource and
 Requested Permissions are supported but the Verified Subject Token is not
@@ -69,7 +75,7 @@ Successful responses are JSON with `Cache-Control: no-store` and `Pragma: no-cac
 ```json
 {
   "access_token": "ghs_...",
-  "issued_token_type": "urn:chikachow:github-app-installation-access-token",
+  "issued_token_type": "urn:ietf:params:oauth:token-type:access_token",
   "token_type": "Bearer",
   "scope": "contents:write pull_requests:write",
   "expires_in": 3600
@@ -105,6 +111,11 @@ Request, authentication, policy, and service-level failures map as follows:
 - Requested Permissions not covered by any Permit Statement composition for a supported Repository Resource: `400 {"error":"invalid_scope"}`
 - subject token unacceptable to Token Issuance Policy for an otherwise supported Repository Resource and Requested Permissions: `400 {"error":"invalid_request"}`
 - internal server failure: `500 {"error":"server_error"}`
+
+Only rejection of an actual Client `Authorization` authentication attempt
+includes `WWW-Authenticate`. Subject-token rejection, OpenID Provider
+unavailability, and internal authentication failure retain their mapped OAuth
+status and error body without a Client authentication challenge.
 
 After Token Issuance Policy permits a request, issuance failures have this
 complete observable mapping:
@@ -187,18 +198,18 @@ GitHub Actions authentication additionally requires:
 - the signed subject-token audience is the exact deployment `TOKEN_BROKER_AUDIENCE` value
 - if the GitHub Actions OIDC token has an `azp` claim, that claim matches the same exact audience
 
-After authentication, a GitHub Actions Permit Statement applies only when:
-
-- `event_name` equals the statement value
-- `ref_type` is `branch`
-- `repository`, `ref`, and `workflow_ref` equal the statement values
-- normalized `resource` equals the statement resource
+After authentication, a deployment may configure a GitHub Actions Permit
+Statement with zero or more Claim Predicates over signed Claims. For example,
+a reviewed composition can constrain `event_name`, `ref_type`, `repository`,
+`ref`, or `workflow_ref`. Every statement independently contains one exact
+Repository Resource Constraint. The public source defines these capabilities,
+not a universal GitHub Actions predicate set or a deployment inventory.
 
 Claims a statement does not select, including `sub`, repository IDs, owner IDs, and actor metadata, do not affect authorization. A GitHub Actions token that fails its OIDC ID Token Profile, including an invalid `azp` claim, remains an invalid subject token and returns `400 {"error":"invalid_request"}`. Repository identity remains name-based; a repository deleted and recreated with the same owner/name can continue to match when the GitHub App installation still grants sufficient permissions.
 
 The pinned source workflow action supplies its least-privilege default scope when no override is needed, and workflows with a different request explicitly set their scope. Direct broker Clients must likewise send their chosen non-empty scope explicitly; the broker does not own or recreate a caller default.
 
-A Permit Statement may constrain event name, ref type, repository, ref, workflow file, and resource independently. Contexts not covered by the compiled Permit Statements are denied.
+Contexts not covered by the compiled Permit Statements are denied.
 
 #### Shared enforcement and issuance
 

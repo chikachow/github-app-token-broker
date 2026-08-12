@@ -9,7 +9,7 @@ import {
 } from "./oidc-token.ts";
 import { testPrivateKeyPem, testPublicJwk } from "./rsa-test-key-pair.ts";
 
-export { githubInstallationAccessTokenType } from "./constants.ts";
+export { accessTokenType, legacyGithubInstallationAccessTokenType } from "./constants.ts";
 
 export function createVerifiedSubjectToken(
   claims: Partial<VerifiedSubjectToken["claims"]> = {},

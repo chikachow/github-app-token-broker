@@ -1,6 +1,6 @@
 # github-app-token-broker
 
-github-app-token-broker is the maintainer's hosted automation application. It lets trusted automation workloads obtain repository-scoped GitHub App installation access tokens without exposing the GitHub App private key outside Cloudflare.
+github-app-token-broker is the maintainer's hosted automation application. It lets trusted automation workloads obtain GitHub App installation access tokens narrowed to one selected repository and the Requested Permissions without exposing the GitHub App private key outside Cloudflare. Requested permission keys may include GitHub organization- or account-level permissions; repository selection and permission narrowing are independent controls.
 
 ## Language
 
@@ -57,11 +57,11 @@ The owner segment of the normalized **Repository Resource** authorized by **Toke
 _Avoid_: redirected owner, installation ID as owner identity, repository basename as owner identity
 
 **GitHub App Installation**:
-An installation of a GitHub App on a repository or owner scope.
+An installation of a GitHub App on a user, organization, or enterprise account, with repository selection configured independently where applicable.
 _Avoid_: App session, app login
 
 **Installation Access Token**:
-A short-lived GitHub App token issued through one **GitHub App Installation** for a **Repository Resource**.
+A short-lived GitHub App token issued through one **GitHub App Installation**, narrowed by this service to one selected **Repository Resource** and the **Requested Permissions**.
 _Avoid_: PAT, app JWT, repository secret
 
 **Token Issuance Policy**:

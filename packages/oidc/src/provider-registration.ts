@@ -86,6 +86,28 @@ export function createOidcProviderRegistration(input: {
   });
 }
 
+export function snapshotOidcProviderRegistrations(
+  registrations: readonly OidcProviderRegistration[],
+): readonly OidcProviderRegistration[] {
+  const issuers = new Set<OidcIssuerIdentifier>();
+  const snapshot = registrations.map((registration) => {
+    const validatedRegistration = createOidcProviderRegistration({
+      acceptedIdTokenSigningAlgorithms: registration.acceptedIdTokenSigningAlgorithms,
+      idTokenProfile: registration.idTokenProfile,
+      issuer: registration.issuer,
+    });
+
+    if (issuers.has(validatedRegistration.issuer)) {
+      throw new TypeError("duplicate OIDC Provider Registration issuer");
+    }
+
+    issuers.add(validatedRegistration.issuer);
+    return validatedRegistration;
+  });
+
+  return Object.freeze(snapshot);
+}
+
 export function isOidcIdTokenSigningAlgorithm(value: string): value is OidcIdTokenSigningAlgorithm {
   return supportedIdTokenSigningAlgorithmSet.has(value);
 }
