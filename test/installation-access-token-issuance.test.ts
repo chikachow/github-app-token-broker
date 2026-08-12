@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { VerifiedSubjectToken } from "@github-app-token-broker/oidc/id-token-authenticator";
 
-import { issueInstallationAccessTokenForContext } from "../workers/github-app-token-broker/src/policy/installation-access-token-issuance.ts";
+import {
+  issueInstallationAccessTokenForContext,
+  type InstallationAccessTokenIssuanceOperations,
+} from "../workers/github-app-token-broker/src/policy/installation-access-token-issuance.ts";
+import { GitHubApiError, GitHubApiTransportError } from "../packages/github/src/http.ts";
 import { testNow, testRepository, testInstallationId } from "./support/constants.ts";
 import { fetchGitHubTestDouble, githubInstallationResponse } from "./support/github-api.ts";
 import { createVerifiedSubjectToken } from "./support/oidc.ts";
@@ -187,86 +191,44 @@ describe("Installation Access Token Issuance", () => {
   });
 
   it.each([
-    { githubStatus: 400, issuanceReason: "internal_failure", scenario: "bad request" },
-    { githubStatus: 401, issuanceReason: "internal_failure", scenario: "bad credentials" },
+    { error: new GitHubApiError(400, "bad request"), reason: "internal_failure" },
+    { error: new GitHubApiError(401, "bad credentials"), reason: "internal_failure" },
+    { error: new GitHubApiError(403, "forbidden"), reason: "upstream_failure" },
+    { error: new GitHubApiError(404, "hidden resource"), reason: "upstream_failure" },
+    { error: new GitHubApiError(429, "rate limited", true), reason: "upstream_unavailable" },
+    { error: new GitHubApiError(500, "server failure"), reason: "upstream_failure" },
+    { error: new GitHubApiError(503, "unavailable"), reason: "upstream_unavailable" },
     {
-      githubStatus: 422,
-      issuanceReason: "internal_failure",
-      responseBody: "private GitHub validation detail",
-      scenario: "validation rejection",
+      error: new GitHubApiTransportError("GitHub API request failed: installation resolution"),
+      reason: "upstream_unavailable",
     },
-    {
-      githubStatus: 403,
-      issuanceReason: "upstream_failure",
-      responseBody: "not JSON",
-      scenario: "forbidden with a malformed error body",
-    },
-    {
-      githubStatus: 403,
-      issuanceReason: "upstream_failure",
-      responseBody: JSON.stringify({ message: 12345 }),
-      scenario: "forbidden with an invalid error body",
-    },
-    {
-      githubStatus: 403,
-      headers: { "x-ratelimit-remaining": "0" },
-      issuanceReason: "upstream_unavailable",
-      scenario: "primary rate limit",
-    },
-    {
-      githubStatus: 403,
-      responseBody: JSON.stringify({ message: "You have exceeded a secondary rate limit." }),
-      issuanceReason: "upstream_unavailable",
-      scenario: "headerless secondary rate limit",
-    },
-    {
-      githubStatus: 403,
-      responseBody: oversizedRateLimitResponseBody(),
-      issuanceReason: "upstream_failure",
-      scenario: "oversized error body",
-    },
-    {
-      githubStatus: 403,
-      responseBody: unreadableResponseBody(),
-      issuanceReason: "upstream_failure",
-      scenario: "unreadable error body",
-    },
-    {
-      githubStatus: 403,
-      headers: { "retry-after": "60" },
-      issuanceReason: "upstream_unavailable",
-      scenario: "secondary rate limit",
-    },
-    { githubStatus: 404, issuanceReason: "upstream_failure", scenario: "hidden resource" },
-    { githubStatus: 429, issuanceReason: "upstream_unavailable", scenario: "rate limit" },
-    { githubStatus: 500, issuanceReason: "upstream_failure", scenario: "server failure" },
-    { githubStatus: 503, issuanceReason: "upstream_unavailable", scenario: "unavailable" },
-  ])(
-    "maps GitHub $scenario during installation resolution to $issuanceReason",
-    async ({ githubStatus, headers, issuanceReason, responseBody }) => {
-      const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-      const fetchGitHub = vi.fn(
-        async () =>
-          new Response(responseBody ?? "upstream failure", {
-            ...(headers === undefined ? {} : { headers }),
-            status: githubStatus,
-          }),
-      );
+  ] as const)("maps a GitHub operation failure to $reason", async ({ error, reason }) => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const operations = operationsThatRejectDuringInstallationResolution(error);
 
-      await expect(issueInstallationAccessToken({ fetch: fetchGitHub })).resolves.toEqual({
-        ok: false,
-        reason: issuanceReason,
-      });
+    await expect(
+      issueInstallationAccessTokenForContext(
+        application.githubApp,
+        application.tokenIssuancePolicy,
+        { verifiedSubjectToken, verificationEvidence },
+        tokenRequest,
+        { fetch: vi.fn(), now: () => testNow },
+        operations,
+      ),
+    ).resolves.toEqual({ ok: false, reason });
 
-      expect(fetchGitHub).toHaveBeenCalledOnce();
-      expectIssuanceErrorLog(consoleError.mock.calls, {
-        path: `/repos/${testRepository}/installation`,
-        status: githubStatus,
-        targetInstallationId: undefined,
-        forbiddenValues: typeof responseBody === "string" ? [responseBody] : [],
-      });
-    },
-  );
+    expect(operations.resolveInstallationForRepository).toHaveBeenCalledOnce();
+    expect(operations.createInstallationAccessTokenForRepositoryName).not.toHaveBeenCalled();
+    expectIssuanceErrorLog(consoleError.mock.calls, {
+      message:
+        error instanceof GitHubApiError || error instanceof GitHubApiTransportError
+          ? error.message
+          : "unexpected Installation Access Token Issuance error",
+      ...(error instanceof GitHubApiError ? { status: error.upstreamStatus } : {}),
+      targetInstallationId: undefined,
+      forbiddenValues: [],
+    });
+  });
 
   it.each([
     { privateKey: "", scenario: "missing" },
@@ -294,141 +256,60 @@ describe("Installation Access Token Issuance", () => {
   });
 
   it.each([
-    { githubStatus: 404, issuanceReason: "upstream_failure" },
-    { githubStatus: 503, issuanceReason: "upstream_unavailable" },
+    { error: new GitHubApiError(404, "token endpoint missing"), reason: "upstream_failure" },
     {
-      githubStatus: 403,
-      issuanceReason: "upstream_unavailable",
-      responseBody: JSON.stringify({ message: "You have exceeded a secondary rate limit." }),
+      error: new GitHubApiError(503, "token endpoint unavailable"),
+      reason: "upstream_unavailable",
     },
-  ])(
-    "logs the resolved installation when token minting fails with GitHub $githubStatus as $issuanceReason",
-    async ({ githubStatus, issuanceReason, responseBody }) => {
+    { error: new GitHubApiError(403, "rate limited", true), reason: "upstream_unavailable" },
+  ] as const)(
+    "logs the resolved installation when token minting fails",
+    async ({ error, reason }) => {
       const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const operations = operationsThatRejectDuringTokenMinting(error);
 
       await expect(
-        issueInstallationAccessToken({
-          fetch: async (input, init) => {
-            const request = new Request(input, init);
+        issueInstallationAccessTokenForContext(
+          application.githubApp,
+          application.tokenIssuancePolicy,
+          { verifiedSubjectToken, verificationEvidence },
+          tokenRequest,
+          { fetch: vi.fn(), now: () => testNow },
+          operations,
+        ),
+      ).resolves.toEqual({ ok: false, reason });
 
-            return request.method === "POST"
-              ? new Response(responseBody ?? "upstream failure", { status: githubStatus })
-              : fetchGitHubTestDouble(input, init);
-          },
-        }),
-      ).resolves.toEqual({ ok: false, reason: issuanceReason });
-
+      expect(operations.resolveInstallationForRepository).toHaveBeenCalledOnce();
+      expect(operations.createInstallationAccessTokenForRepositoryName).toHaveBeenCalledOnce();
       expectIssuanceErrorLog(consoleError.mock.calls, {
-        path: `/app/installations/${testInstallationId}/access_tokens`,
-        status: githubStatus,
+        message: error.message,
+        status: error.upstreamStatus,
         targetInstallationId: testInstallationId,
       });
     },
   );
 
-  it("maps a network error to upstream unavailability without leaking its message", async () => {
+  it("maps unexpected GitHub operation failures to a sanitized internal failure", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const operations = operationsThatRejectDuringInstallationResolution(
+      new Error("private network failure details"),
+    );
 
     await expect(
-      issueInstallationAccessToken({
-        fetch: async () => {
-          throw new Error("private network failure details");
-        },
-      }),
-    ).resolves.toEqual({ ok: false, reason: "upstream_unavailable" });
+      issueInstallationAccessTokenForContext(
+        application.githubApp,
+        application.tokenIssuancePolicy,
+        { verifiedSubjectToken, verificationEvidence },
+        tokenRequest,
+        { fetch: vi.fn(), now: () => testNow },
+        operations,
+      ),
+    ).resolves.toEqual({ ok: false, reason: "internal_failure" });
 
     expectIssuanceErrorLog(consoleError.mock.calls, {
-      path: "/repos/fixture-owner/fixture-source-repository/installation",
+      message: "unexpected Installation Access Token Issuance error",
       targetInstallationId: undefined,
       forbiddenValues: ["private network failure details"],
-    });
-  });
-
-  it("maps an unreadable successful installation response body to upstream unavailability", async () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const privateResponseToken = "ghs_private_installation_body_token";
-    const privateResponseContent = `private installation response content ${privateResponseToken}`;
-    const privateStreamError = "private installation response body read failure";
-
-    await expect(
-      issueInstallationAccessToken({
-        fetch: async () =>
-          new Response(unreadableResponseBody(privateResponseContent, privateStreamError)),
-      }),
-    ).resolves.toEqual({ ok: false, reason: "upstream_unavailable" });
-
-    expectIssuanceErrorLog(consoleError.mock.calls, {
-      path: "/repos/fixture-owner/fixture-source-repository/installation",
-      targetInstallationId: undefined,
-      forbiddenValues: [privateStreamError, privateResponseContent, privateResponseToken],
-    });
-  });
-
-  it("maps malformed successful GitHub JSON to an upstream failure", async () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const malformedResponseBody = '{"private":"response content"';
-
-    await expect(
-      issueInstallationAccessToken({
-        fetch: async () => new Response(malformedResponseBody),
-      }),
-    ).resolves.toEqual({ ok: false, reason: "upstream_failure" });
-
-    expectIssuanceErrorLog(consoleError.mock.calls, {
-      message:
-        "GitHub API returned an invalid response: /repos/fixture-owner/fixture-source-repository/installation",
-      status: 200,
-      targetInstallationId: undefined,
-      forbiddenValues: [malformedResponseBody],
-    });
-  });
-
-  it("maps a token-minting network error to upstream unavailability", async () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-
-    await expect(
-      issueInstallationAccessToken({
-        fetch: async (input, init) => {
-          const request = new Request(input, init);
-
-          if (request.method === "POST") {
-            throw new Error("private token-minting network failure details");
-          }
-
-          return fetchGitHubTestDouble(input, init);
-        },
-      }),
-    ).resolves.toEqual({ ok: false, reason: "upstream_unavailable" });
-
-    expectIssuanceErrorLog(consoleError.mock.calls, {
-      path: `/app/installations/${testInstallationId}/access_tokens`,
-      targetInstallationId: testInstallationId,
-      forbiddenValues: ["private token-minting network failure details"],
-    });
-  });
-
-  it("maps an unreadable successful token-mint response body to upstream unavailability", async () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const privateResponseToken = "ghs_private_token_mint_body_token";
-    const privateResponseContent = `private token-mint response content ${privateResponseToken}`;
-    const privateStreamError = "private token-mint response body read failure";
-
-    await expect(
-      issueInstallationAccessToken({
-        fetch: async (input, init) => {
-          const request = new Request(input, init);
-
-          return request.method === "POST"
-            ? new Response(unreadableResponseBody(privateResponseContent, privateStreamError))
-            : fetchGitHubTestDouble(input, init);
-        },
-      }),
-    ).resolves.toEqual({ ok: false, reason: "upstream_unavailable" });
-
-    expectIssuanceErrorLog(consoleError.mock.calls, {
-      path: `/app/installations/${testInstallationId}/access_tokens`,
-      targetInstallationId: testInstallationId,
-      forbiddenValues: [privateStreamError, privateResponseContent, privateResponseToken],
     });
   });
 
@@ -475,53 +356,44 @@ describe("Installation Access Token Issuance", () => {
   });
 });
 
-function oversizedRateLimitResponseBody(): ReadableStream<Uint8Array> {
-  const body = new TextEncoder().encode(
-    JSON.stringify({ message: `rate limit ${"x".repeat(16 * 1024)}` }),
-  );
-
-  return new ReadableStream<Uint8Array>(
-    {
-      cancel: () => new Promise<void>(() => undefined),
-      pull(controller) {
-        controller.enqueue(body);
-      },
-    },
-    { highWaterMark: 0 },
-  );
+function operationsThatRejectDuringInstallationResolution(
+  error: unknown,
+): InstallationAccessTokenIssuanceOperations {
+  return {
+    createInstallationAccessTokenForRepositoryName: vi.fn(async () => ({
+      expiresAt: "2030-01-01T00:00:00Z",
+      permissions: {},
+      token: "unused",
+    })),
+    resolveInstallationForRepository: vi.fn(async () => {
+      throw error;
+    }),
+  };
 }
 
-function unreadableResponseBody(
-  partialBody = "",
-  errorMessage = "response body read failed",
-): ReadableStream<Uint8Array> {
-  return new ReadableStream<Uint8Array>({
-    pull(controller) {
-      if (partialBody.length > 0) {
-        controller.enqueue(new TextEncoder().encode(partialBody));
-      }
-      controller.error(new Error(errorMessage));
-    },
-  });
+function operationsThatRejectDuringTokenMinting(
+  error: GitHubApiError,
+): InstallationAccessTokenIssuanceOperations {
+  return {
+    createInstallationAccessTokenForRepositoryName: vi.fn(async () => {
+      throw error;
+    }),
+    resolveInstallationForRepository: vi.fn(async () => ({ id: testInstallationId })),
+  };
 }
 
 interface IssuanceErrorLogOptions {
   readonly forbiddenValues?: readonly string[];
-  readonly message?: string;
-  readonly path?: string;
+  readonly message: string;
   readonly status?: number;
   readonly targetInstallationId: number | undefined;
 }
 
 function expectIssuanceErrorLog(logCalls: unknown, options: IssuanceErrorLogOptions): void {
-  const message =
-    options.message ??
-    (options.path === undefined ? undefined : `GitHub API request failed: ${options.path}`);
-
   expect(logCalls).toContainEqual([
     expect.objectContaining({
       error: expect.objectContaining({
-        ...(message === undefined ? {} : { message }),
+        message: options.message,
         status: options.status,
       }),
       event: "installation_access_token_issuance_failed",
