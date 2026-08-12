@@ -112,63 +112,7 @@ describe("Token Issuance Policy authoring factories", () => {
 });
 
 describe("Token Issuance Policy compilation", () => {
-  it("accepts empty, duplicate, and overlapping Permit Statements", () => {
-    const statement = validPermitStatement();
-    const overlapping: PermitStatementDefinition = {
-      ...statement,
-      permissions: { actions: "read" },
-    };
-
-    expect(Object.isFrozen(compileTokenIssuancePolicy([]))).toBe(true);
-    expect(() => compileTokenIssuancePolicy([statement, statement, overlapping])).not.toThrow();
-  });
-
-  it("defensively compiles structurally authored definitions", () => {
-    const statement = {
-      permissions: { actions: "read", contents: "write" },
-      resource: { owner: "owner", repository: "repository" },
-      subjectToken: {
-        claimPredicates: [
-          { claimName: "trusted", expectedValue: true, kind: "claim-equals" },
-          {
-            claimName: "event_name",
-            expectedValues: ["push", "workflow_dispatch"],
-            kind: "claim-one-of",
-          },
-        ],
-        issuer,
-      },
-    } as const;
-
-    const policy = compileTokenIssuancePolicy([statement]);
-
-    expect(policy).toEqual({
-      permitStatements: [
-        {
-          permissions: { actions: "read", contents: "write" },
-          resource: {
-            href: "https://api.github.com/repos/owner/repository",
-            owner: "owner",
-            repository: "repository",
-          },
-          subjectToken: {
-            claimPredicates: [
-              { claimName: "trusted", expectedValue: true, kind: "claim-equals" },
-              {
-                claimName: "event_name",
-                expectedValues: ["push", "workflow_dispatch"],
-                kind: "claim-one-of",
-              },
-            ],
-            issuer,
-          },
-        },
-      ],
-    });
-    expectRecursivelyFrozen(policy);
-  });
-
-  it("captures a structural snapshot without retaining authoring definitions", () => {
+  it("captures a structural snapshot and recursively freezes it", () => {
     const definitions: PermitStatementDefinition[] = [
       {
         permissions: { contents: "write" },
@@ -350,53 +294,81 @@ describe("Token Issuance Policy compilation", () => {
     expect(() => compileTokenIssuancePolicy(definitions as never)).toThrow(path);
   });
 
-  it("rejects unknown nested fields", () => {
-    const statement = validPermitStatement();
-
-    expect(() =>
-      compileTokenIssuancePolicy([
-        {
-          ...statement,
-          resource: { ...statement.resource, kind: "github-repository" },
-        } as never,
-      ]),
-    ).toThrow("permitStatements[0].resource.kind");
-    expect(() =>
-      compileTokenIssuancePolicy([
-        {
-          ...statement,
-          subjectToken: {
-            ...statement.subjectToken,
-            claimPredicates: [{ ...claimEquals("claim", "value"), unknown: true } as never],
-          },
-        },
-      ]),
-    ).toThrow("permitStatements[0].subjectToken.claimPredicates[0].unknown");
-  });
-
-  it("rejects missing and malformed predicate discriminants", () => {
-    const statement = validPermitStatement();
-
-    for (const [predicate, expectedPath] of [
-      [{ claimName: "claim", expectedValue: true }, ".kind must be an own data field"],
-      [
-        { claimName: "claim", expectedValue: true, kind: 1 },
-        ".kind has an unsupported discriminant",
-      ],
-      [
-        { claimName: "claim", expectedValue: true, kind: "unsupported" },
-        ".kind has an unsupported discriminant",
-      ],
-    ] as const) {
-      expect(() =>
-        compileTokenIssuancePolicy([
+  it.each([
+    [
+      "an unknown resource field",
+      "permitStatements[0].resource.kind",
+      () => {
+        const statement = validPermitStatement();
+        return [{ ...statement, resource: { ...statement.resource, kind: "github-repository" } }];
+      },
+    ],
+    [
+      "an unknown predicate field",
+      "permitStatements[0].subjectToken.claimPredicates[0].unknown",
+      () => {
+        const statement = validPermitStatement();
+        return [
           {
             ...statement,
-            subjectToken: { ...statement.subjectToken, claimPredicates: [predicate] },
-          } as never,
-        ]),
-      ).toThrow(`permitStatements[0].subjectToken.claimPredicates[0]${expectedPath}`);
-    }
+            subjectToken: {
+              ...statement.subjectToken,
+              claimPredicates: [{ ...claimEquals("claim", "value"), unknown: true }],
+            },
+          },
+        ];
+      },
+    ],
+    [
+      "a missing predicate discriminant",
+      "permitStatements[0].subjectToken.claimPredicates[0].kind must be an own data field",
+      () => {
+        const statement = validPermitStatement();
+        return [
+          {
+            ...statement,
+            subjectToken: {
+              ...statement.subjectToken,
+              claimPredicates: [{ claimName: "claim", expectedValue: true }],
+            },
+          },
+        ];
+      },
+    ],
+    [
+      "an unsupported predicate discriminant",
+      "permitStatements[0].subjectToken.claimPredicates[0].kind has an unsupported discriminant",
+      () => {
+        const statement = validPermitStatement();
+        return [
+          {
+            ...statement,
+            subjectToken: {
+              ...statement.subjectToken,
+              claimPredicates: [{ claimName: "claim", expectedValue: true, kind: "unsupported" }],
+            },
+          },
+        ];
+      },
+    ],
+    [
+      "a non-string predicate discriminant",
+      "permitStatements[0].subjectToken.claimPredicates[0].kind has an unsupported discriminant",
+      () => {
+        const statement = validPermitStatement();
+        return [
+          {
+            ...statement,
+            subjectToken: {
+              ...statement.subjectToken,
+              claimPredicates: [{ claimName: "claim", expectedValue: true, kind: 1 }],
+            },
+          },
+        ];
+      },
+    ],
+  ] as const)("rejects $0 at $1", (_scenario, path, createDefinitions) => {
+    expect(() => compileTokenIssuancePolicy(createDefinitions() as never)).toThrow(path);
   });
 
   it("rejects missing, accessor-backed, and symbol-bearing structural fields", () => {

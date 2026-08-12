@@ -29,7 +29,7 @@ export default defineConfig({
         test: {
           allowOnly: false,
           detectAsyncLeaks: true,
-          exclude: [...configDefaults.exclude, "test/node/**", "test/worker-integration/**"],
+          exclude: [...configDefaults.exclude, "test/worker-integration/**"],
           name: "unit",
         },
       },

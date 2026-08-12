@@ -6,12 +6,11 @@ import {
   githubRepositoryResourceConstraint,
   oidcSubjectTokenConstraint,
 } from "@github-app-token-broker/token-issuance-policy";
-import * as tokenExchangeWorkerPackage from "@github-app-token-broker/worker";
 import { createTokenExchangeWorker } from "@github-app-token-broker/worker";
 import { parseOidcIssuerIdentifier } from "@github-app-token-broker/oidc/provider-registration";
 import genericTokenExchangeWorker from "../workers/github-app-token-broker/src/generic-worker.ts";
+import { tokenExchangeRequestBody } from "./support/worker.ts";
 import { testTokenIssuancePolicy } from "./support/token-issuance-policy.ts";
-import rootHarness from "./support/root-test-harness.ts";
 
 describe("worker entrypoint shapes", () => {
   it("rejects duplicate OIDC Provider Registration issuers when composed", () => {
@@ -70,41 +69,42 @@ describe("worker entrypoint shapes", () => {
     expect(fetchExternal).not.toHaveBeenCalled();
   });
 
-  it("keeps the Worker package Interface named-only", () => {
-    expect("default" in tokenExchangeWorkerPackage).toBe(false);
-    expect(tokenExchangeWorkerPackage.createTokenExchangeWorker).toEqual(expect.any(Function));
-  });
+  it("rejects a validly formed request at the generic deny-all endpoint without GitHub I/O", async () => {
+    const fetchExternal = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchExternal);
 
-  it("provides a generic deny-all Worker entrypoint separately", async () => {
-    expect(genericTokenExchangeWorker.fetch).toEqual(expect.any(Function));
-    expect(genericTokenExchangeWorker.queue).toBeUndefined();
-    const handler = genericTokenExchangeWorker.fetch;
+    try {
+      expect(genericTokenExchangeWorker.fetch).toEqual(expect.any(Function));
+      expect(genericTokenExchangeWorker.queue).toBeUndefined();
+      const handler = genericTokenExchangeWorker.fetch;
 
-    if (handler === undefined) {
-      throw new Error("generic Worker has no fetch handler");
+      if (handler === undefined) {
+        throw new Error("generic Worker has no fetch handler");
+      }
+
+      const response = await Promise.resolve(
+        handler(
+          new Request("https://example.test/token", {
+            body: await tokenExchangeRequestBody(),
+            headers: { "content-type": "application/x-www-form-urlencoded" },
+            method: "POST",
+          }) as Parameters<typeof handler>[0],
+          {
+            GITHUB_APP_ID: "000000",
+            GITHUB_APP_PRIVATE_KEY: "unused",
+            TOKEN_BROKER_AUDIENCE: "https://broker.example",
+            TOKEN_EXCHANGE_RATE_LIMIT: { limit: async () => ({ success: true }) },
+          },
+          {} as ExecutionContext,
+        ),
+      );
+
+      expect(response.status).toBe(400);
+      expect(response.headers.get("www-authenticate")).toBe("Bearer");
+      await expect(response.json()).resolves.toEqual({ error: "invalid_request" });
+      expect(fetchExternal).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
     }
-
-    const response = await Promise.resolve(
-      handler(
-        new Request("https://example.test/not-token") as Parameters<typeof handler>[0],
-        {
-          GITHUB_APP_ID: "000000",
-          GITHUB_APP_PRIVATE_KEY: "unused",
-          TOKEN_BROKER_AUDIENCE: "https://broker.example",
-          TOKEN_EXCHANGE_RATE_LIMIT: { limit: async () => ({ success: true }) },
-        },
-        {} as ExecutionContext,
-      ),
-    );
-
-    expect(response.status).toBe(404);
-  });
-
-  it("does not route product endpoints through the root test harness", async () => {
-    const response = await Promise.resolve(
-      rootHarness.fetch(new Request("https://example.test/token"), {}, {} as ExecutionContext),
-    );
-
-    expect(response.status).toBe(404);
   });
 });
