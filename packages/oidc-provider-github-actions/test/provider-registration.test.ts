@@ -14,8 +14,9 @@ describe("GitHub Actions OIDC Provider Registration", () => {
   it("registers the exact issuer and its provider-specific algorithm allowlist", () => {
     expect(githubActionsOidcProviderRegistration).toMatchObject({
       acceptedIdTokenSigningAlgorithms: ["RS256"],
-      issuer: githubActionsOidcProviderRegistration.issuer,
+      issuer: "https://token.actions.githubusercontent.com",
     });
+    expect(githubActionsOidcProviderRegistration.idTokenProfile).not.toBeNull();
   });
 
   it("accepts an absent azp or an azp equal to the already-verified audience", () => {

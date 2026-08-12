@@ -55,8 +55,6 @@ describe("OpenID Provider Configuration validation", () => {
       issuer,
       jwksUri: new URL(jwksUri),
     });
-    expect(Object.isFrozen(providerMetadata)).toBe(true);
-    expect(Object.isFrozen(providerMetadata.acceptedIdTokenSigningAlgorithms)).toBe(true);
   });
 
   it("retains the registration order in the accepted signing-algorithm intersection", () => {

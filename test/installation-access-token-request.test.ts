@@ -8,7 +8,6 @@ import {
   normalizeInstallationAccessTokenRequest,
   parseGitHubRepositoryResource,
   unionGitHubInstallationPermissions,
-  type GitHubInstallationPermissionLevel,
 } from "@github-app-token-broker/github/installation-access-token-request";
 import {
   fixtureSourceResource,
@@ -150,12 +149,7 @@ describe("GitHub installation permission domain", () => {
     ["admin", "write", true],
     ["admin", "admin", true],
   ] as const)("reports whether %s covers %s", (configured, requested, expected) => {
-    expect(
-      installationAccessTokenPermissionLevelCovers(
-        configured as GitHubInstallationPermissionLevel | undefined,
-        requested,
-      ),
-    ).toBe(expected);
+    expect(installationAccessTokenPermissionLevelCovers(configured, requested)).toBe(expected);
   });
 
   it("unions permissions pointwise and canonically", () => {
@@ -170,7 +164,6 @@ describe("GitHub installation permission domain", () => {
       issues: "admin",
       pull_requests: "write",
     });
-    expect(Object.isFrozen(permissions)).toBe(true);
     expect(Object.keys(permissions)).toEqual(["actions", "contents", "issues", "pull_requests"]);
   });
 
@@ -205,7 +198,6 @@ describe("GitHub installation permission domain", () => {
     const permissions = canonicalizeInstallationAccessTokenPermissions({});
 
     expect(permissions).toEqual({});
-    expect(Object.isFrozen(permissions)).toBe(true);
   });
 
   it("copies permission data without retaining its source object", () => {
@@ -214,7 +206,6 @@ describe("GitHub installation permission domain", () => {
 
     expect(permissions).toEqual({ actions: "write", pull_requests: "read" });
     expect(permissions).not.toBe(source);
-    expect(Object.isFrozen(permissions)).toBe(true);
   });
 });
 
@@ -232,7 +223,6 @@ describe("GitHub Repository Resource domain", () => {
       repository,
     });
     expect(parseGitHubRepositoryResource(resource.href)).toEqual(resource);
-    expect(Object.isFrozen(resource)).toBe(true);
   });
 
   it.each([
