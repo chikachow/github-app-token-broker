@@ -10,14 +10,16 @@ Run this checklist before making the repository public or tagging a release.
 - No local `.dev.vars`, `.env`, `.wrangler/`, `.local-secrets/`, private keys, generated state, or dependency directories are included in release artifacts.
 - `git ls-files` contains no private keys, tokens, local absolute paths, Cloudflare account IDs, API tokens, or secret values.
 - `node --run check` passes.
+- `node --run deploy:smoke` proves the emitted Node JavaScript and declarations work from a pnpm production deploy artifact.
 
 ## Documentation
 
 - `README.md` describes the current source repository and deployment boundary.
 - `docs/service-contract.md` matches implemented behaviour.
-- `docs/implementation.md` matches the workspace packages, Worker entrypoints, bindings, and verification commands.
+- `docs/implementation.md` matches the workspace packages, Worker and Fastify adapters, bindings, and verification commands.
 - `docs/deployment.md` documents only the generic interface between this source repository and an external deployment system.
 - The Worker package exposes the named composition Interface and no default production composition.
+- The Fastify plugin receives only a preconstructed handler and documents external admission control; it owns no listener or health route.
 - The generic Wrangler entrypoint remains deny-all and contains no deployment inventory.
 - No dynamic issuer-trust or authorization-policy binding has been introduced.
 - An external deployment owns and independently tests the OIDC Provider Registrations and Token Issuance Policy compiled into its artifact.

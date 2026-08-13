@@ -6,10 +6,11 @@ Before opening a pull request:
 
 1. Run `pnpm install --frozen-lockfile`.
 2. Run `node --run check`.
-3. Update `docs/service-contract.md` when externally observable behaviour changes.
-4. Update `docs/implementation.md` when package layout, Worker entrypoints, request flow, or bindings change.
-5. Update `docs/deployment.md` and `docs/release.md` when source/deployment ownership or publish-readiness checks change.
-6. Update `CONTEXT.md` when a project-defined term or its meaning changes.
+3. Run `node --run deploy:smoke` when changing the runtime-neutral or Fastify package, workspace packaging, or emitted declarations.
+4. Update `docs/service-contract.md` when externally observable behaviour changes.
+5. Update `docs/implementation.md` when package layout, adapters, request flow, or bindings change.
+6. Update `docs/deployment.md` and `docs/release.md` when source/deployment ownership or publish-readiness checks change.
+7. Update `CONTEXT.md` when a project-defined term or its meaning changes.
 
 Do not commit local deployment state or secrets. In particular, keep `.dev.vars`, `.env`, `.wrangler/`, `.local-secrets/`, GitHub App private keys, and Cloudflare tokens out of commits.
 

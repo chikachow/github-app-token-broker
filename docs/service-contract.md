@@ -31,7 +31,7 @@ Resource Server for the issued GitHub App installation access token. github-app-
 does not authenticate the Client. The ID Token in `subject_token` represents
 the token's Subject, which is not assumed to be the Client.
 
-Requests are rate limited by the `TOKEN_EXCHANGE_RATE_LIMIT` Cloudflare binding before the body is parsed.
+Admission control is adapter-owned. The Cloudflare Worker rate limits POST requests through `TOKEN_EXCHANGE_RATE_LIMIT` before the body is parsed and returns the documented 429 response. Fastify deployments must configure rate limiting or equivalent admission control outside the plugin, preferably before parsing at the edge or in a host `onRequest` hook; their exact 429 response is deployment-owned. The runtime-neutral handler and Fastify plugin expose no limiter option.
 
 `resource` must be exactly one canonical GitHub repository API URI:
 
@@ -47,7 +47,7 @@ Scope order is not significant, and repeated identical scope tokens are normaliz
 
 An empty `scope` is not a no-permissions request and is never translated to an empty GitHub permissions object. The broker does not infer permissions from the Repository Resource, Subject Token Claims, Token Issuance Policy maxima, GitHub App grants, or deployment configuration. Source workflows either use the pinned action's least-privilege default scope or explicitly override it. Caller behavior does not make `scope` optional at the Token Exchange Endpoint.
 
-The OpenID Connect ID Token supplied as the RFC 8693 subject token must have non-empty Issuer Identifier (`iss`), Audience (`aud`), and Subject (`sub`) claims plus numeric Expiration Time (`exp`) and Issued At (`iat`) claims. github-app-token-broker accepts only the ID Token subject-token-type identifier, verifies the configured Issuer Identifier and expiration, and does not impose a separate maximum token age based on `iat`. The ID Token must have the single audience value from the deployment-owned `TOKEN_BROKER_AUDIENCE` binding. The binding is an exact non-empty, non-whitespace, single-line scalar and may be URL-shaped or opaque. Missing or plural token audiences, and every scalar value that does not exactly equal the configured value, receive `400 {"error":"invalid_request"}`. After central verification, a non-null OIDC ID Token Profile on the selected registration validates its provider-specific token kind; an explicit `null` profile means central validation is sufficient.
+The OpenID Connect ID Token supplied as the RFC 8693 subject token must have non-empty Issuer Identifier (`iss`), Audience (`aud`), and Subject (`sub`) claims plus numeric Expiration Time (`exp`) and Issued At (`iat`) claims. github-app-token-broker accepts only the ID Token subject-token-type identifier, verifies the configured Issuer Identifier and expiration, and does not impose a separate maximum token age based on `iat`. The ID Token must have the deployment's single configured Subject-Token Audience. It is an exact non-empty, non-whitespace, single-line scalar and may be URL-shaped or opaque. Missing or plural token audiences, and every scalar value that does not exactly equal the configured value, receive `400 {"error":"invalid_request"}`. After central verification, a non-null OIDC ID Token Profile on the selected registration validates its provider-specific token kind; an explicit `null` profile means central validation is sufficient.
 
 github-app-token-broker does not support RFC 8693 `audience`, `actor_token`, or `actor_token_type` form parameters. Non-empty `audience` parameters are rejected with `invalid_target` because this profile uses `resource` for the issued token target and service-owned GitHub App credentials. Actor-token parameters are rejected as malformed for this profile with `invalid_request`.
 
@@ -59,7 +59,7 @@ also accepted as a requested-token-type compatibility alias for pinned action
 releases. A successful response returns the supported identifier supplied by
 the Client as `issued_token_type`. No other requested token type is accepted.
 
-Successful ID Token verification establishes that the configured issuer signed the token for the exact deployment-owned logical audience and establishes its Subject Token Claims; it does not authenticate the Client. The service owns the configured GitHub App credentials; `resource` names the GitHub API repository target where the issued token will be used; and Token Issuance Policy decides whether issuance is permitted for the resulting Verified Subject Token and Installation Access Token Request. Plural subject-token audiences are rejected rather than interpreted by containment. The Worker reads the trusted audience only from `TOKEN_BROKER_AUDIENCE`; it owns no endpoint-location binding and never derives identity from the request URL, `Host`, forwarded headers, or `/token` path.
+Successful ID Token verification establishes that the configured issuer signed the token for the exact deployment-owned logical audience and establishes its Subject Token Claims; it does not authenticate the Client. The service owns the configured GitHub App credentials; `resource` names the GitHub API repository target where the issued token will be used; and Token Issuance Policy decides whether issuance is permitted for the resulting Verified Subject Token and Installation Access Token Request. Plural subject-token audiences are rejected rather than interpreted by containment. The Worker reads the trusted audience only from `TOKEN_BROKER_AUDIENCE`; a Fastify host passes it as `subjectTokenAudience`. Neither adapter owns an endpoint-location binding or derives identity from the request URL, `Host`, forwarded headers, or `/token` path.
 
 When Token Issuance Policy does not permit issuance, github-app-token-broker distinguishes the
 Token Endpoint failure at the protocol boundary. An unsupported Repository Resource
@@ -103,7 +103,7 @@ Request, authentication, policy, and service-level failures map as follows:
 - missing or unsupported requested token type: `400 {"error":"invalid_request"}`
 - unsupported non-empty token-exchange `audience`: `400 {"error":"invalid_target"}`
 - unsupported grant type: `400 {"error":"unsupported_grant_type"}`
-- rate limit exceeded: `429 {"error":"temporarily_unavailable"}`
+- Cloudflare Worker rate limit exceeded: `429 {"error":"temporarily_unavailable"}`
 - body too large: `413 {"error":"invalid_request"}`
 - OpenID Provider Configuration transport failure, timeout, or non-success response, or JWK Set unavailable: `503 {"error":"temporarily_unavailable"}`
 - invalid OpenID Provider Configuration representation or metadata: `400 {"error":"invalid_request"}`
@@ -160,7 +160,7 @@ Provider packages expose these reviewed registrations for deployment composition
 
 #### GitHub Actions
 
-GitHub Actions Clients present a [GitHub Actions OIDC token](https://docs.github.com/en/actions/concepts/security/openid-connect), which is an ID Token issued by `https://token.actions.githubusercontent.com`. An absent Authorized Party (`azp`) claim is accepted; when present, it must equal the exact deployment-owned `TOKEN_BROKER_AUDIENCE` value in `aud`. GitHub Actions Clients must provide an explicit repository `resource`; the signed `repository` Claim is verified context in the Subject Token Claims available to Token Issuance Policy and is not used to select the token target. Authentication produces a Verified Subject Token but does not create a Permit Statement.
+GitHub Actions Clients present a [GitHub Actions OIDC token](https://docs.github.com/en/actions/concepts/security/openid-connect), which is an ID Token issued by `https://token.actions.githubusercontent.com`. An absent Authorized Party (`azp`) claim is accepted; when present, it must equal the exact configured Subject-Token Audience in `aud`. GitHub Actions Clients must provide an explicit repository `resource`; the signed `repository` Claim is verified context in the Subject Token Claims available to Token Issuance Policy and is not used to select the token target. Authentication produces a Verified Subject Token but does not create a Permit Statement.
 
 #### Google service account ID Tokens
 
@@ -174,7 +174,7 @@ The source-supported Fly provider package constructs a reviewed registration for
 
 A deployment composition may register that exact issuer and must independently add Permit Statements selecting every Fly Claim material to authorization. An already-compiled Worker cannot add the registration or policy at runtime. Fly documents both its [organization-specific OpenID Connect issuers and Machine identity Claims](https://fly.io/docs/security/openid-connect/) and [Machine token acquisition with a caller-selected audience](https://fly.io/docs/machines/api/tokens-resource/).
 
-For a deployment whose `TOKEN_BROKER_AUDIENCE` is `https://broker.example`, a Fly workload requests its ID Token with that exact value in the Fly Tokens resource `aud` field; `/token` is not part of the audience:
+For a deployment whose configured Subject-Token Audience is `https://broker.example`, a Fly workload requests its ID Token with that exact value in the Fly Tokens resource `aud` field; `/token` is not part of the audience:
 
 ```http
 POST /v1/tokens/oidc
@@ -187,7 +187,7 @@ Fly returns the serialized ID Token as the response body. The workload sends tha
 
 ### Token Issuance Policy
 
-Installation Access Token Issuance is allowed only when the normalized request is covered by the closed, immutable set of Permit Statements compiled into the Worker artifact. Each independently complete statement contains an exact issuer, Claim Predicates over Subject Token Claims, one exact Repository Resource Constraint, and a non-empty permission map. Missing or wrongly typed selected Claims make a statement non-applicable; evaluation never throws for verified Claim data.
+Installation Access Token Issuance is allowed only when the normalized request is covered by the closed, immutable set of Permit Statements compiled into the deployable artifact. Each independently complete statement contains an exact issuer, Claim Predicates over Subject Token Claims, one exact Repository Resource Constraint, and a non-empty permission map. Missing or wrongly typed selected Claims make a statement non-applicable; evaluation never throws for verified Claim data.
 
 All statements whose issuer, Claim Predicates, and Repository Resource Constraint apply contribute permissions pointwise using `omitted < read < write < admin`. The policy permits the request only when those Effective Permissions cover the Requested Permissions. Statement order is irrelevant, stronger contributed permissions cover weaker Requested Permissions, and several statements may jointly cover a request. Permission names are extensible, but every Requested Permission still requires explicit Permit Statement coverage; arbitrary names are never authorized by default. There are no deny statements, inheritance, dynamic configuration, generic expression language, or authorization decision objects.
 
@@ -198,7 +198,7 @@ Every policy issuer must resolve to an OIDC Provider Registration when the appli
 GitHub Actions authentication additionally requires:
 
 - the Client presents a [GitHub Actions OIDC token](https://docs.github.com/en/actions/concepts/security/openid-connect) from `https://token.actions.githubusercontent.com`
-- the signed subject-token audience is the exact deployment `TOKEN_BROKER_AUDIENCE` value
+- the signed subject-token audience is the deployment's exact configured Subject-Token Audience
 - if the GitHub Actions OIDC token has an `azp` claim, that claim matches the same exact audience
 
 After authentication, a deployment may configure a GitHub Actions Permit
@@ -256,9 +256,9 @@ github-app-token-broker denies malformed `scope` values, Requested Permissions n
 - [Google Cloud: Get an ID token](https://cloud.google.com/docs/authentication/get-id-token): supported service account ID Token acquisition methods and audience selection.
 - [GitHub App installation access token API](https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app): GitHub installation access tokens are narrowed with `repositories` or `repository_ids` and `permissions`, subject to the app installation's grants.
 
-## Runtime Bindings
+## Adapter Configuration
 
-The implementation uses these runtime bindings:
+The Cloudflare Worker adapter uses these runtime bindings:
 
 - `GITHUB_APP_ID`
 - `GITHUB_APP_PRIVATE_KEY` Secrets Store binding or Worker secret
@@ -266,6 +266,8 @@ The implementation uses these runtime bindings:
 - `TOKEN_EXCHANGE_RATE_LIMIT` Cloudflare rate-limit binding
 
 The public Wrangler configs declare binding names for local development, tests, and dry-runs. `GITHUB_API_BASE_URL` is optional for the token exchange Worker and defaults to `https://api.github.com`.
+
+A Fastify deployment instead passes semantic `githubApp` and `subjectTokenAudience` configuration to `createGitHubAppTokenExchange`; it has no broker-defined environment-variable or rate-limit binding contract. The host supplies admission control outside the plugin.
 
 ## Unsupported Behaviour
 

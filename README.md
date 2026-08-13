@@ -6,15 +6,17 @@ The only public service route is `POST /token`. The service has no webhook recei
 
 ## Architecture
 
-- `workers/github-app-token-broker` is the sole deployable Cloudflare Worker package (`@github-app-token-broker/worker`).
+- `packages/token-exchange` is the runtime-neutral deep module. `createGitHubAppTokenExchange` constructs one Web `Request` to `Response` handler from reviewed composition, semantic GitHub App configuration, and an explicit subject-token audience.
+- `packages/fastify` is an ordinary encapsulated Fastify v5 adapter. Its only broker-specific registration option is the preconstructed `tokenExchange` handler; Fastify's standard `prefix` option places the canonical `/token` route.
+- `workers/github-app-token-broker` is the Cloudflare adapter (`@github-app-token-broker/worker`). It retains Worker routing, environment translation, and Cloudflare rate limiting.
 - `packages/oidc` owns the deep ID Token authenticator, OIDC Provider Registration validation, discovery/JWK Set validation, bounded caches, and fail-closed error classification.
 - `packages/github` owns Installation Access Token Request normalization, GitHub App JWT signing, installation lookup, owner binding, and installation-token minting.
 - `packages/token-issuance-policy` owns Permit Statement compilation and evaluation.
 - `packages/http` owns bounded request/response body helpers and problem responses.
 - Provider packages contain reviewed GitHub Actions and Google service-account registrations plus exact organization-scoped Fly OIDC Provider Registration construction.
-- `createTokenExchangeWorker` accepts OIDC Provider Registrations and a compiled Token Issuance Policy. An external deployment owns that TypeScript composition and compiles it into its Worker artifact. The source Wrangler template instead uses a generic deny-all entrypoint.
+- An external deployment owns the TypeScript composition and compiles it into either a Worker artifact or its existing Fastify application. The source Wrangler template instead uses a generic deny-all entrypoint.
 
-The intended model is one GitHub App per deployment. OIDC Provider Registrations and Token Issuance Policy are build-time composition values, while App credentials, Subject-Token Audience, and rate limit are deployment bindings. Changing trust or policy requires a reviewed composition change and a newly built Worker artifact. The public API deliberately exposes no App selector or runtime policy loader.
+The intended model is one GitHub App per deployment. OIDC Provider Registrations and Token Issuance Policy are build-time composition values, while App credentials, Subject-Token Audience, and admission control are deployment configuration. Changing trust or policy requires a reviewed composition change and a newly built artifact. The public interface deliberately exposes no App selector or runtime policy loader.
 
 ## `POST /token`
 
@@ -37,8 +39,8 @@ echoes whichever supported identifier the Client requested in
 
 Important invariants:
 
-- issuer trust comes only from exact OIDC Provider Registrations compiled into the Worker artifact
-- the ID Token must have the deployment's exact single-string `TOKEN_BROKER_AUDIENCE`; the RFC 8693 `audience` parameter is unsupported and grants nothing
+- issuer trust comes only from exact OIDC Provider Registrations compiled into the deployable artifact
+- the ID Token must have the deployment's exact configured single-string Subject-Token Audience; the RFC 8693 `audience` parameter is unsupported and grants nothing
 - every request names exactly one canonical GitHub Repository Resource
 - every request explicitly names a non-empty `scope`; the broker has no default Requested Permissions
 - Subject Token Claims never select the target repository
@@ -61,6 +63,23 @@ The Worker consumes one App identity per deployment:
 
 The audience must be a non-empty, non-whitespace, single-line string and is validated before request routing. It is an identity, not a Worker location binding: the Worker never derives it from the incoming URL, `Host`, forwarded headers, or `/token` route. OIDC Provider Registrations and Token Issuance Policy are reviewed TypeScript supplied to `createTokenExchangeWorker` and compiled into the artifact; neither is a runtime deployment binding or Client input.
 
+For an existing Fastify v5 application, construct the runtime-neutral handler and register the adapter:
+
+```ts
+const tokenExchange = createGitHubAppTokenExchange({
+  composition: { oidcProviderRegistrations, tokenIssuancePolicy },
+  githubApp: { appId, privateKey },
+  subjectTokenAudience,
+});
+
+await fastify.register(githubAppTokenExchangePlugin, {
+  prefix: "/automation",
+  tokenExchange,
+});
+```
+
+This exposes `/automation/token`. The plugin does not own a listener, health endpoint, secrets, audience, or rate limiter. The host must apply rate limiting or equivalent admission control outside and before the plugin, preferably at the edge or in a Fastify `onRequest` hook. The plugin still enforces the service's fixed 64 KiB body limit and raw form semantics.
+
 ## Local development
 
 Use Node 24 and the pinned pnpm version:
@@ -68,6 +87,8 @@ Use Node 24 and the pinned pnpm version:
 ```bash
 fnm exec --using=24 corepack pnpm install --frozen-lockfile
 fnm exec --using=24 corepack pnpm run check
+fnm exec --using=24 corepack pnpm run build
+fnm exec --using=24 corepack pnpm run deploy:smoke
 ```
 
 For local Worker development, copy `.dev.vars.example` to `.dev.vars`, add a local App ID and private key, then run:
@@ -80,7 +101,7 @@ Do not commit keys, `.dev.vars`, `.env`, `.wrangler/`, `.local-secrets/`, or pri
 
 ## Deployment boundary
 
-This public repository does not deploy the service. A deployment system outside this repository must pin a reviewed source revision, run the source checks, supply deployment-owned configuration and secrets, deploy the Worker, and verify `POST /token`.
+This public repository does not deploy the service. A deployment system outside this repository must pin a reviewed source revision, run the source checks, compile its reviewed composition into its chosen adapter artifact, supply deployment-owned configuration and secrets, and verify `POST /token`.
 
 ## External references
 
