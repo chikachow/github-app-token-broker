@@ -8,7 +8,7 @@
   },
   "scripts": {
     "check": "node --run env-types:check && node --run typecheck && node --run deploy:dry-run",
-    "deploy:dry-run": "WRANGLER_LOG=none WRANGLER_LOG_PATH=../../.wrangler/logs WRANGLER_REGISTRY_PATH=../../.wrangler/registry wrangler deploy --dry-run --config wrangler.jsonc",
+    "deploy:dry-run": "pnpm --filter @github-app-token-broker/token-exchange run build && WRANGLER_LOG=none WRANGLER_LOG_PATH=../../.wrangler/logs WRANGLER_REGISTRY_PATH=../../.wrangler/registry wrangler deploy --dry-run --config wrangler.jsonc",
     "dev": "WRANGLER_LOG=none WRANGLER_LOG_PATH=../../.wrangler/logs WRANGLER_REGISTRY_PATH=../../.wrangler/registry wrangler dev --config wrangler.jsonc --env-file ../../.dev.vars",
     "env-types:check": "WRANGLER_LOG=none WRANGLER_LOG_PATH=../../.wrangler/logs WRANGLER_REGISTRY_PATH=../../.wrangler/registry wrangler types src/env.generated.d.ts --config wrangler.jsonc --env-interface TokenExchangeEnv --include-runtime false --check",
     "env-types:generate": "WRANGLER_LOG=none WRANGLER_LOG_PATH=../../.wrangler/logs WRANGLER_REGISTRY_PATH=../../.wrangler/registry wrangler types src/env.generated.d.ts --config wrangler.jsonc --env-interface TokenExchangeEnv --include-runtime false",
@@ -16,9 +16,8 @@
     "typecheck": "node --run runtime-types:generate && tsc --project tsconfig.json"
   },
   "dependencies": {
-    "@github-app-token-broker/github": "workspace:*",
     "@github-app-token-broker/http": "workspace:*",
-    "@github-app-token-broker/oidc": "workspace:*",
+    "@github-app-token-broker/token-exchange": "workspace:*",
     "@github-app-token-broker/token-issuance-policy": "workspace:*"
   }
 }

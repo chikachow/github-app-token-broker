@@ -4,7 +4,7 @@ import type {
   OidcIdTokenAuthenticationResult,
   OidcIdTokenAuthenticator,
 } from "@github-app-token-broker/oidc/id-token-authenticator";
-import { authenticateOidcIdToken } from "../workers/github-app-token-broker/src/authentication.ts";
+import { authenticateOidcIdToken } from "../packages/token-exchange/src/authentication.ts";
 
 type AuthenticationFailure = Extract<OidcIdTokenAuthenticationResult, { ok: false }>;
 

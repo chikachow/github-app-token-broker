@@ -28,13 +28,17 @@ import {
 
 describe("github-app-token-broker-token-exchange", () => {
   it("rejects non-POST token requests before authentication or exchange", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      method: "GET",
-    });
+    const limit = vi.fn(async () => ({ success: true }));
+    const response = await fetchTokenExchangeWithEnv(
+      "https://example.test/token",
+      { method: "GET" },
+      { ...testEnv, TOKEN_EXCHANGE_RATE_LIMIT: { limit } },
+    );
 
     expect(response.status).toBe(400);
     expect(response.headers.get("cache-control")).toBe("no-store");
     await expect(response.json()).resolves.toEqual({ error: "invalid_request" });
+    expect(limit).not.toHaveBeenCalled();
   });
 
   it("maps GitHub permission validation after policy approval to 500 server_error", async () => {
@@ -213,8 +217,10 @@ describe("github-app-token-broker-token-exchange", () => {
       await expect(response.json()).resolves.toEqual({ error: "server_error" });
       expect(fetchExternal).not.toHaveBeenCalled();
       expect(consoleWarn).toHaveBeenCalledWith(
-        "OIDC authentication failed",
-        expect.objectContaining({ reason: "oidc_internal_failure" }),
+        expect.objectContaining({
+          event: "oidc_authentication_failed",
+          reason: "oidc_internal_failure",
+        }),
       );
     } finally {
       consoleWarn.mockRestore();

@@ -4,7 +4,7 @@ import type { VerifiedSubjectToken } from "@github-app-token-broker/oidc/id-toke
 import {
   issueInstallationAccessTokenForContext,
   type InstallationAccessTokenIssuanceOperations,
-} from "../workers/github-app-token-broker/src/policy/installation-access-token-issuance.ts";
+} from "../packages/token-exchange/src/installation-access-token-issuance.ts";
 import { GitHubApiError, GitHubApiTransportError } from "../packages/github/src/http.ts";
 import { testNow, testRepository, testInstallationId } from "./support/constants.ts";
 import { fetchGitHubTestDouble, githubInstallationResponse } from "./support/github-api.ts";
@@ -163,17 +163,19 @@ describe("Installation Access Token Issuance", () => {
   });
 
   it("logs GitHub Actions claims and issuance context on success", async () => {
-    const consoleInfo = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const logCalls: unknown[][] = [];
 
     await expect(
-      issueInstallationAccessToken({ fetch: fetchGitHubTestDouble }),
+      issueInstallationAccessToken({ fetch: fetchGitHubTestDouble }, (event) =>
+        logCalls.push([event]),
+      ),
     ).resolves.toMatchObject({
       ok: true,
       token: "ghs_test_token",
     });
 
-    expect(consoleInfo).toHaveBeenCalledOnce();
-    expect(consoleInfo.mock.calls[0]?.[0]).toMatchObject({
+    expect(logCalls).toHaveLength(1);
+    expect(logCalls[0]?.[0]).toMatchObject({
       event: "installation_access_token_issuance_succeeded",
       subject_token: {
         issuer: "https://token.actions.githubusercontent.com",
@@ -190,7 +192,7 @@ describe("Installation Access Token Issuance", () => {
       },
       expires_at: "2030-01-01T00:00:00Z",
     });
-    expectSafeIssuanceLog(consoleInfo.mock.calls, "ghs_test_token");
+    expectSafeIssuanceLog(logCalls, "ghs_test_token");
   });
 
   it.each([
@@ -206,7 +208,7 @@ describe("Installation Access Token Issuance", () => {
       reason: "upstream_unavailable",
     },
   ] as const)("maps a GitHub operation failure to $reason", async ({ error, reason }) => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const logCalls: unknown[][] = [];
     const operations = operationsThatRejectDuringInstallationResolution(error);
 
     await expect(
@@ -217,12 +219,13 @@ describe("Installation Access Token Issuance", () => {
         tokenRequest,
         { fetch: vi.fn(), now: () => testNow },
         operations,
+        (event) => logCalls.push([event]),
       ),
     ).resolves.toEqual({ ok: false, reason });
 
     expect(operations.resolveInstallationForRepository).toHaveBeenCalledOnce();
     expect(operations.createInstallationAccessTokenForRepositoryName).not.toHaveBeenCalled();
-    expectIssuanceErrorLog(consoleError.mock.calls, {
+    expectIssuanceErrorLog(logCalls, {
       message:
         error instanceof GitHubApiError || error instanceof GitHubApiTransportError
           ? error.message
@@ -237,7 +240,7 @@ describe("Installation Access Token Issuance", () => {
     { privateKey: "", scenario: "missing" },
     { privateKey: "not a private key", scenario: "invalid" },
   ])("maps a $scenario GitHub App private key to an internal failure", async ({ privateKey }) => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const logCalls: unknown[][] = [];
     const fetchGitHub = vi.fn(fetchGitHubTestDouble);
 
     await expect(
@@ -247,11 +250,13 @@ describe("Installation Access Token Issuance", () => {
         { verifiedSubjectToken, verificationEvidence },
         tokenRequest,
         { fetch: fetchGitHub, now: () => testNow },
+        undefined,
+        (event) => logCalls.push([event]),
       ),
     ).resolves.toEqual({ ok: false, reason: "internal_failure" });
 
     expect(fetchGitHub).not.toHaveBeenCalled();
-    expectIssuanceErrorLog(consoleError.mock.calls, {
+    expectIssuanceErrorLog(logCalls, {
       message: "invalid GitHub App configuration",
       targetInstallationId: undefined,
       forbiddenValues: privateKey.length > 0 ? [privateKey] : [],
@@ -268,7 +273,7 @@ describe("Installation Access Token Issuance", () => {
   ] as const)(
     "logs the resolved installation when token minting fails",
     async ({ error, reason }) => {
-      const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const logCalls: unknown[][] = [];
       const operations = operationsThatRejectDuringTokenMinting(error);
 
       await expect(
@@ -279,12 +284,13 @@ describe("Installation Access Token Issuance", () => {
           tokenRequest,
           { fetch: vi.fn(), now: () => testNow },
           operations,
+          (event) => logCalls.push([event]),
         ),
       ).resolves.toEqual({ ok: false, reason });
 
       expect(operations.resolveInstallationForRepository).toHaveBeenCalledOnce();
       expect(operations.createInstallationAccessTokenForRepositoryName).toHaveBeenCalledOnce();
-      expectIssuanceErrorLog(consoleError.mock.calls, {
+      expectIssuanceErrorLog(logCalls, {
         message: error.message,
         status: error.upstreamStatus,
         targetInstallationId: testInstallationId,
@@ -293,7 +299,7 @@ describe("Installation Access Token Issuance", () => {
   );
 
   it("maps unexpected GitHub operation failures to a sanitized internal failure", async () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const logCalls: unknown[][] = [];
     const operations = operationsThatRejectDuringInstallationResolution(
       new Error("private network failure details"),
     );
@@ -306,10 +312,11 @@ describe("Installation Access Token Issuance", () => {
         tokenRequest,
         { fetch: vi.fn(), now: () => testNow },
         operations,
+        (event) => logCalls.push([event]),
       ),
     ).resolves.toEqual({ ok: false, reason: "internal_failure" });
 
-    expectIssuanceErrorLog(consoleError.mock.calls, {
+    expectIssuanceErrorLog(logCalls, {
       message: "unexpected Installation Access Token Issuance error",
       targetInstallationId: undefined,
       forbiddenValues: ["private network failure details"],
@@ -317,7 +324,7 @@ describe("Installation Access Token Issuance", () => {
   });
 
   it("logs when policy does not permit issuance without requesting GitHub", async () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const logCalls: unknown[][] = [];
     const fetchGitHub = vi.fn(fetchGitHubTestDouble);
 
     await expect(
@@ -336,10 +343,12 @@ describe("Installation Access Token Issuance", () => {
         },
         tokenRequest,
         { fetch: fetchGitHub, now: () => testNow },
+        undefined,
+        (event) => logCalls.push([event]),
       ),
     ).resolves.toEqual({ ok: false, reason: "subject_token_unacceptable" });
 
-    expect(consoleError).toHaveBeenCalledWith(
+    expect(logCalls).toContainEqual([
       expect.objectContaining({
         event: "installation_access_token_issuance_failed",
         subject_token: expect.objectContaining({
@@ -353,9 +362,9 @@ describe("Installation Access Token Issuance", () => {
           scope: tokenRequest.scope,
         },
       }),
-    );
+    ]);
     expect(fetchGitHub).not.toHaveBeenCalled();
-    expectSafeIssuanceLog(consoleError.mock.calls);
+    expectSafeIssuanceLog(logCalls);
   });
 });
 
@@ -431,12 +440,13 @@ function expectSafeIssuanceLog(logCalls: unknown, ...forbiddenValues: readonly s
 function expectLogsNotToContainGitHubAppCredentials(logCalls: unknown): void {
   const serializedLogCalls = JSON.stringify(logCalls);
 
-  expect(serializedLogCalls).not.toContain(testEnv.GITHUB_APP_ID);
-  expect(serializedLogCalls).not.toContain(testEnv.GITHUB_APP_PRIVATE_KEY);
+  expect(serializedLogCalls).not.toContain(application.githubApp.appId);
+  expect(serializedLogCalls).not.toContain(application.githubApp.privateKey);
 }
 
 function issueInstallationAccessToken(
   dependencies: Omit<Parameters<typeof issueInstallationAccessTokenForContext>[4], "now">,
+  observe?: Parameters<typeof issueInstallationAccessTokenForContext>[6],
 ) {
   return issueInstallationAccessTokenForContext(
     application.githubApp,
@@ -444,5 +454,7 @@ function issueInstallationAccessToken(
     { verifiedSubjectToken, verificationEvidence },
     tokenRequest,
     { ...dependencies, now: () => testNow },
+    undefined,
+    observe,
   );
 }

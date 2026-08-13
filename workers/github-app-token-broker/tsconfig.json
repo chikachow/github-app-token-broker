@@ -2,7 +2,10 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "lib": ["ES2024"],
-    "types": ["./src/runtime.generated.d.ts"]
+    "types": ["./src/runtime.generated.d.ts"],
+    "paths": {
+      "@github-app-token-broker/token-exchange": ["../../packages/token-exchange/src/index.ts"]
+    }
   },
   "include": ["src/**/*.ts"]
 }

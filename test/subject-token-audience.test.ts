@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseSubjectTokenAudience } from "../workers/github-app-token-broker/src/subject-token-audience.ts";
+import { parseSubjectTokenAudience } from "../packages/token-exchange/src/subject-token-audience.ts";
 
 describe("subject-token audience configuration", () => {
   it.each([

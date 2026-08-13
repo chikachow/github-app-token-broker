@@ -4,6 +4,14 @@ import { configDefaults, defineConfig } from "vitest/config";
 import { tokenExchangeOidcNodeFixture } from "./test/support/token-exchange-oidc-node-fixture.ts";
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      "@github-app-token-broker/token-exchange": new URL(
+        "./packages/token-exchange/src/index.ts",
+        import.meta.url,
+      ).pathname,
+    },
+  },
   test: {
     coverage: {
       exclude: ["**/*.test.ts", "test/**", "worker-configuration.d.ts"],

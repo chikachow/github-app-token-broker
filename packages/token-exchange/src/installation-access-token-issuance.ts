@@ -8,7 +8,8 @@ import type {
   GitHubAppConfiguration,
   GitHubAppDependencies,
 } from "@github-app-token-broker/github/app";
-import type { AuthenticatedContext } from "../authentication.ts";
+import type { AuthenticatedContext } from "./authentication.ts";
+import type { TokenExchangeEvent } from "./events.ts";
 import type { InstallationAccessTokenRequest } from "@github-app-token-broker/github/installation-access-token-request";
 import type { TokenIssuancePolicy } from "@github-app-token-broker/token-issuance-policy";
 import {
@@ -46,6 +47,7 @@ export async function issueInstallationAccessTokenForContext(
   installationAccessTokenRequest: InstallationAccessTokenRequest,
   dependencies: GitHubAppDependencies,
   operations: InstallationAccessTokenIssuanceOperations = defaultInstallationAccessTokenIssuanceOperations,
+  observe: (event: TokenExchangeEvent) => void = () => undefined,
 ): Promise<InstallationAccessTokenIssuanceResult> {
   const { verifiedSubjectToken } = authenticationContext;
   const policyPermitted = tokenIssuancePolicyPermits(
@@ -66,13 +68,14 @@ export async function issueInstallationAccessTokenForContext(
         installationAccessTokenRequest,
       );
 
-    console.error({
+    observe({
       error: {
         message: "Token Issuance Policy did not permit Installation Access Token Issuance",
         name: "Error",
         status: undefined,
       },
       event: "installation_access_token_issuance_failed",
+      level: "error",
       installation_access_token_request: installationAccessTokenRequestLogFields(
         installationAccessTokenRequest,
       ),
@@ -113,8 +116,9 @@ export async function issueInstallationAccessTokenForContext(
       dependencies,
     );
 
-    console.info({
+    observe({
       event: "installation_access_token_issuance_succeeded",
+      level: "info",
       expires_at: installationAccessToken.expiresAt,
       installation_access_token_request: installationAccessTokenRequestLogFields(
         installationAccessTokenRequest,
@@ -137,13 +141,14 @@ export async function issueInstallationAccessTokenForContext(
   } catch (error) {
     const reason = reasonForInstallationAccessTokenIssuanceError(error);
 
-    console.error({
+    observe({
       error: {
         message: logMessageForInstallationAccessTokenIssuanceError(error),
         name: error instanceof Error ? error.name : typeof error,
         status: error instanceof GitHubApiError ? error.upstreamStatus : undefined,
       },
       event: "installation_access_token_issuance_failed",
+      level: "error",
       installation_access_token_request: installationAccessTokenRequestLogFields(
         installationAccessTokenRequest,
       ),

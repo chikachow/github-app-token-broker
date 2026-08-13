@@ -4,6 +4,7 @@ import type {
   OidcVerificationEvidence,
   VerifiedSubjectToken,
 } from "@github-app-token-broker/oidc/id-token-authenticator";
+import type { TokenExchangeAuthenticationEvent } from "./events.ts";
 
 export interface AuthenticatedContext {
   readonly verificationEvidence: OidcVerificationEvidence;
@@ -33,15 +34,25 @@ export async function authenticateOidcIdToken(
   subjectToken: string,
   request: Request,
   authenticator: OidcIdTokenAuthenticator,
+  observe: (event: TokenExchangeAuthenticationEvent) => void = () => undefined,
 ): Promise<AuthenticateRequestResult> {
-  const authentication = await authenticator.authenticateIdToken(subjectToken);
+  const authentication = await authenticator.authenticateIdToken(subjectToken, (event) =>
+    observe({ ...event, level: "warn" }),
+  );
 
   if (!authentication.ok) {
     const { failure } = authentication;
     const reason = authenticationFailureReason(failure);
     const diagnostics = authenticationFailureDiagnostics(failure);
 
-    logAuthenticationFailure(request, reason, diagnostics);
+    observe({
+      ...diagnostics,
+      event: "oidc_authentication_failed",
+      level: "warn",
+      path: new URL(request.url).pathname,
+      reason,
+      userAgent: request.headers.get("user-agent"),
+    });
 
     return {
       ...diagnostics,
@@ -57,22 +68,6 @@ export async function authenticateOidcIdToken(
     },
     ok: true,
   };
-}
-
-function logAuthenticationFailure(
-  request: Request,
-  reason: OidcAuthenticationFailureReason,
-  diagnostics: Pick<AuthenticateRequestFailure, "diagnosticCode" | "providerHttpStatus">,
-): void {
-  const url = new URL(request.url);
-
-  console.warn("OIDC authentication failed", {
-    ...diagnostics,
-    path: url.pathname,
-    rayId: request.headers.get("cf-ray"),
-    reason,
-    userAgent: request.headers.get("user-agent"),
-  });
 }
 
 function authenticationFailureDiagnostics(

@@ -116,7 +116,10 @@ export type OidcIdTokenAuthenticationResult =
   | OidcIdTokenAuthenticationSuccess;
 
 export interface OidcIdTokenAuthenticator {
-  authenticateIdToken(idToken: string): Promise<OidcIdTokenAuthenticationResult>;
+  authenticateIdToken(
+    idToken: string,
+    observe?: (event: OidcIdTokenAuthenticationEvent) => void,
+  ): Promise<OidcIdTokenAuthenticationResult>;
 }
 
 export interface OidcIdTokenAuthenticatorDependencies {
@@ -237,7 +240,11 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
     this.#subjectTokenAudience = trust.subjectTokenAudience;
   }
 
-  public async authenticateIdToken(idToken: string): Promise<OidcIdTokenAuthenticationResult> {
+  public async authenticateIdToken(
+    idToken: string,
+    observe: ((event: OidcIdTokenAuthenticationEvent) => void) | undefined = this.#dependencies
+      .observe,
+  ): Promise<OidcIdTokenAuthenticationResult> {
     const unverifiedIssuer = issuerClaimWithoutVerification(idToken);
 
     if (unverifiedIssuer === null) {
@@ -259,7 +266,11 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
     }
 
     try {
-      const providerMetadata = await this.#providerMetadata(providerRegistration, providerState);
+      const providerMetadata = await this.#providerMetadata(
+        providerRegistration,
+        providerState,
+        observe,
+      );
       const acceptedIdTokenSigningAlgorithms = providerMetadata.acceptedIdTokenSigningAlgorithms;
       const protectedHeader = decodeProtectedHeader(idToken);
 
@@ -271,7 +282,7 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
         return subjectTokenRejected("ERR_JOSE_ALG_NOT_ALLOWED");
       }
 
-      let cachedJwks = await this.#remoteJwks(providerMetadata, providerState, false);
+      let cachedJwks = await this.#remoteJwks(providerMetadata, providerState, false, observe);
       let verifiedIdToken: VerifiedOidcIdToken;
 
       try {
@@ -287,7 +298,7 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
           throw error;
         }
 
-        cachedJwks = await this.#remoteJwks(providerMetadata, providerState, true);
+        cachedJwks = await this.#remoteJwks(providerMetadata, providerState, true, observe);
         verifiedIdToken = await verifyIdToken({
           acceptedIdTokenSigningAlgorithms,
           cachedJwks,
@@ -322,6 +333,7 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
   async #providerMetadata(
     providerRegistration: OidcProviderRegistration,
     providerState: ProviderState,
+    observe: ((event: OidcIdTokenAuthenticationEvent) => void) | undefined,
   ): Promise<ValidatedOidcProviderMetadata> {
     const now = this.#dependencies.now().getTime();
 
@@ -343,6 +355,7 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
           "provider_configuration",
           providerState.metadata,
           providerState.metadataGeneration,
+          observe,
         );
 
         return providerState.metadata.value;
@@ -356,6 +369,7 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
         providerRegistration,
         providerState,
         now,
+        observe,
       );
     }
 
@@ -372,6 +386,7 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
           "provider_configuration",
           providerState.metadata,
           providerState.metadataGeneration,
+          observe,
         );
 
         return providerState.metadata.value;
@@ -385,6 +400,7 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
     providerRegistration: OidcProviderRegistration,
     providerState: ProviderState,
     now: number,
+    observe: ((event: OidcIdTokenAuthenticationEvent) => void) | undefined,
   ): Promise<ValidatedOidcProviderMetadata> {
     try {
       const refreshed = await this.#fetchAndValidateProviderMetadata(providerRegistration);
@@ -394,25 +410,31 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
       providerState.metadata = refreshed.cacheable ? refreshed : undefined;
       providerState.metadataFailure = undefined;
       providerState.metadataGeneration = metadataGeneration;
-      this.#observe({
-        event: "oidc_provider_configuration_refreshed",
-        ...cacheFreshnessDiagnostics(refreshed),
-        issuer: providerRegistration.issuer,
-        jwkSetHost: refreshed.value.jwksUri.hostname,
-        metadataGeneration,
-      });
+      this.#observe(
+        {
+          event: "oidc_provider_configuration_refreshed",
+          ...cacheFreshnessDiagnostics(refreshed),
+          issuer: providerRegistration.issuer,
+          jwkSetHost: refreshed.value.jwksUri.hostname,
+          metadataGeneration,
+        },
+        observe,
+      );
 
       if (previousJwksUri !== undefined && previousJwksUri !== refreshed.value.jwksUri.href) {
         providerState.jwks = undefined;
         providerState.jwksFailure = undefined;
         providerState.jwksRefreshAllowedAfter = undefined;
-        this.#observe({
-          event: "oidc_provider_jwks_uri_changed",
-          issuer: providerRegistration.issuer,
-          jwkSetHost: refreshed.value.jwksUri.hostname,
-          metadataGeneration,
-          previousJwkSetHost: new URL(previousJwksUri).hostname,
-        });
+        this.#observe(
+          {
+            event: "oidc_provider_jwks_uri_changed",
+            issuer: providerRegistration.issuer,
+            jwkSetHost: refreshed.value.jwksUri.hostname,
+            metadataGeneration,
+            previousJwkSetHost: new URL(previousJwksUri).hostname,
+          },
+          observe,
+        );
       }
 
       return refreshed.value;
@@ -427,6 +449,7 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
         error,
         providerState.metadata,
         providerState.metadataGeneration,
+        observe,
       );
 
       throw error;
@@ -465,6 +488,7 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
     providerMetadata: ValidatedOidcProviderMetadata,
     providerState: ProviderState,
     forceRefresh: boolean,
+    observe: ((event: OidcIdTokenAuthenticationEvent) => void) | undefined,
   ): Promise<CachedJwks> {
     const now = this.#dependencies.now().getTime();
     const current = providerState.jwks;
@@ -488,12 +512,15 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
       jwksResolutionIdentitiesEqual(current.value.identity, identity) &&
       now < (providerState.jwksRefreshAllowedAfter ?? 0)
     ) {
-      this.#observe({
-        event: "oidc_jwk_set_refresh_suppressed",
-        issuer: providerMetadata.issuer,
-        jwkSetHost: providerMetadata.jwksUri.hostname,
-        metadataGeneration: providerState.metadataGeneration,
-      });
+      this.#observe(
+        {
+          event: "oidc_jwk_set_refresh_suppressed",
+          issuer: providerMetadata.issuer,
+          jwkSetHost: providerMetadata.jwksUri.hostname,
+          metadataGeneration: providerState.metadataGeneration,
+        },
+        observe,
+      );
 
       return current.value;
     }
@@ -514,6 +541,7 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
           "jwk_set",
           current,
           providerState.metadataGeneration,
+          observe,
         );
 
         return current.value;
@@ -562,6 +590,7 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
         error,
         current,
         providerState.metadataGeneration,
+        observe,
       );
 
       if (
@@ -575,6 +604,7 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
           "jwk_set",
           current,
           providerState.metadataGeneration,
+          observe,
         );
 
         return current.value;
@@ -643,8 +673,11 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
     );
   }
 
-  #observe(event: OidcIdTokenAuthenticationEvent): void {
-    this.#dependencies.observe?.(event);
+  #observe(
+    event: OidcIdTokenAuthenticationEvent,
+    observe: ((event: OidcIdTokenAuthenticationEvent) => void) | undefined,
+  ): void {
+    observe?.(event);
   }
 
   #observeRefreshFailure(
@@ -653,21 +686,25 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
     error: unknown,
     current: CacheEntry<unknown> | undefined,
     metadataGeneration: number | undefined,
+    observe: ((event: OidcIdTokenAuthenticationEvent) => void) | undefined,
   ): void {
     const diagnosticCode = diagnosticCodeOf(error);
     const providerHttpStatus = providerHttpStatusOf(error);
 
-    this.#observe({
-      remoteDocumentKind,
-      ...(current === undefined ? {} : cacheFreshnessDiagnostics(current)),
-      ...(diagnosticCode === undefined ? {} : { diagnosticCode }),
-      event: "oidc_remote_document_refresh_failed",
-      issuer,
-      ...(metadataGeneration === undefined || metadataGeneration === 0
-        ? {}
-        : { metadataGeneration }),
-      ...(providerHttpStatus === undefined ? {} : { providerHttpStatus }),
-    });
+    this.#observe(
+      {
+        remoteDocumentKind,
+        ...(current === undefined ? {} : cacheFreshnessDiagnostics(current)),
+        ...(diagnosticCode === undefined ? {} : { diagnosticCode }),
+        event: "oidc_remote_document_refresh_failed",
+        issuer,
+        ...(metadataGeneration === undefined || metadataGeneration === 0
+          ? {}
+          : { metadataGeneration }),
+        ...(providerHttpStatus === undefined ? {} : { providerHttpStatus }),
+      },
+      observe,
+    );
   }
 
   #observeStaleOidcRemoteDocument(
@@ -675,14 +712,18 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
     remoteDocumentKind: "jwk_set" | "provider_configuration",
     current: CacheEntry<unknown>,
     metadataGeneration: number | undefined,
+    observe: ((event: OidcIdTokenAuthenticationEvent) => void) | undefined,
   ): void {
-    this.#observe({
-      ...cacheFreshnessDiagnostics(current),
-      remoteDocumentKind,
-      event: "oidc_remote_document_stale_used",
-      issuer,
-      ...(metadataGeneration === undefined ? {} : { metadataGeneration }),
-    });
+    this.#observe(
+      {
+        ...cacheFreshnessDiagnostics(current),
+        remoteDocumentKind,
+        event: "oidc_remote_document_stale_used",
+        issuer,
+        ...(metadataGeneration === undefined ? {} : { metadataGeneration }),
+      },
+      observe,
+    );
   }
 }
 

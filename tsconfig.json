@@ -3,7 +3,10 @@
   "compilerOptions": {
     "lib": ["ES2024", "WebWorker"],
     "rootDir": ".",
-    "types": ["@cloudflare/vitest-pool-workers/types", "@cloudflare/workers-types", "node"]
+    "types": ["@cloudflare/vitest-pool-workers/types", "@cloudflare/workers-types", "node"],
+    "paths": {
+      "@github-app-token-broker/token-exchange": ["./packages/token-exchange/src/index.ts"]
+    }
   },
   "include": ["packages/**/*.ts", "test/**/*.ts", "vitest.config.ts", "workers/**/*.ts"],
   "exclude": ["workers/**/src/runtime.generated.d.ts"]

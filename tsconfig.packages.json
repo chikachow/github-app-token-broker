@@ -3,7 +3,10 @@
   "compilerOptions": {
     "lib": ["ES2024", "WebWorker"],
     "rootDir": "packages",
-    "types": ["@cloudflare/workers-types"]
+    "types": ["@cloudflare/workers-types"],
+    "paths": {
+      "@github-app-token-broker/token-exchange": ["./packages/token-exchange/src/index.ts"]
+    }
   },
   "include": ["packages/*/src/**/*.ts"]
 }

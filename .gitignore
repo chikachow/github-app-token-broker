@@ -4,6 +4,7 @@
 workers/*/src/runtime.generated.d.ts
 .local-secrets/
 coverage
+dist
 node_modules
 *.key
 *.p8

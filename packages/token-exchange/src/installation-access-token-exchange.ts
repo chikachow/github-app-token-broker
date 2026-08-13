@@ -7,8 +7,9 @@ import type { TokenIssuancePolicy } from "@github-app-token-broker/token-issuanc
 import {
   type InstallationAccessTokenIssuanceFailureReason,
   issueInstallationAccessTokenForContext,
-} from "./policy/installation-access-token-issuance.ts";
+} from "./installation-access-token-issuance.ts";
 import { authenticateOidcIdToken, type OidcAuthenticationFailureReason } from "./authentication.ts";
+import type { TokenExchangeEvent } from "./events.ts";
 import type { InstallationAccessTokenRequest } from "@github-app-token-broker/github/installation-access-token-request";
 
 type TokenExchangeAuthorizationFailureReason = Extract<
@@ -44,6 +45,7 @@ export interface InstallationAccessTokenExchange {
     readonly request: Request;
     readonly subjectToken: string;
     readonly tokenRequest: InstallationAccessTokenRequest;
+    readonly observe: (event: TokenExchangeEvent) => void;
   }): Promise<InstallationAccessTokenExchangeResult>;
 }
 
@@ -57,11 +59,12 @@ export function createInstallationAccessTokenExchange({
   tokenIssuancePolicy: TokenIssuancePolicy;
 }): InstallationAccessTokenExchange {
   return {
-    async exchange({ githubApp, request, subjectToken, tokenRequest }) {
+    async exchange({ githubApp, observe, request, subjectToken, tokenRequest }) {
       const authentication = await authenticateOidcIdToken(
         subjectToken,
         request,
         oidcIdTokenAuthenticator,
+        observe,
       );
 
       if (!authentication.ok) {
@@ -78,6 +81,8 @@ export function createInstallationAccessTokenExchange({
         authentication.context,
         tokenRequest,
         githubAppDependencies,
+        undefined,
+        observe,
       );
 
       if (issuance.ok) {
