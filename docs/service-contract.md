@@ -105,7 +105,8 @@ Request, authentication, policy, and service-level failures map as follows:
 - unsupported grant type: `400 {"error":"unsupported_grant_type"}`
 - rate limit exceeded: `429 {"error":"temporarily_unavailable"}`
 - body too large: `413 {"error":"invalid_request"}`
-- OpenID Provider Configuration or JWK Set unavailable: `503 {"error":"temporarily_unavailable"}`
+- OpenID Provider Configuration transport failure, timeout, or non-success response, or JWK Set unavailable: `503 {"error":"temporarily_unavailable"}`
+- invalid OpenID Provider Configuration representation or metadata: `400 {"error":"invalid_request"}`
 - missing, empty, malformed, or unsupported `resource` parameter: `400 {"error":"invalid_target"}`
 - missing, empty, malformed, ambiguous, or unsupported scope: `400 {"error":"invalid_scope"}`
 - Requested Permissions not covered by any Permit Statement composition for a supported Repository Resource: `400 {"error":"invalid_scope"}`
@@ -144,7 +145,9 @@ consumes, a successful GitHub response body is limited to `64 KiB`. A larger
 upstream document is an invalid successful representation and follows the
 `502` mapping above; it is not derived from a Token Exchange Client parameter.
 
-OpenID Provider Configuration or JWK Set unavailability means github-app-token-broker cannot obtain validated OpenID Provider Metadata or a usable JWK Set: network failures, timeouts, non-200 responses, unexpected media types, oversized responses, malformed JSON or shape, an issuer mismatch, an invalid `jwks_uri`, incompatible advertised algorithms, an empty or wholly incompatible JWK Set, or ambiguous provider key material. Bounded last-known-good OpenID Provider Metadata or a JWK Set may be used according to documented cache controls. Responses marked [`Cache-Control: no-cache`](https://www.rfc-editor.org/rfc/rfc9111#section-5.2.2.4) require successful revalidation before reuse and are never used as stale fallback after a failed revalidation. ID Tokens whose protected header names a `kid` absent from an otherwise usable JWK Set are invalid subject tokens and return `400 {"error":"invalid_request"}` because the protected header is part of the Client-presented token.
+OpenID Provider Configuration transport failures, timeouts, and non-success responses mean github-app-token-broker cannot obtain Provider Metadata and return `503 {"error":"temporarily_unavailable"}`. A successfully retrieved Provider Configuration whose representation or consumed metadata is invalid instead makes the subject token unverifiable and returns `400 {"error":"invalid_request"}`. This includes unexpected media types, oversized responses, malformed JSON or shape, an issuer mismatch, an invalid `jwks_uri`, and no intersection between the provider's advertised algorithms and the registration's accepted algorithms.
+
+JWK Set network failures, timeouts, non-200 responses, unexpected media types, oversized responses, malformed JSON or shape, an empty or wholly incompatible JWK Set, or ambiguous provider key material mean github-app-token-broker cannot obtain a usable JWK Set and return `503 {"error":"temporarily_unavailable"}`. Bounded last-known-good OpenID Provider Metadata or a JWK Set may be used according to documented cache controls. Responses marked [`Cache-Control: no-cache`](https://www.rfc-editor.org/rfc/rfc9111#section-5.2.2.4) require successful revalidation before reuse and are never used as stale fallback after a failed revalidation. ID Tokens whose protected header names a `kid` absent from an otherwise usable JWK Set are invalid subject tokens and return `400 {"error":"invalid_request"}` because the protected header is part of the Client-presented token.
 
 ### Supported OIDC Provider Registrations
 
