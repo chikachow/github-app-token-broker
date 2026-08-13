@@ -268,9 +268,11 @@ GitHub's installation authority are independent, cumulative controls.
 
 The authenticator exposes domain failures:
 
-- `subject_token_rejected` for Client-presented invalid tokens and
-  unregistered issuers;
-- `provider_unavailable` when required validated Provider Metadata or a usable
+- `subject_token_rejected` for Client-presented invalid tokens, unregistered
+  issuers, and Provider Configuration responses whose representation or
+  consumed metadata is invalid;
+- `provider_unavailable` when Provider Configuration cannot be retrieved due
+  to transport failure, timeout, or a non-success response, or when a usable
   JWK Set cannot be obtained within the cache policy; and
 - `internal_failure` for violated local invariants or unexpected implementation
   behavior.

@@ -114,6 +114,78 @@ describe("github-app-token-broker-token-exchange", () => {
     expect(githubRequests).toEqual([]);
   });
 
+  it("maps invalid Provider Configuration metadata to invalid_request", async () => {
+    const githubRequests: string[] = [];
+    const response = await fetchTokenExchangeWithDependencies(
+      "https://example.test/token",
+      {
+        body: await tokenExchangeRequestBody(),
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        method: "POST",
+      },
+      {
+        fetch: async (input, init) => {
+          const request = new Request(input, init);
+
+          if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
+            return new Response("{}", { headers: { "content-type": "text/plain" } });
+          }
+
+          githubRequests.push(request.url);
+          return fetchGitHubTestDouble(input, init);
+        },
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("www-authenticate")).toBeNull();
+    await expect(response.json()).resolves.toEqual({ error: "invalid_request" });
+    expect(githubRequests).toEqual([]);
+  });
+
+  it.each([
+    {
+      error: "server_error",
+      scenario: "non-rate-limit upstream failure",
+      status: 404,
+      tokenEndpointStatus: 502,
+    },
+    {
+      error: "temporarily_unavailable",
+      scenario: "retryable upstream failure",
+      status: 503,
+      tokenEndpointStatus: 503,
+    },
+  ])(
+    "maps a $scenario to its public Token Endpoint error",
+    async ({ error, status, tokenEndpointStatus }) => {
+      const response = await fetchTokenExchangeWithDependencies(
+        "https://example.test/token",
+        {
+          body: await tokenExchangeRequestBody(),
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          method: "POST",
+        },
+        {
+          fetch: async (input, init) => {
+            const request = new Request(input, init);
+
+            if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
+              return fetchOidcRemoteDocumentResponseTestDouble(request);
+            }
+
+            return request.method === "GET"
+              ? new Response("GitHub failure detail", { status })
+              : fetchGitHubTestDouble(input, init);
+          },
+        },
+      );
+
+      expect(response.status).toBe(tokenEndpointStatus);
+      await expect(response.json()).resolves.toEqual({ error });
+    },
+  );
+
   it("maps internal OIDC failures to server_error without a client challenge", async () => {
     const fetchExternal = vi.fn(testTokenExchangeWorkerRuntimeDependencies.fetch);
     const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
