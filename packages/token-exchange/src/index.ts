@@ -16,7 +16,7 @@ import { createTokenExchangeEndpoint } from "./token-exchange.ts";
 import type { TokenExchangeRequestContext } from "./events.ts";
 
 export type { TokenExchangeEvent, TokenExchangeRequestContext } from "./events.ts";
-export { oauthErrorResponse } from "./token-exchange.ts";
+export { maxTokenExchangeBodyBytes, oauthErrorResponse } from "./token-exchange.ts";
 
 export function snapshotTokenExchangeComposition(
   composition: TokenExchangeComposition,

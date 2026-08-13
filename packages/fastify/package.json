@@ -1,0 +1,24 @@
+{
+  "name": "@github-app-token-broker/fastify",
+  "version": "0.0.1",
+  "private": true,
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "scripts": {
+    "build": "tsdown src/index.ts --clean --dts --format esm --platform node --target node24 --deps.never-bundle fastify --deps.never-bundle @github-app-token-broker/token-exchange"
+  },
+  "dependencies": {
+    "@github-app-token-broker/token-exchange": "workspace:*"
+  },
+  "peerDependencies": {
+    "fastify": "^5.0.0"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "@github-app-token-broker/example-fastify-host",
+  "version": "0.0.1",
+  "private": true,
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "dist/index.mjs",
+  "types": "dist/index.d.mts",
+  "scripts": {
+    "build": "pnpm --filter @github-app-token-broker/token-exchange run build && pnpm --filter @github-app-token-broker/fastify run build && tsdown --config tsdown.config.ts"
+  },
+  "dependencies": {
+    "@github-app-token-broker/fastify": "workspace:*",
+    "@github-app-token-broker/oidc-provider-github-actions": "workspace:*",
+    "@github-app-token-broker/token-exchange": "workspace:*",
+    "@github-app-token-broker/token-issuance-policy": "workspace:*",
+    "fastify": "5.11.3",
+    "jose": "6.2.8",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3"
+  }
+}

@@ -6,6 +6,10 @@ import { tokenExchangeOidcNodeFixture } from "./test/support/token-exchange-oidc
 export default defineConfig({
   resolve: {
     alias: {
+      "@github-app-token-broker/fastify": new URL(
+        "./packages/fastify/src/index.ts",
+        import.meta.url,
+      ).pathname,
       "@github-app-token-broker/token-exchange": new URL(
         "./packages/token-exchange/src/index.ts",
         import.meta.url,
@@ -37,8 +41,20 @@ export default defineConfig({
         test: {
           allowOnly: false,
           detectAsyncLeaks: true,
-          exclude: [...configDefaults.exclude, "test/worker-integration/**"],
+          exclude: [
+            ...configDefaults.exclude,
+            "test/fastify.test.ts",
+            "test/worker-integration/**",
+          ],
           name: "unit",
+        },
+      },
+      {
+        test: {
+          allowOnly: false,
+          detectAsyncLeaks: true,
+          include: ["test/fastify.test.ts"],
+          name: "node",
         },
       },
       {

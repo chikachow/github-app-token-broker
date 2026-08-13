@@ -9,7 +9,7 @@ import type {
 import type { InstallationAccessTokenIssuanceFailureReason } from "./installation-access-token-issuance.ts";
 import type { TokenExchangeApplicationContext, TokenExchangeRequestContext } from "./events.ts";
 
-const maxTokenExchangeBodyBytes = 64 * 1024;
+export const maxTokenExchangeBodyBytes = 64 * 1024;
 const tokenExchangeGrantType = "urn:ietf:params:oauth:grant-type:token-exchange";
 const accessTokenType = "urn:ietf:params:oauth:token-type:access_token";
 const legacyGithubInstallationAccessTokenType =
