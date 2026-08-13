@@ -1,4 +1,7 @@
-import type { GitHubAppDependencies, GitHubAppEnv } from "@github-app-token-broker/github/app";
+import type {
+  GitHubAppConfiguration,
+  GitHubAppDependencies,
+} from "@github-app-token-broker/github/app";
 import type { OidcIdTokenAuthenticator } from "@github-app-token-broker/oidc/id-token-authenticator";
 import type { TokenIssuancePolicy } from "@github-app-token-broker/token-issuance-policy";
 import {
@@ -37,7 +40,7 @@ export type InstallationAccessTokenExchangeResult =
 
 export interface InstallationAccessTokenExchange {
   exchange(input: {
-    readonly githubApp: GitHubAppEnv;
+    readonly githubApp: GitHubAppConfiguration;
     readonly request: Request;
     readonly subjectToken: string;
     readonly tokenRequest: InstallationAccessTokenRequest;

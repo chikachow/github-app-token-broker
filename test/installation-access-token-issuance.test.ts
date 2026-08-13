@@ -18,7 +18,10 @@ import {
 } from "@github-app-token-broker/token-issuance-policy";
 
 const application = {
-  githubApp: testEnv,
+  githubApp: {
+    appId: testEnv.GITHUB_APP_ID,
+    privateKey: testEnv.GITHUB_APP_PRIVATE_KEY,
+  },
   tokenIssuancePolicy: testTokenIssuancePolicy,
 };
 
@@ -239,7 +242,7 @@ describe("Installation Access Token Issuance", () => {
 
     await expect(
       issueInstallationAccessTokenForContext(
-        { ...application.githubApp, GITHUB_APP_PRIVATE_KEY: privateKey },
+        { ...application.githubApp, privateKey },
         application.tokenIssuancePolicy,
         { verifiedSubjectToken, verificationEvidence },
         tokenRequest,

@@ -4,7 +4,10 @@ import {
   resolveInstallationForRepository,
 } from "@github-app-token-broker/github/app";
 import { GitHubApiError, GitHubApiTransportError } from "@github-app-token-broker/github/http";
-import type { GitHubAppDependencies, GitHubAppEnv } from "@github-app-token-broker/github/app";
+import type {
+  GitHubAppConfiguration,
+  GitHubAppDependencies,
+} from "@github-app-token-broker/github/app";
 import type { AuthenticatedContext } from "../authentication.ts";
 import type { InstallationAccessTokenRequest } from "@github-app-token-broker/github/installation-access-token-request";
 import type { TokenIssuancePolicy } from "@github-app-token-broker/token-issuance-policy";
@@ -37,7 +40,7 @@ const defaultInstallationAccessTokenIssuanceOperations = {
 } satisfies InstallationAccessTokenIssuanceOperations;
 
 export async function issueInstallationAccessTokenForContext(
-  githubApp: GitHubAppEnv,
+  githubApp: GitHubAppConfiguration,
   tokenIssuancePolicy: TokenIssuancePolicy,
   authenticationContext: AuthenticatedContext,
   installationAccessTokenRequest: InstallationAccessTokenRequest,

@@ -21,7 +21,7 @@ describe("GitHub API HTTP adapter", () => {
 
     await expect(
       fetchGitHubApiJson(
-        { GITHUB_API_BASE_URL: "https://api.github.test/base" },
+        { apiBaseUrl: "https://api.github.test/base" },
         { fetch: fetchGitHub },
         {
           headers: { accept: "application/json" },

@@ -14,8 +14,8 @@ describe("GitHub App authentication", () => {
     const now = new Date("2026-06-29T12:34:00.000Z");
     const nowSeconds = Math.floor(now.getTime() / 1000);
     const githubApp = {
-      GITHUB_APP_ID: "2419473",
-      GITHUB_APP_PRIVATE_KEY: testPrivateKeyPem,
+      appId: "2419473",
+      privateKey: testPrivateKeyPem,
     };
     const fetchGitHub = vi.fn<typeof fetch>(async (input, init) => {
       const request = new Request(input, init);
@@ -74,9 +74,9 @@ describe("GitHub App authentication", () => {
 
     const installation = await resolveInstallationForRepository(
       {
-        GITHUB_API_BASE_URL: "https://api.github.test",
-        GITHUB_APP_ID: "2419473",
-        GITHUB_APP_PRIVATE_KEY: secretStoreBinding,
+        apiBaseUrl: "https://api.github.test",
+        appId: "2419473",
+        privateKey: secretStoreBinding,
       },
       testRepository,
       {
@@ -197,8 +197,8 @@ describe("GitHub App authentication", () => {
 function resolveTestInstallation(repository: string, response: Response) {
   return resolveInstallationForRepository(
     {
-      GITHUB_APP_ID: "2419473",
-      GITHUB_APP_PRIVATE_KEY: testPrivateKeyPem,
+      appId: "2419473",
+      privateKey: testPrivateKeyPem,
     },
     repository,
     {
@@ -211,8 +211,8 @@ function resolveTestInstallation(repository: string, response: Response) {
 function createTestInstallationAccessToken(response: Response) {
   return createInstallationAccessTokenForRepositoryName(
     {
-      GITHUB_APP_ID: "2419473",
-      GITHUB_APP_PRIVATE_KEY: testPrivateKeyPem,
+      appId: "2419473",
+      privateKey: testPrivateKeyPem,
     },
     12345,
     "fixture-repository",

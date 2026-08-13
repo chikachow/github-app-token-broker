@@ -9,8 +9,8 @@ const maxGitHubErrorBodyBytes = 16 * 1024;
 const maxGitHubSuccessfulBodyBytes = 64 * 1024;
 const githubErrorResponseSchema = z.object({ message: z.string() });
 
-export interface GitHubApiEnv {
-  GITHUB_API_BASE_URL?: string;
+export interface GitHubApiConfiguration {
+  readonly apiBaseUrl?: string;
 }
 
 export interface GitHubApiDependencies {
@@ -47,7 +47,7 @@ export class GitHubApiTransportError extends Error {
 }
 
 export async function fetchGitHubApiJson<Schema extends z.ZodType>(
-  env: GitHubApiEnv,
+  configuration: GitHubApiConfiguration,
   dependencies: GitHubApiDependencies,
   {
     headers,
@@ -67,7 +67,7 @@ export async function fetchGitHubApiJson<Schema extends z.ZodType>(
     requestHeaders.set(name, value);
   }
 
-  const baseUrl = env.GITHUB_API_BASE_URL ?? "https://api.github.com";
+  const baseUrl = configuration.apiBaseUrl ?? "https://api.github.com";
   const requestUrl = new URL(path.replace(/^\//u, ""), ensureTrailingSlash(baseUrl));
 
   let response: Response;

@@ -122,8 +122,8 @@ function githubApp(env: TokenExchangeWorkerEnv) {
   return {
     ...(env.GITHUB_API_BASE_URL === undefined
       ? {}
-      : { GITHUB_API_BASE_URL: env.GITHUB_API_BASE_URL }),
-    GITHUB_APP_ID: env.GITHUB_APP_ID,
-    GITHUB_APP_PRIVATE_KEY: env.GITHUB_APP_PRIVATE_KEY,
+      : { apiBaseUrl: env.GITHUB_API_BASE_URL }),
+    appId: env.GITHUB_APP_ID,
+    privateKey: env.GITHUB_APP_PRIVATE_KEY,
   };
 }

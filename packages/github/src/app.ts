@@ -8,7 +8,7 @@ import {
   githubAcceptHeader,
   githubApiVersion,
   type GitHubApiDependencies,
-  type GitHubApiEnv,
+  type GitHubApiConfiguration,
 } from "./http.ts";
 import { resolveSecretText, type SecretTextBinding } from "./secrets.ts";
 
@@ -39,9 +39,9 @@ export class GitHubAppConfigurationError extends Error {
   }
 }
 
-export type GitHubAppEnv = GitHubApiEnv & {
-  GITHUB_APP_ID: string;
-  GITHUB_APP_PRIVATE_KEY: SecretTextBinding;
+export type GitHubAppConfiguration = GitHubApiConfiguration & {
+  readonly appId: string;
+  readonly privateKey: SecretTextBinding;
 };
 
 export interface GitHubAppDependencies extends GitHubApiDependencies {
@@ -65,12 +65,12 @@ const githubInstallationAccessTokenResponseSchema = z.object({
 });
 
 export async function resolveInstallationForRepository(
-  env: GitHubAppEnv,
+  configuration: GitHubAppConfiguration,
   repository: string,
   dependencies: GitHubAppDependencies = defaultGitHubAppDependencies,
 ): Promise<ResolvedGitHubAppInstallation> {
-  const body = await fetchGitHubApiJson(env, dependencies, {
-    headers: await appAuthenticationHeaders(env, dependencies),
+  const body = await fetchGitHubApiJson(configuration, dependencies, {
+    headers: await appAuthenticationHeaders(configuration, dependencies),
     path: `/repos/${repository}/installation`,
     responseSchema: githubInstallationResponseSchema,
   });
@@ -95,7 +95,7 @@ function githubRepositoryOwnerMatches(repository: string, installationOwner: str
 }
 
 export async function createInstallationAccessTokenForRepositoryName(
-  env: GitHubAppEnv,
+  configuration: GitHubAppConfiguration,
   installationId: number,
   repositoryName: string,
   permissions: Record<string, string>,
@@ -106,8 +106,8 @@ export async function createInstallationAccessTokenForRepositoryName(
     repositories: [repositoryName],
   };
 
-  const responseBody = await fetchGitHubApiJson(env, dependencies, {
-    headers: await appAuthenticationHeaders(env, dependencies),
+  const responseBody = await fetchGitHubApiJson(configuration, dependencies, {
+    headers: await appAuthenticationHeaders(configuration, dependencies),
     init: {
       body: JSON.stringify(requestBody),
       headers: {
@@ -128,10 +128,10 @@ export async function createInstallationAccessTokenForRepositoryName(
 }
 
 async function appAuthenticationHeaders(
-  env: GitHubAppEnv,
+  configuration: GitHubAppConfiguration,
   dependencies: GitHubAppDependencies,
 ): Promise<HeadersInit> {
-  const jwt = await createGitHubAppJwt(env, () => dependencies.now());
+  const jwt = await createGitHubAppJwt(configuration, () => dependencies.now());
 
   return {
     accept: githubAcceptHeader,
@@ -141,15 +141,18 @@ async function appAuthenticationHeaders(
   };
 }
 
-async function createGitHubAppJwt(env: GitHubAppEnv, now: () => Date): Promise<string> {
-  const privateKey = await importedGitHubAppPrivateKey(await githubAppPrivateKeyPem(env));
+async function createGitHubAppJwt(
+  configuration: GitHubAppConfiguration,
+  now: () => Date,
+): Promise<string> {
+  const privateKey = await importedGitHubAppPrivateKey(await githubAppPrivateKeyPem(configuration));
   const nowSeconds = Math.floor(now().getTime() / 1000);
 
   return new SignJWT({})
     .setProtectedHeader({ alg: "RS256" })
     .setIssuedAt(nowSeconds - 60)
     .setExpirationTime(nowSeconds + githubJwtLifetimeSeconds)
-    .setIssuer(env.GITHUB_APP_ID)
+    .setIssuer(configuration.appId)
     .sign(privateKey);
 }
 
@@ -169,8 +172,8 @@ async function importedGitHubAppPrivateKey(privateKeyPem: string): Promise<Crypt
   return imported;
 }
 
-async function githubAppPrivateKeyPem(env: GitHubAppEnv): Promise<string> {
-  const privateKeyPem = await resolveSecretText(env.GITHUB_APP_PRIVATE_KEY);
+async function githubAppPrivateKeyPem(configuration: GitHubAppConfiguration): Promise<string> {
+  const privateKeyPem = await resolveSecretText(configuration.privateKey);
 
   if (privateKeyPem !== undefined && privateKeyPem.length > 0) {
     return privateKeyPem;
