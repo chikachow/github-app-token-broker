@@ -8,6 +8,9 @@ import { testInstallationId, testRepository } from "./support/constants.ts";
 import { tokenExchangeRequestBody } from "./support/oidc.ts";
 import { testPrivateKeyPem } from "./support/rsa-test-key-pair.ts";
 import { testTokenIssuancePolicy } from "./support/token-issuance-policy.ts";
+import { createTokenExchangeEndpoint } from "../packages/token-exchange/src/token-exchange.ts";
+import type { ExchangeInstallationAccessToken } from "../packages/token-exchange/src/installation-access-token-exchange.ts";
+import { mustNormalizeTokenRequest } from "./support/installation-access-token-request.ts";
 
 describe("createGitHubAppTokenExchange", () => {
   it("exposes method and request validation through its runtime-neutral handler", async () => {
@@ -136,5 +139,71 @@ describe("createGitHubAppTokenExchange", () => {
       `https://github-original.example/app/installations/${testInstallationId}/access_tokens`,
     ]);
     expect(observedJwtIssuers).toEqual(["original-app-id", "original-app-id"]);
+  });
+});
+
+describe("token exchange endpoint", () => {
+  it("does not invoke the application function for a malformed request", async () => {
+    const exchangeInstallationAccessToken = vi.fn<ExchangeInstallationAccessToken>();
+    const tokenExchange = createTokenExchangeEndpoint(
+      exchangeInstallationAccessToken,
+      () => new Date("2026-01-01T00:00:00Z"),
+    );
+
+    const response = await tokenExchange(
+      new Request("https://broker.example/token", { body: "grant_type=invalid", method: "POST" }),
+      { observe: vi.fn() },
+    );
+
+    expect(response.status).toBe(400);
+    expect(exchangeInstallationAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("passes a normalized command and explicit request diagnostics to the application function", async () => {
+    const exchangeInstallationAccessToken = vi.fn<ExchangeInstallationAccessToken>(async () => ({
+      expiresAt: "2026-01-01T00:01:30Z",
+      ok: true,
+      token: "ghs_test",
+    }));
+    const tokenExchange = createTokenExchangeEndpoint(
+      exchangeInstallationAccessToken,
+      () => new Date("2026-01-01T00:00:00Z"),
+    );
+    const observe = vi.fn();
+    const body = await tokenExchangeRequestBody();
+
+    const response = await tokenExchange(
+      new Request("https://broker.example/automation/token?ignored=true", {
+        body,
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          "user-agent": "test-agent",
+        },
+        method: "POST",
+      }),
+      { observe },
+    );
+
+    expect(exchangeInstallationAccessToken).toHaveBeenCalledWith(
+      {
+        subjectToken: new URLSearchParams(body).get("subject_token"),
+        tokenRequest: mustNormalizeTokenRequest({
+          resource: "https://api.github.com/repos/fixture-owner/fixture-source-repository",
+          scope: "contents:write pull_requests:write",
+        }),
+      },
+      {
+        observe,
+        request: { path: "/automation/token", userAgent: "test-agent" },
+      },
+    );
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      access_token: "ghs_test",
+      expires_in: 90,
+      issued_token_type: "urn:ietf:params:oauth:token-type:access_token",
+      scope: "contents:write pull_requests:write",
+      token_type: "Bearer",
+    });
   });
 });

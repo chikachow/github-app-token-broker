@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { VerifiedSubjectToken } from "@github-app-token-broker/oidc/id-token-authenticator";
 
 import {
-  issueInstallationAccessTokenForContext,
+  createIssueInstallationAccessToken,
   type InstallationAccessTokenIssuanceOperations,
 } from "../packages/token-exchange/src/installation-access-token-issuance.ts";
 import { GitHubApiError, GitHubApiTransportError } from "../packages/github/src/http.ts";
@@ -60,17 +60,19 @@ describe("Installation Access Token Issuance", () => {
 
     await expect(
       issueInstallationAccessToken({
-        fetch: async (input, init) => {
-          const request = new Request(input, init);
-          const url = new URL(request.url);
+        dependencies: {
+          fetch: async (input, init) => {
+            const request = new Request(input, init);
+            const url = new URL(request.url);
 
-          requestedPaths.push(url.pathname);
+            requestedPaths.push(url.pathname);
 
-          if (request.method === "GET" && url.pathname === `/repos/${testRepository}`) {
-            throw new Error("source repository metadata should not be fetched");
-          }
+            if (request.method === "GET" && url.pathname === `/repos/${testRepository}`) {
+              throw new Error("source repository metadata should not be fetched");
+            }
 
-          return fetchGitHubTestDouble(input, init);
+            return fetchGitHubTestDouble(input, init);
+          },
         },
       }),
     ).resolves.toMatchObject({
@@ -85,20 +87,22 @@ describe("Installation Access Token Issuance", () => {
 
     await expect(
       issueInstallationAccessToken({
-        fetch: async (input, init) => {
-          const request = new Request(input, init);
-          const url = new URL(request.url);
+        dependencies: {
+          fetch: async (input, init) => {
+            const request = new Request(input, init);
+            const url = new URL(request.url);
 
-          requestedRequests.push({ method: request.method, path: url.pathname });
+            requestedRequests.push({ method: request.method, path: url.pathname });
 
-          if (
-            request.method === "GET" &&
-            url.pathname === `/repos/${testRepository}/installation`
-          ) {
-            return githubInstallationResponse("transferred-owner", testInstallationId);
-          }
+            if (
+              request.method === "GET" &&
+              url.pathname === `/repos/${testRepository}/installation`
+            ) {
+              return githubInstallationResponse("transferred-owner", testInstallationId);
+            }
 
-          return new Response(null, { status: 500 });
+            return new Response(null, { status: 500 });
+          },
         },
       }),
     ).resolves.toEqual({ ok: false, reason: "upstream_failure" });
@@ -123,36 +127,39 @@ describe("Installation Access Token Issuance", () => {
     ]);
 
     await expect(
-      issueInstallationAccessTokenForContext(
-        application.githubApp,
-        policy,
+      createIssueInstallationAccessToken(
+        { githubApp: application.githubApp, tokenIssuancePolicy: policy },
+        {
+          githubAppDependencies: {
+            fetch: async (input, init) => {
+              const request = new Request(input, init);
+
+              if (request.method === "POST") {
+                forwardedBody = await request.json();
+
+                return Response.json(
+                  {
+                    expires_at: "2030-01-01T00:00:00Z",
+                    permissions: requestedPermissions,
+                    token: "ghs_arbitrary_permissions",
+                  },
+                  { status: 201 },
+                );
+              }
+
+              return fetchGitHubTestDouble(input, init);
+            },
+            now: () => testNow,
+          },
+        },
+      )(
         { verifiedSubjectToken, verificationEvidence },
         {
           ...tokenRequest,
           permissions: requestedPermissions,
           scope: "future_permission:admin issues:read",
         },
-        {
-          fetch: async (input, init) => {
-            const request = new Request(input, init);
-
-            if (request.method === "POST") {
-              forwardedBody = await request.json();
-
-              return Response.json(
-                {
-                  expires_at: "2030-01-01T00:00:00Z",
-                  permissions: requestedPermissions,
-                  token: "ghs_arbitrary_permissions",
-                },
-                { status: 201 },
-              );
-            }
-
-            return fetchGitHubTestDouble(input, init);
-          },
-          now: () => testNow,
-        },
+        vi.fn(),
       ),
     ).resolves.toMatchObject({ ok: true, token: "ghs_arbitrary_permissions" });
 
@@ -166,9 +173,10 @@ describe("Installation Access Token Issuance", () => {
     const logCalls: unknown[][] = [];
 
     await expect(
-      issueInstallationAccessToken({ fetch: fetchGitHubTestDouble }, (event) =>
-        logCalls.push([event]),
-      ),
+      issueInstallationAccessToken({
+        dependencies: { fetch: fetchGitHubTestDouble },
+        observe: (event) => logCalls.push([event]),
+      }),
     ).resolves.toMatchObject({
       ok: true,
       token: "ghs_test_token",
@@ -212,15 +220,11 @@ describe("Installation Access Token Issuance", () => {
     const operations = operationsThatRejectDuringInstallationResolution(error);
 
     await expect(
-      issueInstallationAccessTokenForContext(
-        application.githubApp,
-        application.tokenIssuancePolicy,
-        { verifiedSubjectToken, verificationEvidence },
-        tokenRequest,
-        { fetch: vi.fn(), now: () => testNow },
+      issueInstallationAccessToken({
+        dependencies: { fetch: vi.fn() },
+        observe: (event) => logCalls.push([event]),
         operations,
-        (event) => logCalls.push([event]),
-      ),
+      }),
     ).resolves.toEqual({ ok: false, reason });
 
     expect(operations.resolveInstallationForRepository).toHaveBeenCalledOnce();
@@ -244,15 +248,11 @@ describe("Installation Access Token Issuance", () => {
     const fetchGitHub = vi.fn(fetchGitHubTestDouble);
 
     await expect(
-      issueInstallationAccessTokenForContext(
-        { ...application.githubApp, privateKey },
-        application.tokenIssuancePolicy,
-        { verifiedSubjectToken, verificationEvidence },
-        tokenRequest,
-        { fetch: fetchGitHub, now: () => testNow },
-        undefined,
-        (event) => logCalls.push([event]),
-      ),
+      issueInstallationAccessToken({
+        dependencies: { fetch: fetchGitHub },
+        githubApp: { ...application.githubApp, privateKey },
+        observe: (event) => logCalls.push([event]),
+      }),
     ).resolves.toEqual({ ok: false, reason: "internal_failure" });
 
     expect(fetchGitHub).not.toHaveBeenCalled();
@@ -277,15 +277,11 @@ describe("Installation Access Token Issuance", () => {
       const operations = operationsThatRejectDuringTokenMinting(error);
 
       await expect(
-        issueInstallationAccessTokenForContext(
-          application.githubApp,
-          application.tokenIssuancePolicy,
-          { verifiedSubjectToken, verificationEvidence },
-          tokenRequest,
-          { fetch: vi.fn(), now: () => testNow },
+        issueInstallationAccessToken({
+          dependencies: { fetch: vi.fn() },
+          observe: (event) => logCalls.push([event]),
           operations,
-          (event) => logCalls.push([event]),
-        ),
+        }),
       ).resolves.toEqual({ ok: false, reason });
 
       expect(operations.resolveInstallationForRepository).toHaveBeenCalledOnce();
@@ -305,15 +301,11 @@ describe("Installation Access Token Issuance", () => {
     );
 
     await expect(
-      issueInstallationAccessTokenForContext(
-        application.githubApp,
-        application.tokenIssuancePolicy,
-        { verifiedSubjectToken, verificationEvidence },
-        tokenRequest,
-        { fetch: vi.fn(), now: () => testNow },
+      issueInstallationAccessToken({
+        dependencies: { fetch: vi.fn() },
+        observe: (event) => logCalls.push([event]),
         operations,
-        (event) => logCalls.push([event]),
-      ),
+      }),
     ).resolves.toEqual({ ok: false, reason: "internal_failure" });
 
     expectIssuanceErrorLog(logCalls, {
@@ -328,10 +320,8 @@ describe("Installation Access Token Issuance", () => {
     const fetchGitHub = vi.fn(fetchGitHubTestDouble);
 
     await expect(
-      issueInstallationAccessTokenForContext(
-        application.githubApp,
-        application.tokenIssuancePolicy,
-        {
+      issueInstallationAccessToken({
+        authenticationContext: {
           verifiedSubjectToken: {
             ...verifiedSubjectToken,
             claims: {
@@ -341,11 +331,9 @@ describe("Installation Access Token Issuance", () => {
           },
           verificationEvidence,
         },
-        tokenRequest,
-        { fetch: fetchGitHub, now: () => testNow },
-        undefined,
-        (event) => logCalls.push([event]),
-      ),
+        dependencies: { fetch: fetchGitHub },
+        observe: (event) => logCalls.push([event]),
+      }),
     ).resolves.toEqual({ ok: false, reason: "subject_token_unacceptable" });
 
     expect(logCalls).toContainEqual([
@@ -444,17 +432,32 @@ function expectLogsNotToContainGitHubAppCredentials(logCalls: unknown): void {
   expect(serializedLogCalls).not.toContain(application.githubApp.privateKey);
 }
 
-function issueInstallationAccessToken(
-  dependencies: Omit<Parameters<typeof issueInstallationAccessTokenForContext>[4], "now">,
-  observe?: Parameters<typeof issueInstallationAccessTokenForContext>[6],
-) {
-  return issueInstallationAccessTokenForContext(
-    application.githubApp,
-    application.tokenIssuancePolicy,
-    { verifiedSubjectToken, verificationEvidence },
+function issueInstallationAccessToken(options: {
+  readonly authenticationContext?: Parameters<
+    ReturnType<typeof createIssueInstallationAccessToken>
+  >[0];
+  readonly dependencies: Omit<
+    Parameters<typeof createIssueInstallationAccessToken>[1]["githubAppDependencies"],
+    "now"
+  >;
+  readonly githubApp?: Parameters<typeof createIssueInstallationAccessToken>[0]["githubApp"];
+  readonly observe?: Parameters<ReturnType<typeof createIssueInstallationAccessToken>>[2];
+  readonly operations?: InstallationAccessTokenIssuanceOperations;
+}) {
+  const issue = createIssueInstallationAccessToken(
+    {
+      githubApp: options.githubApp ?? application.githubApp,
+      tokenIssuancePolicy: application.tokenIssuancePolicy,
+    },
+    {
+      githubAppDependencies: { ...options.dependencies, now: () => testNow },
+      ...(options.operations === undefined ? {} : { operations: options.operations }),
+    },
+  );
+
+  return issue(
+    options.authenticationContext ?? { verifiedSubjectToken, verificationEvidence },
     tokenRequest,
-    { ...dependencies, now: () => testNow },
-    undefined,
-    observe,
+    options.observe ?? (() => undefined),
   );
 }

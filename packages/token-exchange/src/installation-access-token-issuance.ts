@@ -26,7 +26,7 @@ export type InstallationAccessTokenIssuanceFailureReason =
   | "upstream_failure"
   | "upstream_unavailable";
 
-export type InstallationAccessTokenIssuanceResult =
+type InstallationAccessTokenIssuanceResult =
   | { expiresAt: string; ok: true; token: string }
   | { ok: false; reason: InstallationAccessTokenIssuanceFailureReason };
 
@@ -40,129 +40,141 @@ const defaultInstallationAccessTokenIssuanceOperations = {
   resolveInstallationForRepository,
 } satisfies InstallationAccessTokenIssuanceOperations;
 
-export async function issueInstallationAccessTokenForContext(
-  githubApp: GitHubAppConfiguration,
-  tokenIssuancePolicy: TokenIssuancePolicy,
+export type IssueInstallationAccessToken = (
   authenticationContext: AuthenticatedContext,
-  installationAccessTokenRequest: InstallationAccessTokenRequest,
-  dependencies: GitHubAppDependencies,
-  operations: InstallationAccessTokenIssuanceOperations = defaultInstallationAccessTokenIssuanceOperations,
-  observe: (event: TokenExchangeEvent) => void = () => undefined,
-): Promise<InstallationAccessTokenIssuanceResult> {
-  const { verifiedSubjectToken } = authenticationContext;
-  const policyPermitted = tokenIssuancePolicyPermits(
-    tokenIssuancePolicy,
-    verifiedSubjectToken,
-    installationAccessTokenRequest,
-  );
+  tokenRequest: InstallationAccessTokenRequest,
+  observe: (event: TokenExchangeEvent) => void,
+) => Promise<InstallationAccessTokenIssuanceResult>;
 
-  if (!policyPermitted) {
-    const targetSupported = tokenIssuancePolicySupportsTarget(
-      tokenIssuancePolicy,
+export function createIssueInstallationAccessToken(
+  configuration: {
+    readonly githubApp: GitHubAppConfiguration;
+    readonly tokenIssuancePolicy: TokenIssuancePolicy;
+  },
+  dependencies: {
+    readonly githubAppDependencies: GitHubAppDependencies;
+    readonly operations?: InstallationAccessTokenIssuanceOperations;
+  },
+): IssueInstallationAccessToken {
+  const operations = dependencies.operations ?? defaultInstallationAccessTokenIssuanceOperations;
+
+  return async (authenticationContext, installationAccessTokenRequest, observe) => {
+    const { verifiedSubjectToken } = authenticationContext;
+    const policyPermitted = tokenIssuancePolicyPermits(
+      configuration.tokenIssuancePolicy,
+      verifiedSubjectToken,
       installationAccessTokenRequest,
     );
-    const requestedPermissionsSupported =
-      targetSupported &&
-      tokenIssuancePolicySupportsRequestedPermissions(
-        tokenIssuancePolicy,
+
+    if (!policyPermitted) {
+      const targetSupported = tokenIssuancePolicySupportsTarget(
+        configuration.tokenIssuancePolicy,
         installationAccessTokenRequest,
       );
+      const requestedPermissionsSupported =
+        targetSupported &&
+        tokenIssuancePolicySupportsRequestedPermissions(
+          configuration.tokenIssuancePolicy,
+          installationAccessTokenRequest,
+        );
 
-    observe({
-      error: {
-        message: "Token Issuance Policy did not permit Installation Access Token Issuance",
-        name: "Error",
-        status: undefined,
-      },
-      event: "installation_access_token_issuance_failed",
-      level: "error",
-      installation_access_token_request: installationAccessTokenRequestLogFields(
-        installationAccessTokenRequest,
-      ),
-      subject_token: subjectTokenLogFields(authenticationContext),
-      target_installation: {
-        id: undefined,
-      },
-      token_issuance_policy: {
-        permitted: false,
-      },
-    });
+      observe({
+        error: {
+          message: "Token Issuance Policy did not permit Installation Access Token Issuance",
+          name: "Error",
+          status: undefined,
+        },
+        event: "installation_access_token_issuance_failed",
+        level: "error",
+        installation_access_token_request: installationAccessTokenRequestLogFields(
+          installationAccessTokenRequest,
+        ),
+        subject_token: subjectTokenLogFields(authenticationContext),
+        target_installation: {
+          id: undefined,
+        },
+        token_issuance_policy: {
+          permitted: false,
+        },
+      });
 
-    return {
-      ok: false,
-      reason: !targetSupported
-        ? "target_unsupported"
-        : !requestedPermissionsSupported
-          ? "requested_permissions_unsupported"
-          : "subject_token_unacceptable",
-    };
-  }
+      return {
+        ok: false,
+        reason: !targetSupported
+          ? "target_unsupported"
+          : !requestedPermissionsSupported
+            ? "requested_permissions_unsupported"
+            : "subject_token_unacceptable",
+      };
+    }
 
-  let targetInstallationId: number | undefined;
+    let targetInstallationId: number | undefined;
 
-  try {
-    const requestedResourceName = `${installationAccessTokenRequest.resource.owner}/${installationAccessTokenRequest.resource.repository}`;
-    const targetInstallation = await operations.resolveInstallationForRepository(
-      githubApp,
-      requestedResourceName,
-      dependencies,
-    );
-    targetInstallationId = targetInstallation.id;
-    const installationAccessToken = await operations.createInstallationAccessTokenForRepositoryName(
-      githubApp,
-      targetInstallation.id,
-      installationAccessTokenRequest.resource.repository,
-      { ...installationAccessTokenRequest.permissions },
-      dependencies,
-    );
+    try {
+      const requestedResourceName = `${installationAccessTokenRequest.resource.owner}/${installationAccessTokenRequest.resource.repository}`;
+      const targetInstallation = await operations.resolveInstallationForRepository(
+        configuration.githubApp,
+        requestedResourceName,
+        dependencies.githubAppDependencies,
+      );
+      targetInstallationId = targetInstallation.id;
+      const installationAccessToken =
+        await operations.createInstallationAccessTokenForRepositoryName(
+          configuration.githubApp,
+          targetInstallation.id,
+          installationAccessTokenRequest.resource.repository,
+          { ...installationAccessTokenRequest.permissions },
+          dependencies.githubAppDependencies,
+        );
 
-    observe({
-      event: "installation_access_token_issuance_succeeded",
-      level: "info",
-      expires_at: installationAccessToken.expiresAt,
-      installation_access_token_request: installationAccessTokenRequestLogFields(
-        installationAccessTokenRequest,
-      ),
-      subject_token: subjectTokenLogFields(authenticationContext),
-      target_installation: {
-        id: targetInstallation.id,
-        repository: requestedResourceName,
-      },
-      token_issuance_policy: {
-        permitted: true,
-      },
-    });
+      observe({
+        event: "installation_access_token_issuance_succeeded",
+        level: "info",
+        expires_at: installationAccessToken.expiresAt,
+        installation_access_token_request: installationAccessTokenRequestLogFields(
+          installationAccessTokenRequest,
+        ),
+        subject_token: subjectTokenLogFields(authenticationContext),
+        target_installation: {
+          id: targetInstallation.id,
+          repository: requestedResourceName,
+        },
+        token_issuance_policy: {
+          permitted: true,
+        },
+      });
 
-    return {
-      expiresAt: installationAccessToken.expiresAt,
-      ok: true,
-      token: installationAccessToken.token,
-    };
-  } catch (error) {
-    const reason = reasonForInstallationAccessTokenIssuanceError(error);
+      return {
+        expiresAt: installationAccessToken.expiresAt,
+        ok: true,
+        token: installationAccessToken.token,
+      };
+    } catch (error) {
+      const reason = reasonForInstallationAccessTokenIssuanceError(error);
 
-    observe({
-      error: {
-        message: logMessageForInstallationAccessTokenIssuanceError(error),
-        name: error instanceof Error ? error.name : typeof error,
-        status: error instanceof GitHubApiError ? error.upstreamStatus : undefined,
-      },
-      event: "installation_access_token_issuance_failed",
-      level: "error",
-      installation_access_token_request: installationAccessTokenRequestLogFields(
-        installationAccessTokenRequest,
-      ),
-      subject_token: subjectTokenLogFields(authenticationContext),
-      target_installation: {
-        id: targetInstallationId,
-      },
-      token_issuance_policy: {
-        permitted: true,
-      },
-    });
+      observe({
+        error: {
+          message: logMessageForInstallationAccessTokenIssuanceError(error),
+          name: error instanceof Error ? error.name : typeof error,
+          status: error instanceof GitHubApiError ? error.upstreamStatus : undefined,
+        },
+        event: "installation_access_token_issuance_failed",
+        level: "error",
+        installation_access_token_request: installationAccessTokenRequestLogFields(
+          installationAccessTokenRequest,
+        ),
+        subject_token: subjectTokenLogFields(authenticationContext),
+        target_installation: {
+          id: targetInstallationId,
+        },
+        token_issuance_policy: {
+          permitted: true,
+        },
+      });
 
-    return { ok: false, reason };
-  }
+      return { ok: false, reason };
+    }
+  };
 }
 
 function reasonForInstallationAccessTokenIssuanceError(

@@ -2,14 +2,16 @@ import type {
   GitHubAppConfiguration,
   GitHubAppDependencies,
 } from "@github-app-token-broker/github/app";
-import type { OidcIdTokenAuthenticator } from "@github-app-token-broker/oidc/id-token-authenticator";
 import type { TokenIssuancePolicy } from "@github-app-token-broker/token-issuance-policy";
 import {
+  createIssueInstallationAccessToken,
   type InstallationAccessTokenIssuanceFailureReason,
-  issueInstallationAccessTokenForContext,
 } from "./installation-access-token-issuance.ts";
-import { authenticateOidcIdToken, type OidcAuthenticationFailureReason } from "./authentication.ts";
-import type { TokenExchangeEvent } from "./events.ts";
+import type {
+  AuthenticateSubjectToken,
+  OidcAuthenticationFailureReason,
+} from "./authentication.ts";
+import type { TokenExchangeApplicationContext } from "./events.ts";
 import type { InstallationAccessTokenRequest } from "@github-app-token-broker/github/installation-access-token-request";
 
 type TokenExchangeAuthorizationFailureReason = Extract<
@@ -39,70 +41,67 @@ export type InstallationAccessTokenExchangeResult =
       readonly stage: "issuance";
     };
 
-export interface InstallationAccessTokenExchange {
-  exchange(input: {
-    readonly githubApp: GitHubAppConfiguration;
-    readonly request: Request;
-    readonly subjectToken: string;
-    readonly tokenRequest: InstallationAccessTokenRequest;
-    readonly observe: (event: TokenExchangeEvent) => void;
-  }): Promise<InstallationAccessTokenExchangeResult>;
+export interface InstallationAccessTokenExchangeCommand {
+  readonly subjectToken: string;
+  readonly tokenRequest: InstallationAccessTokenRequest;
 }
 
-export function createInstallationAccessTokenExchange({
-  githubAppDependencies,
-  oidcIdTokenAuthenticator,
-  tokenIssuancePolicy,
-}: {
-  githubAppDependencies: GitHubAppDependencies;
-  oidcIdTokenAuthenticator: OidcIdTokenAuthenticator;
-  tokenIssuancePolicy: TokenIssuancePolicy;
-}): InstallationAccessTokenExchange {
-  return {
-    async exchange({ githubApp, observe, request, subjectToken, tokenRequest }) {
-      const authentication = await authenticateOidcIdToken(
-        subjectToken,
-        request,
-        oidcIdTokenAuthenticator,
-        observe,
-      );
+export type ExchangeInstallationAccessToken = (
+  command: InstallationAccessTokenExchangeCommand,
+  context: TokenExchangeApplicationContext,
+) => Promise<InstallationAccessTokenExchangeResult>;
 
-      if (!authentication.ok) {
-        return {
-          ok: false,
-          reason: authentication.reason,
-          stage: "authentication",
-        };
-      }
+export function createInstallationAccessTokenExchange(
+  configuration: {
+    readonly githubApp: GitHubAppConfiguration;
+    readonly tokenIssuancePolicy: TokenIssuancePolicy;
+  },
+  dependencies: {
+    readonly authenticateSubjectToken: AuthenticateSubjectToken;
+    readonly githubAppDependencies: GitHubAppDependencies;
+  },
+): ExchangeInstallationAccessToken {
+  const issueInstallationAccessToken = createIssueInstallationAccessToken(configuration, {
+    githubAppDependencies: dependencies.githubAppDependencies,
+  });
 
-      const issuance = await issueInstallationAccessTokenForContext(
-        githubApp,
-        tokenIssuancePolicy,
-        authentication.context,
-        tokenRequest,
-        githubAppDependencies,
-        undefined,
-        observe,
-      );
+  return async (command, context) => {
+    const authentication = await dependencies.authenticateSubjectToken(
+      command.subjectToken,
+      context,
+    );
 
-      if (issuance.ok) {
-        return issuance;
-      }
+    if (!authentication.ok) {
+      return {
+        ok: false,
+        reason: authentication.reason,
+        stage: "authentication",
+      };
+    }
 
-      if (isAuthorizationFailure(issuance.reason)) {
-        return {
-          ok: false,
-          reason: issuance.reason,
-          stage: "authorization",
-        };
-      }
+    const issuance = await issueInstallationAccessToken(
+      authentication.context,
+      command.tokenRequest,
+      context.observe,
+    );
 
+    if (issuance.ok) {
+      return issuance;
+    }
+
+    if (isAuthorizationFailure(issuance.reason)) {
       return {
         ok: false,
         reason: issuance.reason,
-        stage: "issuance",
+        stage: "authorization",
       };
-    },
+    }
+
+    return {
+      ok: false,
+      reason: issuance.reason,
+      stage: "issuance",
+    };
   };
 }
 

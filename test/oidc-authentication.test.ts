@@ -1,10 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type {
   OidcIdTokenAuthenticationResult,
   OidcIdTokenAuthenticator,
 } from "@github-app-token-broker/oidc/id-token-authenticator";
-import { authenticateOidcIdToken } from "../packages/token-exchange/src/authentication.ts";
+import { createAuthenticateSubjectToken } from "../packages/token-exchange/src/authentication.ts";
 
 type AuthenticationFailure = Extract<OidcIdTokenAuthenticationResult, { ok: false }>;
 
@@ -47,15 +47,29 @@ describe("OIDC authentication HTTP boundary", () => {
       "invalid_token",
     ],
   ])("maps %s", async (_description, failure, reason) => {
-    const request = new Request("https://github-app-token-broker.example/token");
     const authenticator: OidcIdTokenAuthenticator = {
       authenticateIdToken: async () => failure,
     };
+    const authenticateSubjectToken = createAuthenticateSubjectToken(authenticator);
+    const observe = vi.fn();
 
-    await expect(authenticateOidcIdToken("token", request, authenticator)).resolves.toMatchObject({
+    await expect(
+      authenticateSubjectToken("token", {
+        observe,
+        request: { path: "/automation/token", userAgent: "test-agent" },
+      }),
+    ).resolves.toMatchObject({
       ...failure.failure.diagnostics,
       ok: false,
       reason,
+    });
+    expect(observe).toHaveBeenCalledWith({
+      ...failure.failure.diagnostics,
+      event: "oidc_authentication_failed",
+      level: "warn",
+      path: "/automation/token",
+      reason,
+      userAgent: "test-agent",
     });
   });
 });

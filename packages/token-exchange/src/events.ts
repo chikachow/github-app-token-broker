@@ -2,7 +2,7 @@ import type { OidcIdTokenAuthenticationEvent } from "@github-app-token-broker/oi
 
 import type { OidcAuthenticationFailureReason } from "./authentication.ts";
 
-export type TokenExchangeAuthenticationEvent =
+type TokenExchangeAuthenticationEvent =
   | ({ readonly level: "warn" } & OidcIdTokenAuthenticationEvent)
   | {
       readonly diagnosticCode?: string;
@@ -41,4 +41,11 @@ export type TokenExchangeEvent =
 
 export interface TokenExchangeRequestContext {
   readonly observe: (event: TokenExchangeEvent) => void;
+}
+
+export interface TokenExchangeApplicationContext extends TokenExchangeRequestContext {
+  readonly request: {
+    readonly path: string;
+    readonly userAgent: string | null;
+  };
 }

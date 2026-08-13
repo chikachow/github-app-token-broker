@@ -4,7 +4,7 @@ import type {
   OidcVerificationEvidence,
   VerifiedSubjectToken,
 } from "@github-app-token-broker/oidc/id-token-authenticator";
-import type { TokenExchangeAuthenticationEvent } from "./events.ts";
+import type { TokenExchangeApplicationContext } from "./events.ts";
 
 export interface AuthenticatedContext {
   readonly verificationEvidence: OidcVerificationEvidence;
@@ -28,45 +28,49 @@ interface AuthenticateRequestSuccess {
   ok: true;
 }
 
-export type AuthenticateRequestResult = AuthenticateRequestFailure | AuthenticateRequestSuccess;
+type AuthenticateRequestResult = AuthenticateRequestFailure | AuthenticateRequestSuccess;
 
-export async function authenticateOidcIdToken(
+export type AuthenticateSubjectToken = (
   subjectToken: string,
-  request: Request,
+  context: TokenExchangeApplicationContext,
+) => Promise<AuthenticateRequestResult>;
+
+export function createAuthenticateSubjectToken(
   authenticator: OidcIdTokenAuthenticator,
-  observe: (event: TokenExchangeAuthenticationEvent) => void = () => undefined,
-): Promise<AuthenticateRequestResult> {
-  const authentication = await authenticator.authenticateIdToken(subjectToken, (event) =>
-    observe({ ...event, level: "warn" }),
-  );
+): AuthenticateSubjectToken {
+  return async (subjectToken, context) => {
+    const authentication = await authenticator.authenticateIdToken(subjectToken, (event) =>
+      context.observe({ ...event, level: "warn" }),
+    );
 
-  if (!authentication.ok) {
-    const { failure } = authentication;
-    const reason = authenticationFailureReason(failure);
-    const diagnostics = authenticationFailureDiagnostics(failure);
+    if (!authentication.ok) {
+      const { failure } = authentication;
+      const reason = authenticationFailureReason(failure);
+      const diagnostics = authenticationFailureDiagnostics(failure);
 
-    observe({
-      ...diagnostics,
-      event: "oidc_authentication_failed",
-      level: "warn",
-      path: new URL(request.url).pathname,
-      reason,
-      userAgent: request.headers.get("user-agent"),
-    });
+      context.observe({
+        ...diagnostics,
+        event: "oidc_authentication_failed",
+        level: "warn",
+        path: context.request.path,
+        reason,
+        userAgent: context.request.userAgent,
+      });
+
+      return {
+        ...diagnostics,
+        ok: false,
+        reason,
+      };
+    }
 
     return {
-      ...diagnostics,
-      ok: false,
-      reason,
+      context: {
+        verificationEvidence: authentication.verificationEvidence,
+        verifiedSubjectToken: authentication.verifiedSubjectToken,
+      },
+      ok: true,
     };
-  }
-
-  return {
-    context: {
-      verificationEvidence: authentication.verificationEvidence,
-      verifiedSubjectToken: authentication.verifiedSubjectToken,
-    },
-    ok: true,
   };
 }
 

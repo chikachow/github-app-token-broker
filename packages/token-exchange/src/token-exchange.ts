@@ -1,10 +1,13 @@
 import { jsonResponse } from "@github-app-token-broker/http/problem-details";
 import { readRequestBodyUpTo } from "@github-app-token-broker/http/request-body";
 import { normalizeInstallationAccessTokenRequest } from "@github-app-token-broker/github/installation-access-token-request";
-import type { InstallationAccessTokenExchangeResult } from "./installation-access-token-exchange.ts";
-import type { InstallationAccessTokenRequest } from "@github-app-token-broker/github/installation-access-token-request";
+import type {
+  ExchangeInstallationAccessToken,
+  InstallationAccessTokenExchangeCommand,
+  InstallationAccessTokenExchangeResult,
+} from "./installation-access-token-exchange.ts";
 import type { InstallationAccessTokenIssuanceFailureReason } from "./installation-access-token-issuance.ts";
-import type { TokenExchangeRequestContext } from "./events.ts";
+import type { TokenExchangeApplicationContext, TokenExchangeRequestContext } from "./events.ts";
 
 const maxTokenExchangeBodyBytes = 64 * 1024;
 const tokenExchangeGrantType = "urn:ietf:params:oauth:grant-type:token-exchange";
@@ -27,39 +30,60 @@ function tokenExchangeMethodNotAllowedResponse(): Response {
   return oauthErrorResponse(400, "invalid_request");
 }
 
-export interface TokenExchangeEndpointRuntime {
-  exchange(input: {
-    readonly request: Request;
-    readonly subjectToken: string;
-    readonly tokenRequest: InstallationAccessTokenRequest;
-    readonly observe: TokenExchangeRequestContext["observe"];
-  }): Promise<InstallationAccessTokenExchangeResult>;
-  now(): Date;
+type ParsedTokenExchangeRequest =
+  | { readonly ok: false; readonly response: Response }
+  | {
+      readonly command: InstallationAccessTokenExchangeCommand;
+      readonly ok: true;
+      readonly requestedTokenType: string;
+    };
+
+export function createTokenExchangeEndpoint(
+  exchangeInstallationAccessToken: ExchangeInstallationAccessToken,
+  now: () => Date,
+): (request: Request, context: TokenExchangeRequestContext) => Promise<Response> {
+  return async (request, context) => {
+    const parsedRequest = await parseTokenExchangeRequest(request);
+
+    if (!parsedRequest.ok) {
+      return parsedRequest.response;
+    }
+
+    const result = await exchangeInstallationAccessToken(parsedRequest.command, {
+      observe: context.observe,
+      request: tokenExchangeRequestDiagnostics(request),
+    });
+
+    if (!result.ok) {
+      return tokenExchangeFailureResponse(result);
+    }
+
+    return tokenExchangeResponse(parsedRequest, result, now());
+  };
 }
 
-export async function handleTokenExchangeRequest(
-  request: Request,
-  context: TokenExchangeRequestContext,
-  runtime: TokenExchangeEndpointRuntime,
-): Promise<Response> {
+async function parseTokenExchangeRequest(request: Request): Promise<ParsedTokenExchangeRequest> {
   if (request.method !== "POST") {
-    return tokenExchangeMethodNotAllowedResponse();
+    return { ok: false, response: tokenExchangeMethodNotAllowedResponse() };
   }
 
   if (request.headers.has("authorization")) {
-    return oauthErrorResponse(401, "invalid_client", {
-      "www-authenticate": wwwAuthenticateChallenge(request.headers.get("authorization")),
-    });
+    return {
+      ok: false,
+      response: oauthErrorResponse(401, "invalid_client", {
+        "www-authenticate": wwwAuthenticateChallenge(request.headers.get("authorization")),
+      }),
+    };
   }
 
   if (!isFormUrlEncodedContentType(request.headers.get("content-type"))) {
-    return oauthErrorResponse(400, "invalid_request");
+    return { ok: false, response: oauthErrorResponse(400, "invalid_request") };
   }
 
   const body = await readRequestBodyUpTo(request, maxTokenExchangeBodyBytes);
 
   if (!body.ok) {
-    return oauthErrorResponse(body.status, "invalid_request");
+    return { ok: false, response: oauthErrorResponse(body.status, "invalid_request") };
   }
 
   const form = new URLSearchParams(new TextDecoder().decode(body.bytes));
@@ -70,58 +94,74 @@ export async function handleTokenExchangeRequest(
   const tokenRequestOptions = parseInstallationAccessTokenRequestOptions(form);
 
   if (grantType === null) {
-    return oauthErrorResponse(400, "invalid_request");
+    return { ok: false, response: oauthErrorResponse(400, "invalid_request") };
   }
 
   if (grantType !== tokenExchangeGrantType) {
-    return oauthErrorResponse(400, "unsupported_grant_type");
+    return { ok: false, response: oauthErrorResponse(400, "unsupported_grant_type") };
   }
 
   if (subjectToken === null || subjectToken.length === 0 || subjectTokenType === null) {
-    return oauthErrorResponse(400, "invalid_request");
+    return { ok: false, response: oauthErrorResponse(400, "invalid_request") };
   }
 
   if (subjectTokenType !== oidcIdTokenType) {
-    return oauthErrorResponse(400, "invalid_request");
+    return { ok: false, response: oauthErrorResponse(400, "invalid_request") };
   }
 
   if (
     requestedTokenType !== accessTokenType &&
     requestedTokenType !== legacyGithubInstallationAccessTokenType
   ) {
-    return oauthErrorResponse(400, "invalid_request");
+    return { ok: false, response: oauthErrorResponse(400, "invalid_request") };
   }
 
   if (!tokenRequestOptions.ok) {
-    return oauthErrorResponse(400, tokenRequestOptions.error);
+    return { ok: false, response: oauthErrorResponse(400, tokenRequestOptions.error) };
   }
 
   const tokenRequest = normalizeInstallationAccessTokenRequest(tokenRequestOptions.options);
 
   if (!tokenRequest.ok) {
-    return oauthErrorResponse(400, tokenRequest.error);
+    return { ok: false, response: oauthErrorResponse(400, tokenRequest.error) };
   }
 
-  const result = await runtime.exchange({
-    observe: context.observe,
-    request,
-    subjectToken,
-    tokenRequest: tokenRequest.tokenRequest,
-  });
+  return {
+    command: { subjectToken, tokenRequest: tokenRequest.tokenRequest },
+    ok: true,
+    requestedTokenType,
+  };
+}
 
-  if (!result.ok) {
-    const failure = oauthErrorForTokenExchangeFailure(result);
+function tokenExchangeRequestDiagnostics(
+  request: Request,
+): TokenExchangeApplicationContext["request"] {
+  return {
+    path: new URL(request.url).pathname,
+    userAgent: request.headers.get("user-agent"),
+  };
+}
 
-    return oauthErrorResponse(failure.status, failure.error);
-  }
-
+function tokenExchangeResponse(
+  request: Extract<ParsedTokenExchangeRequest, { ok: true }>,
+  result: Extract<InstallationAccessTokenExchangeResult, { ok: true }>,
+  now: Date,
+): Response {
   return oauthTokenResponse({
     access_token: result.token,
-    expires_in: expiresInSeconds(result.expiresAt, runtime.now()),
-    issued_token_type: requestedTokenType,
-    scope: tokenRequest.tokenRequest.scope,
+    expires_in: expiresInSeconds(result.expiresAt, now),
+    issued_token_type: request.requestedTokenType,
+    scope: request.command.tokenRequest.scope,
     token_type: "Bearer",
   });
+}
+
+function tokenExchangeFailureResponse(
+  result: Extract<InstallationAccessTokenExchangeResult, { ok: false }>,
+): Response {
+  const failure = oauthErrorForTokenExchangeFailure(result);
+
+  return oauthErrorResponse(failure.status, failure.error);
 }
 
 function isFormUrlEncodedContentType(contentType: string | null): boolean {

@@ -10,8 +10,9 @@ import {
 import type { GitHubAppConfiguration } from "@github-app-token-broker/github/app";
 
 import { createInstallationAccessTokenExchange } from "./installation-access-token-exchange.ts";
+import { createAuthenticateSubjectToken } from "./authentication.ts";
 import { parseSubjectTokenAudience } from "./subject-token-audience.ts";
-import { handleTokenExchangeRequest } from "./token-exchange.ts";
+import { createTokenExchangeEndpoint } from "./token-exchange.ts";
 import type { TokenExchangeRequestContext } from "./events.ts";
 
 export type { TokenExchangeEvent, TokenExchangeRequestContext } from "./events.ts";
@@ -74,15 +75,11 @@ export function createGitHubAppTokenExchange(
     { providerRegistrations: composition.oidcProviderRegistrations, subjectTokenAudience },
     dependencies,
   );
-  const tokenExchange = createInstallationAccessTokenExchange({
-    githubAppDependencies: dependencies,
-    oidcIdTokenAuthenticator,
-    tokenIssuancePolicy: composition.tokenIssuancePolicy,
-  });
+  const authenticateSubjectToken = createAuthenticateSubjectToken(oidcIdTokenAuthenticator);
+  const exchangeInstallationAccessToken = createInstallationAccessTokenExchange(
+    { githubApp, tokenIssuancePolicy: composition.tokenIssuancePolicy },
+    { authenticateSubjectToken, githubAppDependencies: dependencies },
+  );
 
-  return (request, context) =>
-    handleTokenExchangeRequest(request, context, {
-      exchange: (input) => tokenExchange.exchange({ ...input, githubApp }),
-      now: dependencies.now,
-    });
+  return createTokenExchangeEndpoint(exchangeInstallationAccessToken, dependencies.now);
 }
