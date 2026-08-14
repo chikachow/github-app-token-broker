@@ -147,7 +147,6 @@ describe("Token Issuance Policy compilation", () => {
         {
           permissions: { contents: "write" },
           resource: {
-            href: "https://api.github.com/repos/owner/repository",
             owner: "owner",
             repository: "repository",
           },
