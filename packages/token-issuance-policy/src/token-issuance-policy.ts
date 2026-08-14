@@ -8,6 +8,7 @@ import {
   createGitHubRepositoryResource,
   installationAccessTokenPermissionsAreValid,
   installationAccessTokenPermissionLevelCovers,
+  isGitHubRepositoryResourcePathSegment,
   type GitHubInstallationPermissions,
   type InstallationAccessTokenRequest,
   type GitHubRepositoryResource,
@@ -36,9 +37,19 @@ export interface GitHubRepositoryResourceConstraintDefinition {
   readonly repository: string;
 }
 
+export interface GitHubRepositoryOwnerResourceConstraintDefinition {
+  readonly owner: string;
+  /** null selects every repository owned by owner. */
+  readonly repository: null;
+}
+
+type GitHubRepositoryResourceConstraint =
+  | GitHubRepositoryResourceConstraintDefinition
+  | GitHubRepositoryOwnerResourceConstraintDefinition;
+
 export interface PermitStatementDefinition {
   readonly permissions: GitHubInstallationPermissions;
-  readonly resource: GitHubRepositoryResourceConstraintDefinition;
+  readonly resource: GitHubRepositoryResourceConstraint;
   readonly subjectToken: OidcSubjectTokenConstraintDefinition;
 }
 
@@ -63,7 +74,7 @@ interface OidcSubjectTokenConstraint {
 
 interface PermitStatement {
   readonly permissions: GitHubInstallationPermissions;
-  readonly resource: GitHubRepositoryResourceConstraintDefinition;
+  readonly resource: GitHubRepositoryResourceConstraint;
   readonly subjectToken: OidcSubjectTokenConstraint;
 }
 
@@ -145,6 +156,16 @@ export function githubRepositoryResourceConstraint(
   return Object.freeze({ owner: resource.owner, repository: resource.repository });
 }
 
+export function githubRepositoryOwnerResourceConstraint(
+  owner: string,
+): GitHubRepositoryOwnerResourceConstraintDefinition {
+  if (!isGitHubRepositoryResourcePathSegment(owner)) {
+    throw new TypeError("invalid GitHub Repository Resource owner");
+  }
+
+  return Object.freeze({ owner, repository: null });
+}
+
 export function compileTokenIssuancePolicy(
   permitStatements: readonly PermitStatementDefinition[],
 ): TokenIssuancePolicy {
@@ -190,10 +211,13 @@ export function tokenIssuancePolicySupportsRequestedPermissions(
 }
 
 function resourceConstraintMatches(
-  constraint: GitHubRepositoryResourceConstraintDefinition,
+  constraint: GitHubRepositoryResourceConstraint,
   resource: GitHubRepositoryResource,
 ): boolean {
-  return constraint.owner === resource.owner && constraint.repository === resource.repository;
+  return (
+    constraint.owner === resource.owner &&
+    (constraint.repository === null || constraint.repository === resource.repository)
+  );
 }
 
 function policyStatementsCoverRequest(
@@ -284,19 +308,25 @@ function compilePermitStatement(value: unknown, path: string): PermitStatement {
     fail(`${path}.resource.owner`, "must be a string");
   }
 
-  if (typeof resourceDefinition["repository"] !== "string") {
-    fail(`${path}.resource.repository`, "must be a string");
+  if (
+    resourceDefinition["repository"] !== null &&
+    typeof resourceDefinition["repository"] !== "string"
+  ) {
+    fail(`${path}.resource.repository`, "must be a string or null");
   }
 
-  let resource: GitHubRepositoryResourceConstraintDefinition;
+  let resource: GitHubRepositoryResourceConstraint;
 
   try {
-    resource = githubRepositoryResourceConstraint(
-      resourceDefinition["owner"],
-      resourceDefinition["repository"],
-    );
+    resource =
+      resourceDefinition["repository"] === null
+        ? githubRepositoryOwnerResourceConstraint(resourceDefinition["owner"])
+        : githubRepositoryResourceConstraint(
+            resourceDefinition["owner"],
+            resourceDefinition["repository"],
+          );
   } catch {
-    fail(`${path}.resource`, "must identify a canonical GitHub Repository Resource");
+    fail(`${path}.resource`, "must identify a canonical GitHub Repository Resource Constraint");
   }
 
   validatePermissions(statement["permissions"], `${path}.permissions`);

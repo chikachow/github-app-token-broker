@@ -15,6 +15,7 @@ import {
   claimEquals,
   claimOneOf,
   compileTokenIssuancePolicy,
+  githubRepositoryOwnerResourceConstraint,
   githubRepositoryResourceConstraint,
   oidcSubjectTokenConstraint,
   assertTokenIssuancePolicyIssuersAreRegistered,
@@ -54,6 +55,7 @@ describe("Token Issuance Policy authoring factories", () => {
     const oneOf = claimOneOf("event_name", ["push", "workflow_dispatch"]);
     const subjectToken = oidcSubjectTokenConstraint(issuer, equals, oneOf);
     const resource = githubRepositoryResourceConstraint("Owner.Name", "Repository_Name");
+    const ownerResource = githubRepositoryOwnerResourceConstraint("Owner.Name");
 
     if (oneOf.kind !== "claim-one-of") {
       throw new Error("unexpected Claim predicate kind");
@@ -67,12 +69,14 @@ describe("Token Issuance Policy authoring factories", () => {
     });
     expect(subjectToken).toEqual({ claimPredicates: [equals, oneOf], issuer });
     expect(resource).toEqual({ owner: "Owner.Name", repository: "Repository_Name" });
+    expect(ownerResource).toEqual({ owner: "Owner.Name", repository: null });
     expect(Object.isFrozen(equals)).toBe(true);
     expect(Object.isFrozen(oneOf)).toBe(true);
     expect(Object.isFrozen(oneOf.expectedValues)).toBe(true);
     expect(Object.isFrozen(subjectToken)).toBe(true);
     expect(Object.isFrozen(subjectToken.claimPredicates)).toBe(true);
     expect(Object.isFrozen(resource)).toBe(true);
+    expect(Object.isFrozen(ownerResource)).toBe(true);
   });
 
   it("accepts issuer-only constraints and unusual Claim Names", () => {
@@ -106,6 +110,7 @@ describe("Token Issuance Policy authoring factories", () => {
       ),
     () => githubRepositoryResourceConstraint(".", "repository"),
     () => githubRepositoryResourceConstraint("owner", ".."),
+    () => githubRepositoryOwnerResourceConstraint("."),
   ])("rejects malformed factory input", (construct) => {
     expect(construct).toThrow(TypeError);
   });
@@ -163,6 +168,22 @@ describe("Token Issuance Policy compilation", () => {
           },
         },
       ],
+    });
+    expectRecursivelyFrozen(policy);
+  });
+
+  it("compiles an owner-scoped resource constraint", () => {
+    const policy = compileTokenIssuancePolicy([
+      {
+        permissions: { contents: "read" },
+        resource: githubRepositoryOwnerResourceConstraint("Owner.Name"),
+        subjectToken: oidcSubjectTokenConstraint(issuer),
+      },
+    ]);
+
+    expect(policy.permitStatements[0]?.resource).toEqual({
+      owner: "Owner.Name",
+      repository: null,
     });
     expectRecursivelyFrozen(policy);
   });
@@ -277,7 +298,7 @@ describe("Token Issuance Policy compilation", () => {
       "permitStatements[0].resource.owner",
     ],
     [
-      [{ ...validPermitStatement(), resource: { owner: "owner", repository: null } }],
+      [{ ...validPermitStatement(), resource: { owner: "owner", repository: 1 } }],
       "permitStatements[0].resource.repository",
     ],
     [
@@ -636,6 +657,49 @@ describe("Token Issuance Policy evaluation", () => {
         ),
       ).toBe(false);
     }
+  });
+
+  it("matches every repository under an owner-scoped resource constraint", () => {
+    const policy = compileTokenIssuancePolicy([
+      statementFor(
+        { contents: "read" },
+        { resource: githubRepositoryOwnerResourceConstraint("owner") },
+      ),
+    ]);
+    const otherRepository = requestFor(
+      { contents: "read" },
+      createGitHubRepositoryResource({ owner: "owner", repository: "other-repository" }),
+    );
+    const otherOwner = requestFor(
+      { contents: "read" },
+      createGitHubRepositoryResource({ owner: "other-owner", repository: "repository" }),
+    );
+
+    expect(
+      tokenIssuancePolicyPermits(policy, matchingSubjectToken, requestFor({ contents: "read" })),
+    ).toBe(true);
+    expect(tokenIssuancePolicyPermits(policy, matchingSubjectToken, otherRepository)).toBe(true);
+    expect(tokenIssuancePolicySupportsTarget(policy, otherRepository)).toBe(true);
+    expect(tokenIssuancePolicySupportsRequestedPermissions(policy, otherRepository)).toBe(true);
+    expect(tokenIssuancePolicyPermits(policy, matchingSubjectToken, otherOwner)).toBe(false);
+    expect(tokenIssuancePolicySupportsTarget(policy, otherOwner)).toBe(false);
+    expect(tokenIssuancePolicySupportsRequestedPermissions(policy, otherOwner)).toBe(false);
+  });
+
+  it("keeps an exact resource constraint limited to its repository", () => {
+    const policy = compileTokenIssuancePolicy([statementFor({ contents: "read" })]);
+    const exactRequest = requestFor({ contents: "read" });
+    const otherRepository = requestFor(
+      { contents: "read" },
+      createGitHubRepositoryResource({ owner: "owner", repository: "other-repository" }),
+    );
+
+    expect(tokenIssuancePolicyPermits(policy, matchingSubjectToken, exactRequest)).toBe(true);
+    expect(tokenIssuancePolicySupportsTarget(policy, exactRequest)).toBe(true);
+    expect(tokenIssuancePolicySupportsRequestedPermissions(policy, exactRequest)).toBe(true);
+    expect(tokenIssuancePolicyPermits(policy, matchingSubjectToken, otherRepository)).toBe(false);
+    expect(tokenIssuancePolicySupportsTarget(policy, otherRepository)).toBe(false);
+    expect(tokenIssuancePolicySupportsRequestedPermissions(policy, otherRepository)).toBe(false);
   });
 
   it("requires selected Claims to be own properties, including unusual names", () => {
