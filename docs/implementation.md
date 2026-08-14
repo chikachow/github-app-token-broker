@@ -18,6 +18,11 @@ There is no webhook runtime, deployment endpoint, dynamic issuer registry, App s
 
 `createTokenExchangeWorker` accepts a `TokenExchangeComposition` containing OIDC Provider Registrations and one compiled `TokenIssuancePolicy`. It snapshots the registration array, rejects duplicate issuers, and requires every Permit Statement issuer to have a registration before returning the Worker handler. The policy compiler validates and recursively freezes its structural result, so composition needs no opaque identity map or module-owned state. Construction performs no network I/O.
 
+The compiled policy snapshot is a public structural Interface. Its
+`permitStatements[].resource` is a Repository Resource Constraint with an
+`owner` and either a string `repository` or `repository: null`. Policy
+consumers discriminate owner-wide constraints with `repository === null`.
+
 An external deployment owns the TypeScript entrypoint that supplies those two values. The source package root has named exports only. `generic-worker.ts` is the public-safe Wrangler entrypoint and deliberately composes empty registrations with an empty, deny-all Token Issuance Policy. A built artifact cannot replace its composition through bindings or requests.
 
 The optional `TokenExchangeWorkerRuntimeDependencies` parameter is a construction and test seam for Fetch and time. The default adapters late-bind the runtime Fetch implementation and clock. It is not a trust or authorization configuration surface.

@@ -49,7 +49,9 @@ A canonical GitHub API repository URI in the form `https://api.github.com/repos/
 _Avoid_: `owner/repo` shorthand, GitHub HTML URL, workflow endpoint URL
 
 **Repository Resource Constraint**:
-A selector for one exact **Repository Resource** within a **Permit Statement**.
+A selector for one exact **Repository Resource** or every repository under one
+owner within a **Permit Statement**. `repository: null` denotes the owner-wide
+form; requests contain one exact **Repository Resource**.
 _Avoid_: Repository Resource, arbitrary URI matcher, subject-token repository Claim
 
 **Requested Repository Owner**:
