@@ -50,7 +50,8 @@ Token Issuance Policy uses a closed, immutable TypeScript authoring language
 made of Permit Statements. Each statement contains:
 
 - one issuer-qualified OIDC Subject Token Constraint;
-- one exact Repository Resource Constraint; and
+- one Repository Resource Constraint, selecting either one exact repository or
+  every repository owned by one owner; and
 - one non-empty GitHub installation permission map.
 
 Permission names are not a closed github-app-token-broker catalogue. They are structurally
@@ -69,10 +70,17 @@ typed products. Claim Predicates form the only discriminated AST union. Permit S
 plain objects without identifiers, effects, action fields, generic conditions,
 or a `permit(...)` wrapper.
 
+A Repository Resource Constraint contains a canonical GitHub owner and either a
+canonical repository name or `repository: null`. A repository name matches only
+that repository; `null` matches every repository under the owner. The request
+itself always contains one exact canonical Repository Resource, and an
+owner-scoped constraint never matches a different owner.
+
 ### Applicability and Effective Permissions
 
 A Permit Statement is applicable when its complete OIDC Subject Token Constraint
-and Repository Resource Constraint match. Only an applicable statement contributes
+and Repository Resource Constraint match, including the constraint's exact or
+owner-scoped repository selection. Only an applicable statement contributes
 its `permissions`. The policy never combines issuers, Claim Predicates, or
 Repository Resource Constraints across statements.
 
@@ -129,6 +137,15 @@ is idempotent and overlap is intentional.
 Evaluation is total for compiled policy and normalized inputs and returns only
 a Boolean. The snapshot's structure is part of the package Interface; its
 current evaluation algorithm is not.
+
+The compiled snapshot's `permitStatements[].resource` is a structural
+Repository Resource Constraint:
+
+- an exact constraint has `{ owner, repository }`;
+- an owner-wide constraint has `{ owner, repository: null }`.
+
+Policy consumers discriminate owner-wide constraints with
+`resource.repository === null`.
 
 No matched statement, stable statement identifier, contributor list,
 denial-reason collection, or third decision state is exposed.

@@ -187,7 +187,14 @@ Fly returns the serialized ID Token as the response body. The workload sends tha
 
 ### Token Issuance Policy
 
-Installation Access Token Issuance is allowed only when the normalized request is covered by the closed, immutable set of Permit Statements compiled into the Worker artifact. Each independently complete statement contains an exact issuer, Claim Predicates over Subject Token Claims, one exact Repository Resource Constraint, and a non-empty permission map. Missing or wrongly typed selected Claims make a statement non-applicable; evaluation never throws for verified Claim data.
+Installation Access Token Issuance is allowed only when the normalized request is covered by the closed, immutable set of Permit Statements compiled into the Worker artifact. Each independently complete statement contains an exact issuer, Claim Predicates over Subject Token Claims, one Repository Resource Constraint, and a non-empty permission map. A constraint selects either one exact repository or every repository owned by one owner. Missing or wrongly typed selected Claims make a statement non-applicable; evaluation never throws for verified Claim data.
+
+The `TokenIssuancePolicy` returned by `compileTokenIssuancePolicy` is a
+structural package Interface. Its compiled
+`permitStatements[].resource` is a Repository Resource Constraint with `{ owner,
+repository }` for an exact repository or `{ owner, repository: null }` for every
+repository under that owner. Consumers discriminate owner-wide constraints with
+`repository === null`.
 
 All statements whose issuer, Claim Predicates, and Repository Resource Constraint apply contribute permissions pointwise using `omitted < read < write < admin`. The policy permits the request only when those Effective Permissions cover the Requested Permissions. Statement order is irrelevant, stronger contributed permissions cover weaker Requested Permissions, and several statements may jointly cover a request. Permission names are extensible, but every Requested Permission still requires explicit Permit Statement coverage; arbitrary names are never authorized by default. There are no deny statements, inheritance, dynamic configuration, generic expression language, or authorization decision objects.
 
@@ -204,9 +211,10 @@ GitHub Actions authentication additionally requires:
 After authentication, a deployment may configure a GitHub Actions Permit
 Statement with zero or more Claim Predicates over signed Claims. For example,
 a reviewed composition can constrain `event_name`, `ref_type`, `repository`,
-`ref`, or `workflow_ref`. Every statement independently contains one exact
-Repository Resource Constraint. The public source defines these capabilities,
-not a universal GitHub Actions predicate set or a deployment inventory.
+`ref`, or `workflow_ref`. Every statement independently contains one Repository
+Resource Constraint, which selects one exact repository or every repository
+under one owner. The public source defines these capabilities, not a universal
+GitHub Actions predicate set or a deployment inventory.
 
 Claims a statement does not select, including `sub`, repository IDs, owner IDs, and actor metadata, do not affect authorization. A GitHub Actions token that fails its OIDC ID Token Profile, including an invalid `azp` claim, remains an invalid subject token and returns `400 {"error":"invalid_request"}`. Repository identity remains name-based; a repository deleted and recreated with the same owner/name can continue to match when the GitHub App installation still grants sufficient permissions.
 

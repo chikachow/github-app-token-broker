@@ -14,8 +14,9 @@ The authentication and authorization separation remains accepted, but the
 authorization-specific portions of the original decision below are superseded
 by the [CEL-free Token Issuance Policy](cel-free-token-issuance-policy.md)
 decision. Token Policy is now Token Issuance Policy: closed Permit Statements
-over Subject Token Claims, an exact Repository Resource, and Requested
-Permissions replace CEL conditions and exact whole-request rule matching.
+over Subject Token Claims, an exact or owner-scoped Repository Resource
+Constraint, and Requested Permissions replace CEL conditions and exact
+whole-request rule matching.
 
 OIDC Provider Registrations now require an explicitly present OIDC ID Token
 Profile field whose value may be `null`. A non-null profile still distinguishes
