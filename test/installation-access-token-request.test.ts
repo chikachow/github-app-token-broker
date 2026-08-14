@@ -5,6 +5,7 @@ import {
   createGitHubRepositoryResource,
   installationAccessTokenPermissionLevelCovers,
   installationAccessTokenPermissionsAreValid,
+  isGitHubRepositoryResourcePathSegment,
   normalizeInstallationAccessTokenRequest,
   parseGitHubRepositoryResource,
   unionGitHubInstallationPermissions,
@@ -210,6 +211,20 @@ describe("GitHub installation permission domain", () => {
 });
 
 describe("GitHub Repository Resource domain", () => {
+  it.each(["owner", "Owner.Name", "repository_name", "repository.git", "owner-123"])(
+    "accepts a canonical path segment %s",
+    (value) => {
+      expect(isGitHubRepositoryResourcePathSegment(value)).toBe(true);
+    },
+  );
+
+  it.each([undefined, null, "", ".", "..", "owner/name", "repository%2Fname"])(
+    "rejects a non-canonical path segment %s",
+    (value) => {
+      expect(isGitHubRepositoryResourcePathSegment(value)).toBe(false);
+    },
+  );
+
   it.each([
     ["owner", "repository"],
     ["Owner.Name", "Repository_Name"],

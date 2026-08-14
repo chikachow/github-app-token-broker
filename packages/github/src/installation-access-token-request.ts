@@ -16,6 +16,12 @@ export interface GitHubRepositoryResource {
   readonly repository: string;
 }
 
+export function isGitHubRepositoryResourcePathSegment(value: unknown): value is string {
+  return (
+    typeof value === "string" && value !== "." && value !== ".." && /^[A-Za-z0-9_.-]+$/u.test(value)
+  );
+}
+
 const supportedPermissionLevels = new Set<GitHubInstallationPermissionLevel>([
   "admin",
   "read",
@@ -85,8 +91,8 @@ export function parseGitHubRepositoryResource(value: string): GitHubRepositoryRe
     parts.length !== 4 ||
     parts[0] !== "" ||
     parts[1] !== "repos" ||
-    !isGitHubPathSegment(parts[2]) ||
-    !isGitHubPathSegment(parts[3])
+    !isGitHubRepositoryResourcePathSegment(parts[2]) ||
+    !isGitHubRepositoryResourcePathSegment(parts[3])
   ) {
     return null;
   }
@@ -103,8 +109,8 @@ export function createGitHubRepositoryResource(options: {
   readonly repository: string;
 }): GitHubRepositoryResource {
   if (
-    !isConstructibleGitHubPathSegment(options.owner) ||
-    !isConstructibleGitHubPathSegment(options.repository)
+    !isGitHubRepositoryResourcePathSegment(options.owner) ||
+    !isGitHubRepositoryResourcePathSegment(options.repository)
   ) {
     throw new TypeError("invalid GitHub Repository Resource path segment");
   }
@@ -309,12 +315,4 @@ function isOAuthScopePermissionName(name: string): boolean {
   }
 
   return true;
-}
-
-function isGitHubPathSegment(value: string | undefined): value is string {
-  return value !== undefined && /^[A-Za-z0-9_.-]+$/u.test(value);
-}
-
-function isConstructibleGitHubPathSegment(value: unknown): value is string {
-  return typeof value === "string" && value !== "." && value !== ".." && isGitHubPathSegment(value);
 }
