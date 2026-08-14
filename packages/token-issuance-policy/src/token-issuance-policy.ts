@@ -63,7 +63,7 @@ interface OidcSubjectTokenConstraint {
 
 interface PermitStatement {
   readonly permissions: GitHubInstallationPermissions;
-  readonly resource: GitHubRepositoryResource;
+  readonly resource: GitHubRepositoryResourceConstraintDefinition;
   readonly subjectToken: OidcSubjectTokenConstraint;
 }
 
@@ -164,7 +164,7 @@ export function tokenIssuancePolicyPermits(
 ): boolean {
   return policyStatementsCoverRequest(policy.permitStatements, request, (statement) => {
     return (
-      statement.resource.href === request.resource.href &&
+      resourceConstraintMatches(statement.resource, request.resource) &&
       statement.subjectToken.issuer === verifiedSubjectToken.issuer &&
       claimPredicatesMatch(statement.subjectToken.claimPredicates, verifiedSubjectToken.claims)
     );
@@ -175,8 +175,8 @@ export function tokenIssuancePolicySupportsTarget(
   policy: TokenIssuancePolicy,
   request: InstallationAccessTokenRequest,
 ): boolean {
-  return policy.permitStatements.some(
-    (statement) => statement.resource.href === request.resource.href,
+  return policy.permitStatements.some((statement) =>
+    resourceConstraintMatches(statement.resource, request.resource),
   );
 }
 
@@ -184,11 +184,16 @@ export function tokenIssuancePolicySupportsRequestedPermissions(
   policy: TokenIssuancePolicy,
   request: InstallationAccessTokenRequest,
 ): boolean {
-  return policyStatementsCoverRequest(
-    policy.permitStatements,
-    request,
-    (statement) => statement.resource.href === request.resource.href,
+  return policyStatementsCoverRequest(policy.permitStatements, request, (statement) =>
+    resourceConstraintMatches(statement.resource, request.resource),
   );
+}
+
+function resourceConstraintMatches(
+  constraint: GitHubRepositoryResourceConstraintDefinition,
+  resource: GitHubRepositoryResource,
+): boolean {
+  return constraint.owner === resource.owner && constraint.repository === resource.repository;
 }
 
 function policyStatementsCoverRequest(
@@ -283,13 +288,13 @@ function compilePermitStatement(value: unknown, path: string): PermitStatement {
     fail(`${path}.resource.repository`, "must be a string");
   }
 
-  let resource: GitHubRepositoryResource;
+  let resource: GitHubRepositoryResourceConstraintDefinition;
 
   try {
-    resource = createGitHubRepositoryResource({
-      owner: resourceDefinition["owner"],
-      repository: resourceDefinition["repository"],
-    });
+    resource = githubRepositoryResourceConstraint(
+      resourceDefinition["owner"],
+      resourceDefinition["repository"],
+    );
   } catch {
     fail(`${path}.resource`, "must identify a canonical GitHub Repository Resource");
   }
