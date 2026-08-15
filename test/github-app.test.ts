@@ -1,22 +1,21 @@
 import { decodeJwt } from "jose";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  createInstallationAccessTokenForRepositoryName,
-  resolveInstallationForRepository,
-} from "../packages/github/src/app.ts";
-import { testRepository } from "./support/constants.ts";
+import { issueInstallationAccessTokenForRepository } from "../packages/github/src/app.ts";
+import { createGitHubRepositoryResource } from "@github-app-token-broker/github/installation-access-token-request";
+import { testInstallationId, testRepository } from "./support/constants.ts";
 import { githubInstallationResponse } from "./support/github-api.ts";
 import { testPrivateKeyPem } from "./support/rsa-test-key-pair.ts";
 
 describe("GitHub App authentication", () => {
-  it("uses the default GitHub App fetch and clock", async () => {
+  it("uses one App authentication resolution for repository-scoped issuance", async () => {
     const now = new Date("2026-06-29T12:34:00.000Z");
     const nowSeconds = Math.floor(now.getTime() / 1000);
     const githubApp = {
       GITHUB_APP_ID: "2419473",
       GITHUB_APP_PRIVATE_KEY: testPrivateKeyPem,
     };
+    const authorizationHeaders: string[] = [];
     const fetchGitHub = vi.fn<typeof fetch>(async (input, init) => {
       const request = new Request(input, init);
       const authorization = new Headers(init?.headers).get("authorization");
@@ -24,6 +23,8 @@ describe("GitHub App authentication", () => {
       if (authorization === null) {
         throw new Error("expected GitHub App authorization header");
       }
+
+      authorizationHeaders.push(authorization);
 
       expect(decodeJwt(authorization.slice("Bearer ".length))).toMatchObject({
         exp: nowSeconds + 9 * 60,
@@ -52,19 +53,24 @@ describe("GitHub App authentication", () => {
     vi.stubGlobal("fetch", fetchGitHub);
 
     try {
-      await expect(resolveInstallationForRepository(githubApp, testRepository)).resolves.toEqual({
-        id: 12345,
-      });
       await expect(
-        createInstallationAccessTokenForRepositoryName(githubApp, 12345, "fixture-repository", {
-          contents: "read",
-        }),
+        issueInstallationAccessTokenForRepository(
+          githubApp,
+          createGitHubRepositoryResource({
+            owner: "fixture-owner",
+            repository: "fixture-repository",
+          }),
+          { contents: "read" },
+        ),
       ).resolves.toEqual({
         expiresAt: "2030-01-01T00:00:00Z",
+        installationId: 12345,
         permissions: { contents: "read" },
         token: "ghs_default_dependencies_token",
       });
       expect(fetchGitHub).toHaveBeenCalledTimes(2);
+      expect(authorizationHeaders).toHaveLength(2);
+      expect(authorizationHeaders[0]).toBe(authorizationHeaders[1]);
     } finally {
       vi.unstubAllGlobals();
       vi.useRealTimers();
@@ -73,15 +79,19 @@ describe("GitHub App authentication", () => {
 
   it("reads the app private key from Cloudflare Secrets Store when bound", async () => {
     const secretStoreBinding = {
-      get: async () => testPrivateKeyPem,
+      get: vi.fn(async () => testPrivateKeyPem),
     };
 
-    const installation = await resolveInstallationForRepository(
+    const installationAccessToken = await issueInstallationAccessTokenForRepository(
       {
         GITHUB_APP_ID: "2419473",
         GITHUB_APP_PRIVATE_KEY: secretStoreBinding,
       },
-      testRepository,
+      createGitHubRepositoryResource({
+        owner: "fixture-owner",
+        repository: "fixture-source-repository",
+      }),
+      { contents: "read" },
       {
         fetch: async (input: Parameters<typeof fetch>[0], init: Parameters<typeof fetch>[1]) => {
           expect(input).toBeInstanceOf(URL);
@@ -89,7 +99,12 @@ describe("GitHub App authentication", () => {
             throw new Error("expected GitHub API request URL");
           }
 
-          expect(input.href).toBe(`https://api.github.com/repos/${testRepository}/installation`);
+          const request = new Request(input, init);
+          expect(input.href).toBe(
+            request.method === "GET"
+              ? `https://api.github.com/repos/${testRepository}/installation`
+              : "https://api.github.com/app/installations/12345/access_tokens",
+          );
 
           const headers = new Headers(init?.headers);
           expect(headers.get("accept")).toBe("application/vnd.github+json");
@@ -109,30 +124,46 @@ describe("GitHub App authentication", () => {
             iss: "2419473",
           });
 
-          return Response.json({
-            account: { login: "fixture-owner" },
-            id: 12345,
-            node_id: "MDQ6VXNlcjE=",
-          });
+          return request.method === "GET"
+            ? Response.json({
+                account: { login: "fixture-owner" },
+                id: 12345,
+                node_id: "MDQ6VXNlcjE=",
+              })
+            : Response.json(
+                {
+                  expires_at: "2030-01-01T00:00:00Z",
+                  permissions: { contents: "read" },
+                  token: "ghs_secret_store_token",
+                },
+                { status: 201 },
+              );
         },
         now: () => new Date("2026-06-29T12:34:00.000Z"),
       },
     );
 
-    expect(installation).toEqual({ id: 12345 });
+    expect(installationAccessToken).toEqual({
+      expiresAt: "2030-01-01T00:00:00Z",
+      installationId: 12345,
+      permissions: { contents: "read" },
+      token: "ghs_secret_store_token",
+    });
+    expect(secretStoreBinding.get).toHaveBeenCalledOnce();
   });
 
   it("matches the installation account owner case-insensitively", async () => {
     await expect(
-      resolveTestInstallation(testRepository, githubInstallationResponse("FIXTURE-OWNER", 12345)),
-    ).resolves.toEqual({ id: 12345 });
+      issueTestInstallationAccessToken(
+        githubInstallationResponse("FIXTURE-OWNER", testInstallationId),
+      ),
+    ).resolves.toMatchObject({ installationId: testInstallationId });
   });
 
   it("rejects an installation account for a different owner", async () => {
     await expect(
-      resolveTestInstallation(
-        testRepository,
-        githubInstallationResponse("transferred-owner", 12345),
+      issueTestInstallationAccessToken(
+        githubInstallationResponse("transferred-owner", testInstallationId),
       ),
     ).rejects.toMatchObject({
       message: invalidGitHubApiResponseMessage(`/repos/${testRepository}/installation`),
@@ -141,24 +172,9 @@ describe("GitHub App authentication", () => {
     });
   });
 
-  it.each([
-    { repository: "", scenario: "an empty repository" },
-    { repository: "fixture-owner", scenario: "a repository without a separator" },
-    { repository: "/fixture-repository", scenario: "a repository with an empty owner" },
-  ])("rejects $scenario before owner comparison", async ({ repository }) => {
-    await expect(
-      resolveTestInstallation(repository, githubInstallationResponse("fixture-owner", 12345)),
-    ).rejects.toMatchObject({
-      message: invalidGitHubApiResponseMessage(`/repos/${repository}/installation`),
-      status: 502,
-      upstreamStatus: 200,
-    });
-  });
-
   it("rejects a schema-invalid successful installation response", async () => {
     await expect(
-      resolveTestInstallation(
-        testRepository,
+      issueTestInstallationAccessToken(
         Response.json({ account: { login: "fixture-owner" }, id: "12345" }),
       ),
     ).rejects.toMatchObject({
@@ -175,7 +191,8 @@ describe("GitHub App authentication", () => {
     },
   ])("maps a valid $scenario access token and ignores unknown fields", async ({ token }) => {
     await expect(
-      createTestInstallationAccessToken(
+      issueTestInstallationAccessToken(
+        githubInstallationResponse("fixture-owner", testInstallationId),
         Response.json({
           expires_at: "2030-01-01T00:00:00Z",
           permissions: { contents: "read" },
@@ -185,6 +202,7 @@ describe("GitHub App authentication", () => {
       ),
     ).resolves.toEqual({
       expiresAt: "2030-01-01T00:00:00Z",
+      installationId: testInstallationId,
       permissions: { contents: "read" },
       token,
     });
@@ -192,44 +210,49 @@ describe("GitHub App authentication", () => {
 
   it("rejects a schema-invalid successful access-token response", async () => {
     await expect(
-      createTestInstallationAccessToken(
+      issueTestInstallationAccessToken(
+        githubInstallationResponse("fixture-owner", testInstallationId),
         Response.json({
           expires_at: "2030-01-01T00:00:00Z",
           permissions: { contents: "read" },
         }),
       ),
     ).rejects.toMatchObject({
-      message: invalidGitHubApiResponseMessage("/app/installations/12345/access_tokens"),
-      status: 502,
+      cause: {
+        message: invalidGitHubApiResponseMessage(
+          `/app/installations/${testInstallationId}/access_tokens`,
+        ),
+        status: 502,
+      },
+      installationId: testInstallationId,
     });
   });
 });
 
-function resolveTestInstallation(repository: string, response: Response) {
-  return resolveInstallationForRepository(
+function issueTestInstallationAccessToken(
+  installationResponse: Response,
+  tokenResponse: Response = Response.json(
+    {
+      expires_at: "2030-01-01T00:00:00Z",
+      permissions: { contents: "read" },
+      token: "ghs_test_token",
+    },
+    { status: 201 },
+  ),
+) {
+  return issueInstallationAccessTokenForRepository(
     {
       GITHUB_APP_ID: "2419473",
       GITHUB_APP_PRIVATE_KEY: testPrivateKeyPem,
     },
-    repository,
-    {
-      fetch: async () => response,
-      now: () => new Date("2026-05-24T00:00:00.000Z"),
-    },
-  );
-}
-
-function createTestInstallationAccessToken(response: Response) {
-  return createInstallationAccessTokenForRepositoryName(
-    {
-      GITHUB_APP_ID: "2419473",
-      GITHUB_APP_PRIVATE_KEY: testPrivateKeyPem,
-    },
-    12345,
-    "fixture-repository",
+    createGitHubRepositoryResource({
+      owner: "fixture-owner",
+      repository: "fixture-source-repository",
+    }),
     { contents: "read" },
     {
-      fetch: async () => response,
+      fetch: async (input, init) =>
+        new Request(input, init).method === "GET" ? installationResponse : tokenResponse,
       now: () => new Date("2026-05-24T00:00:00.000Z"),
     },
   );
