@@ -185,6 +185,9 @@ describe("Installation Access Token Issuance", () => {
         resource: tokenRequest.resource.href,
         scope: tokenRequest.scope,
       },
+      installation_access_token: {
+        permissions: tokenRequest.permissions,
+      },
       expires_at: "2030-01-01T00:00:00Z",
     });
     expectSafeIssuanceLog(consoleInfo.mock.calls, "ghs_test_token");
