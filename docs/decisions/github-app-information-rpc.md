@@ -79,7 +79,7 @@ upstream memory use remains bounded.
 The implementation performs a live GitHub request to the fixed
 `https://api.github.com` destination for every call. One broker-owned 10-second
 deadline spans receipt of response headers and the complete bounded response
-body. It does not
+body. Redirect responses are rejected before any follow-up request. It does not
 cache metadata, mint an installation token, enumerate repositories, mutate an
 installation, or expose GitHub response bodies through a public HTTP route.
 Trusted consumers own polling cadence and concurrency; GitHub rate-limit

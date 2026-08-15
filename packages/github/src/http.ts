@@ -81,6 +81,7 @@ export async function fetchGitHubApiJson<Schema extends z.ZodType>(
       dependencies.fetch(requestUrl, {
         ...init,
         headers: requestHeaders,
+        redirect: "manual",
         signal: requestSignal,
       }),
       requestSignal,
