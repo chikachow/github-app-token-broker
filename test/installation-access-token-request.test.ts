@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   canonicalizeInstallationAccessTokenPermissions,
+  createInstallationAccessTokenRequest,
   createGitHubRepositoryResource,
   installationAccessTokenPermissionLevelCovers,
   installationAccessTokenPermissionsAreValid,
   isGitHubRepositoryResourcePathSegment,
   normalizeInstallationAccessTokenRequest,
   parseGitHubRepositoryResource,
-  unionGitHubInstallationPermissions,
 } from "@github-app-token-broker/github/installation-access-token-request";
 import {
   fixtureSourceResource,
@@ -36,6 +36,40 @@ const malformedRuntimePermissionCases = [
 ];
 
 describe("InstallationAccessTokenRequest normalization", () => {
+  it("creates an immutable request snapshot and derives its representations", () => {
+    const permissions = { pull_requests: "read", actions: "write" } as const;
+    const tokenRequest = createInstallationAccessTokenRequest({
+      owner: "fixture-owner",
+      permissions,
+      repository: "fixture-source-repository",
+    });
+
+    (permissions as { pull_requests: "read" | "write" }).pull_requests = "write";
+
+    expect(tokenRequest).toEqual({
+      permissions: { actions: "write", pull_requests: "read" },
+      resource: {
+        href: fixtureSourceResource,
+        owner: "fixture-owner",
+        repository: "fixture-source-repository",
+      },
+      scope: "actions:write pull_requests:read",
+    });
+    expect(Object.isFrozen(tokenRequest)).toBe(true);
+    expect(Object.isFrozen(tokenRequest.permissions)).toBe(true);
+    expect(Object.isFrozen(tokenRequest.resource)).toBe(true);
+  });
+
+  it("rejects an empty Requested Permissions map", () => {
+    expect(() =>
+      createInstallationAccessTokenRequest({
+        owner: "fixture-owner",
+        permissions: {},
+        repository: "fixture-source-repository",
+      }),
+    ).toThrow(TypeError);
+  });
+
   it.each([
     {
       expectedPermissions: { contents: "write", pull_requests: "write" },
@@ -151,32 +185,6 @@ describe("GitHub installation permission domain", () => {
     ["admin", "admin", true],
   ] as const)("reports whether %s covers %s", (configured, requested, expected) => {
     expect(installationAccessTokenPermissionLevelCovers(configured, requested)).toBe(expected);
-  });
-
-  it("unions permissions pointwise and canonically", () => {
-    const permissions = unionGitHubInstallationPermissions(
-      { contents: "read", issues: "admin", pull_requests: "write" },
-      { actions: "read", contents: "write", issues: "read" },
-    );
-
-    expect(permissions).toEqual({
-      actions: "read",
-      contents: "write",
-      issues: "admin",
-      pull_requests: "write",
-    });
-    expect(Object.keys(permissions)).toEqual(["actions", "contents", "issues", "pull_requests"]);
-  });
-
-  it("unions valid permission names that collide with Object prototype properties", () => {
-    const prototypeNamedPermissions = mustNormalizeTokenRequest({
-      resource: fixtureSourceResource,
-      scope: "constructor:admin toString:read",
-    }).permissions;
-
-    expect(
-      unionGitHubInstallationPermissions(prototypeNamedPermissions, { future_permission: "write" }),
-    ).toEqual({ constructor: "admin", future_permission: "write", toString: "read" });
   });
 
   it.each([{ name: "empty object", value: {} }, ...malformedRuntimePermissionCases])(

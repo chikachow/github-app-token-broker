@@ -5,9 +5,8 @@ import {
   parseOidcIssuerIdentifier,
 } from "@github-app-token-broker/oidc/provider-registration";
 import {
+  createInstallationAccessTokenRequest,
   createGitHubRepositoryResource,
-  installationAccessTokenPermissionLevelCovers,
-  unionGitHubInstallationPermissions,
   type GitHubInstallationPermissions,
   type InstallationAccessTokenRequest,
 } from "@github-app-token-broker/github/installation-access-token-request";
@@ -15,13 +14,11 @@ import {
   claimEquals,
   claimOneOf,
   compileTokenIssuancePolicy,
+  evaluateTokenIssuancePolicy,
   githubRepositoryOwnerResourceConstraint,
   githubRepositoryResourceConstraint,
   oidcSubjectTokenConstraint,
   assertTokenIssuancePolicyIssuersAreRegistered,
-  tokenIssuancePolicyPermits,
-  tokenIssuancePolicySupportsRequestedPermissions,
-  tokenIssuancePolicySupportsTarget,
   type ClaimPredicateDefinition,
   type PermitStatementDefinition,
 } from "@github-app-token-broker/token-issuance-policy";
@@ -525,7 +522,11 @@ function requestFor(
   permissions: GitHubInstallationPermissions,
   resource = repositoryResource,
 ): InstallationAccessTokenRequest {
-  return { permissions, resource, scope: "test-scope" };
+  return createInstallationAccessTokenRequest({
+    owner: resource.owner,
+    permissions,
+    repository: resource.repository,
+  });
 }
 
 function statementFor(
@@ -552,14 +553,50 @@ function materializedPermissionsCover(
   configured: GitHubInstallationPermissions,
   requested: GitHubInstallationPermissions,
 ): boolean {
+  const ranks = { admin: 3, read: 1, write: 2 } as const;
+
   return permissionNames.every((name) => {
     const requestedLevel = requested[name];
+    const configuredLevel = configured[name];
 
     return (
       requestedLevel === undefined ||
-      installationAccessTokenPermissionLevelCovers(configured[name], requestedLevel)
+      (configuredLevel !== undefined && ranks[configuredLevel] >= ranks[requestedLevel])
     );
   });
+}
+
+function materializePermissionUnion(
+  left: GitHubInstallationPermissions,
+  right: GitHubInstallationPermissions,
+): GitHubInstallationPermissions {
+  const ranks = { admin: 3, read: 1, write: 2 } as const;
+  const result: Record<string, "admin" | "read" | "write"> = {};
+
+  for (const name of new Set([...Object.keys(left), ...Object.keys(right)])) {
+    const leftLevel = left[name];
+    const rightLevel = right[name];
+
+    if (leftLevel === undefined) {
+      if (rightLevel !== undefined) {
+        result[name] = rightLevel;
+      }
+    } else if (rightLevel === undefined || ranks[leftLevel] >= ranks[rightLevel]) {
+      result[name] = leftLevel;
+    } else {
+      result[name] = rightLevel;
+    }
+  }
+
+  return result;
+}
+
+function policyEvaluationPermits(
+  policy: Parameters<typeof evaluateTokenIssuancePolicy>[0],
+  verifiedSubjectToken: Parameters<typeof evaluateTokenIssuancePolicy>[1],
+  request: Parameters<typeof evaluateTokenIssuancePolicy>[2],
+): boolean {
+  return evaluateTokenIssuancePolicy(policy, verifiedSubjectToken, request).outcome === "permitted";
 }
 
 function expectRecursivelyFrozen(value: unknown, seen = new Set<object>()): void {
@@ -578,6 +615,41 @@ function expectRecursivelyFrozen(value: unknown, seen = new Set<object>()): void
 }
 
 describe("Token Issuance Policy evaluation", () => {
+  it("classifies every evaluation through one total result", () => {
+    const policy = compileTokenIssuancePolicy([
+      statementFor(
+        { contents: "write" },
+        {
+          subjectToken: oidcSubjectTokenConstraint(issuer, claimEquals("trusted", true)),
+        },
+      ),
+    ]);
+
+    expect(
+      evaluateTokenIssuancePolicy(policy, matchingSubjectToken, requestFor({ contents: "read" })),
+    ).toEqual({ outcome: "permitted" });
+    expect(
+      evaluateTokenIssuancePolicy(
+        policy,
+        matchingSubjectToken,
+        requestFor(
+          { contents: "read" },
+          createGitHubRepositoryResource({ owner: "other", repository: "repository" }),
+        ),
+      ),
+    ).toEqual({ outcome: "target_unsupported" });
+    expect(
+      evaluateTokenIssuancePolicy(policy, matchingSubjectToken, requestFor({ contents: "admin" })),
+    ).toEqual({ outcome: "requested_permissions_unsupported" });
+    expect(
+      evaluateTokenIssuancePolicy(
+        policy,
+        createVerifiedSubjectToken({ trusted: false }, { issuer }),
+        requestFor({ contents: "read" }),
+      ),
+    ).toEqual({ outcome: "subject_token_unacceptable" });
+  });
+
   it("reports every unique missing policy issuer in lexical order", () => {
     const firstIssuer = parseOidcIssuerIdentifier("https://a.example");
     const secondIssuer = parseOidcIssuerIdentifier("https://z.example");
@@ -638,7 +710,7 @@ describe("Token Issuance Policy evaluation", () => {
     ]);
 
     expect(
-      tokenIssuancePolicyPermits(policy, matchingSubjectToken, requestFor({ contents: "read" })),
+      policyEvaluationPermits(policy, matchingSubjectToken, requestFor({ contents: "read" })),
     ).toBe(true);
 
     for (const claims of [
@@ -650,7 +722,7 @@ describe("Token Issuance Policy evaluation", () => {
       { environment: "production" },
     ]) {
       expect(
-        tokenIssuancePolicyPermits(
+        policyEvaluationPermits(
           policy,
           createVerifiedSubjectToken(claims, { issuer }),
           requestFor({ contents: "read" }),
@@ -676,14 +748,16 @@ describe("Token Issuance Policy evaluation", () => {
     );
 
     expect(
-      tokenIssuancePolicyPermits(policy, matchingSubjectToken, requestFor({ contents: "read" })),
+      policyEvaluationPermits(policy, matchingSubjectToken, requestFor({ contents: "read" })),
     ).toBe(true);
-    expect(tokenIssuancePolicyPermits(policy, matchingSubjectToken, otherRepository)).toBe(true);
-    expect(tokenIssuancePolicySupportsTarget(policy, otherRepository)).toBe(true);
-    expect(tokenIssuancePolicySupportsRequestedPermissions(policy, otherRepository)).toBe(true);
-    expect(tokenIssuancePolicyPermits(policy, matchingSubjectToken, otherOwner)).toBe(false);
-    expect(tokenIssuancePolicySupportsTarget(policy, otherOwner)).toBe(false);
-    expect(tokenIssuancePolicySupportsRequestedPermissions(policy, otherOwner)).toBe(false);
+    expect(policyEvaluationPermits(policy, matchingSubjectToken, otherRepository)).toBe(true);
+    expect(policyEvaluationPermits(policy, matchingSubjectToken, otherOwner)).toBe(false);
+    expect(evaluateTokenIssuancePolicy(policy, matchingSubjectToken, otherRepository)).toEqual({
+      outcome: "permitted",
+    });
+    expect(evaluateTokenIssuancePolicy(policy, matchingSubjectToken, otherOwner)).toEqual({
+      outcome: "target_unsupported",
+    });
   });
 
   it("keeps an exact resource constraint limited to its repository", () => {
@@ -694,12 +768,14 @@ describe("Token Issuance Policy evaluation", () => {
       createGitHubRepositoryResource({ owner: "owner", repository: "other-repository" }),
     );
 
-    expect(tokenIssuancePolicyPermits(policy, matchingSubjectToken, exactRequest)).toBe(true);
-    expect(tokenIssuancePolicySupportsTarget(policy, exactRequest)).toBe(true);
-    expect(tokenIssuancePolicySupportsRequestedPermissions(policy, exactRequest)).toBe(true);
-    expect(tokenIssuancePolicyPermits(policy, matchingSubjectToken, otherRepository)).toBe(false);
-    expect(tokenIssuancePolicySupportsTarget(policy, otherRepository)).toBe(false);
-    expect(tokenIssuancePolicySupportsRequestedPermissions(policy, otherRepository)).toBe(false);
+    expect(policyEvaluationPermits(policy, matchingSubjectToken, exactRequest)).toBe(true);
+    expect(policyEvaluationPermits(policy, matchingSubjectToken, otherRepository)).toBe(false);
+    expect(evaluateTokenIssuancePolicy(policy, matchingSubjectToken, exactRequest)).toEqual({
+      outcome: "permitted",
+    });
+    expect(evaluateTokenIssuancePolicy(policy, matchingSubjectToken, otherRepository)).toEqual({
+      outcome: "target_unsupported",
+    });
   });
 
   it("requires selected Claims to be own properties, including unusual names", () => {
@@ -723,14 +799,14 @@ describe("Token Issuance Policy evaluation", () => {
     ownClaims["__proto__"] = "literal";
 
     expect(
-      tokenIssuancePolicyPermits(
+      policyEvaluationPermits(
         policy,
         { claims: inheritedClaims, issuer } as VerifiedSubjectToken,
         requestFor({ contents: "read" }),
       ),
     ).toBe(false);
     expect(
-      tokenIssuancePolicyPermits(
+      policyEvaluationPermits(
         policy,
         { claims: ownClaims, issuer } as VerifiedSubjectToken,
         requestFor({ contents: "read" }),
@@ -750,7 +826,7 @@ describe("Token Issuance Policy evaluation", () => {
     ]);
 
     expect(
-      tokenIssuancePolicyPermits(
+      policyEvaluationPermits(
         policy,
         matchingSubjectToken,
         requestFor({ actions: "read", contents: "read" }),
@@ -764,14 +840,14 @@ describe("Token Issuance Policy evaluation", () => {
     ]);
 
     expect(
-      tokenIssuancePolicyPermits(
+      policyEvaluationPermits(
         policy,
         matchingSubjectToken,
         requestFor({ future_permission: "admin", issues: "read" }),
       ),
     ).toBe(true);
     expect(
-      tokenIssuancePolicyPermits(
+      policyEvaluationPermits(
         policy,
         matchingSubjectToken,
         requestFor({ another_permission: "read" }),
@@ -801,7 +877,7 @@ describe("Token Issuance Policy evaluation", () => {
     ]);
 
     expect(
-      tokenIssuancePolicyPermits(
+      policyEvaluationPermits(
         policy,
         matchingSubjectToken,
         requestFor({ actions: "read", contents: "read", pull_requests: "read" }),
@@ -809,7 +885,7 @@ describe("Token Issuance Policy evaluation", () => {
     ).toBe(false);
   });
 
-  it("classifies target support without treating it as authorization", () => {
+  it("classifies unsupported targets and permissions before subject-token rejection", () => {
     const otherIssuer = parseOidcIssuerIdentifier("https://other-issuer.example");
 
     if (otherIssuer === null) {
@@ -830,22 +906,22 @@ describe("Token Issuance Policy evaluation", () => {
     ]);
     const supportedTarget = requestFor({ actions: "read", contents: "read" });
 
-    expect(tokenIssuancePolicySupportsTarget(policy, supportedTarget)).toBe(true);
-    expect(tokenIssuancePolicySupportsRequestedPermissions(policy, supportedTarget)).toBe(true);
-    expect(tokenIssuancePolicyPermits(policy, matchingSubjectToken, supportedTarget)).toBe(false);
+    expect(evaluateTokenIssuancePolicy(policy, matchingSubjectToken, supportedTarget)).toEqual({
+      outcome: "subject_token_unacceptable",
+    });
     expect(
-      tokenIssuancePolicySupportsTarget(
+      evaluateTokenIssuancePolicy(
         policy,
+        matchingSubjectToken,
         requestFor(
           { contents: "read" },
           createGitHubRepositoryResource({ owner: "other", repository: "repository" }),
         ),
       ),
-    ).toBe(false);
-    expect(tokenIssuancePolicySupportsTarget(policy, requestFor({ actions: "write" }))).toBe(true);
+    ).toEqual({ outcome: "target_unsupported" });
     expect(
-      tokenIssuancePolicySupportsRequestedPermissions(policy, requestFor({ actions: "write" })),
-    ).toBe(false);
+      evaluateTokenIssuancePolicy(policy, matchingSubjectToken, requestFor({ actions: "write" })),
+    ).toEqual({ outcome: "requested_permissions_unsupported" });
   });
 
   it("is neutral to statement order, duplicates, and split or merged definitions", () => {
@@ -861,7 +937,7 @@ describe("Token Issuance Policy evaluation", () => {
     ];
 
     expect(
-      policies.map((policy) => tokenIssuancePolicyPermits(policy, matchingSubjectToken, request)),
+      policies.map((policy) => policyEvaluationPermits(policy, matchingSubjectToken, request)),
     ).toEqual([true, true, true, true]);
   });
 
@@ -885,16 +961,16 @@ describe("Token Issuance Policy evaluation", () => {
     statement.resource.repository = "other-repository";
 
     expect(
-      tokenIssuancePolicyPermits(policy, matchingSubjectToken, requestFor({ contents: "read" })),
+      policyEvaluationPermits(policy, matchingSubjectToken, requestFor({ contents: "read" })),
     ).toBe(true);
     expect(
-      tokenIssuancePolicyPermits(policy, matchingSubjectToken, requestFor({ contents: "write" })),
+      policyEvaluationPermits(policy, matchingSubjectToken, requestFor({ contents: "write" })),
     ).toBe(false);
   });
 
   it("does not permit any request with an empty policy", () => {
     expect(
-      tokenIssuancePolicyPermits(
+      policyEvaluationPermits(
         compileTokenIssuancePolicy([]),
         matchingSubjectToken,
         requestFor({ contents: "read" }),
@@ -908,12 +984,12 @@ describe("Token Issuance Policy evaluation", () => {
     for (const left of allPermissionMaps) {
       for (const right of allPermissionMaps) {
         const policy = policyForContributions(left, right);
-        const effective = unionGitHubInstallationPermissions(left, right);
+        const effective = materializePermissionUnion(left, right);
 
         for (const requested of nonEmptyPermissionMaps) {
-          expect(
-            tokenIssuancePolicyPermits(policy, matchingSubjectToken, requestFor(requested)),
-          ).toBe(materializedPermissionsCover(effective, requested));
+          expect(policyEvaluationPermits(policy, matchingSubjectToken, requestFor(requested))).toBe(
+            materializedPermissionsCover(effective, requested),
+          );
           cases += 1;
         }
       }
@@ -930,15 +1006,15 @@ describe("Token Issuance Policy evaluation", () => {
 
       for (const left of nonEmptyPermissionMaps) {
         for (const right of nonEmptyPermissionMaps) {
-          const union = unionGitHubInstallationPermissions(left, right);
-          const permitsUnion = tokenIssuancePolicyPermits(
+          const union = materializePermissionUnion(left, right);
+          const permitsUnion = policyEvaluationPermits(
             policy,
             matchingSubjectToken,
             requestFor(union),
           );
           const permitsSeparately =
-            tokenIssuancePolicyPermits(policy, matchingSubjectToken, requestFor(left)) &&
-            tokenIssuancePolicyPermits(policy, matchingSubjectToken, requestFor(right));
+            policyEvaluationPermits(policy, matchingSubjectToken, requestFor(left)) &&
+            policyEvaluationPermits(policy, matchingSubjectToken, requestFor(right));
 
           expect(permitsUnion).toBe(permitsSeparately);
           cases += 1;
