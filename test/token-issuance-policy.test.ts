@@ -498,6 +498,7 @@ describe("Token Issuance Policy compilation", () => {
 
 const permissionNames = ["future_permission", "issues"] as const;
 const permissionLevels = [undefined, "read", "write", "admin"] as const;
+const testPermissionLevelRanks = { admin: 3, read: 1, write: 2 } as const;
 const allPermissionMaps = permissionLevels.flatMap((futurePermission) =>
   permissionLevels.map((issues) =>
     Object.freeze({
@@ -553,15 +554,14 @@ function materializedPermissionsCover(
   configured: GitHubInstallationPermissions,
   requested: GitHubInstallationPermissions,
 ): boolean {
-  const ranks = { admin: 3, read: 1, write: 2 } as const;
-
   return permissionNames.every((name) => {
     const requestedLevel = requested[name];
     const configuredLevel = configured[name];
 
     return (
       requestedLevel === undefined ||
-      (configuredLevel !== undefined && ranks[configuredLevel] >= ranks[requestedLevel])
+      (configuredLevel !== undefined &&
+        testPermissionLevelRanks[configuredLevel] >= testPermissionLevelRanks[requestedLevel])
     );
   });
 }
@@ -570,7 +570,6 @@ function materializePermissionUnion(
   left: GitHubInstallationPermissions,
   right: GitHubInstallationPermissions,
 ): GitHubInstallationPermissions {
-  const ranks = { admin: 3, read: 1, write: 2 } as const;
   const result: Record<string, "admin" | "read" | "write"> = {};
 
   for (const name of new Set([...Object.keys(left), ...Object.keys(right)])) {
@@ -581,7 +580,10 @@ function materializePermissionUnion(
       if (rightLevel !== undefined) {
         result[name] = rightLevel;
       }
-    } else if (rightLevel === undefined || ranks[leftLevel] >= ranks[rightLevel]) {
+    } else if (
+      rightLevel === undefined ||
+      testPermissionLevelRanks[leftLevel] >= testPermissionLevelRanks[rightLevel]
+    ) {
       result[name] = leftLevel;
     } else {
       result[name] = rightLevel;
