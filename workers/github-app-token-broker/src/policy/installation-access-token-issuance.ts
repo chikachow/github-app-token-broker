@@ -121,6 +121,9 @@ export async function issueInstallationAccessTokenForContext(
         id: targetInstallation.id,
         repository: requestedResourceName,
       },
+      installation_access_token: {
+        permissions: installationAccessToken.permissions,
+      },
       token_issuance_policy: {
         permitted: true,
       },
