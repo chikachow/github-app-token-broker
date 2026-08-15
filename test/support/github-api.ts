@@ -68,7 +68,7 @@ export async function fetchGitHubTestDouble(
 
     if (
       request.headers.get("content-type") !== "application/json" ||
-      request.headers.get("x-github-stateless-s2s-token") !== "enabled" ||
+      request.headers.get("x-github-stateless-s2s-token") !== "disabled" ||
       !hasSelectedRepository(body, testRepository) ||
       permissions === null ||
       typeof permissions !== "object" ||
@@ -114,7 +114,7 @@ export async function fetchGitHubTestDouble(
 
     if (
       request.headers.get("content-type") !== "application/json" ||
-      request.headers.get("x-github-stateless-s2s-token") !== "enabled" ||
+      request.headers.get("x-github-stateless-s2s-token") !== "disabled" ||
       !hasSelectedRepository(body, testWorkflowDispatchRepository) ||
       permissions === null ||
       typeof permissions !== "object" ||

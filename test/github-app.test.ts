@@ -31,16 +31,20 @@ describe("GitHub App authentication", () => {
         iss: "2419473",
       });
 
-      return request.method === "POST"
-        ? Response.json(
-            {
-              expires_at: "2030-01-01T00:00:00Z",
-              permissions: { contents: "read" },
-              token: "ghs_default_dependencies_token",
-            },
-            { status: 201 },
-          )
-        : githubInstallationResponse("fixture-owner", 12345);
+      if (request.method === "POST") {
+        expect(request.headers.get("x-github-stateless-s2s-token")).toBe("disabled");
+
+        return Response.json(
+          {
+            expires_at: "2030-01-01T00:00:00Z",
+            permissions: { contents: "read" },
+            token: "ghs_default_dependencies_token",
+          },
+          { status: 201 },
+        );
+      }
+
+      return githubInstallationResponse("fixture-owner", 12345);
     });
 
     vi.useFakeTimers();
