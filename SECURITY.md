@@ -39,4 +39,4 @@ The GitHub App Information RPC is a separate privileged capability boundary:
 
 Never commit deployment secrets, local `.dev.vars`, `.env`, GitHub App private keys, Cloudflare API tokens, or generated Wrangler state.
 
-The source repository intentionally carries only public-safe Wrangler templates for local development, tests, and dry-runs. Production OIDC Provider Registrations, Permit Statements, trusted RPC service-binding configuration, deployment details, credentials, secret values, and deployment configuration must stay outside this codebase.
+The source repository intentionally carries only public-safe Wrangler templates for local development, tests, and dry-runs. Production runtime trust and deployment configuration—including OIDC Provider Registrations, Permit Statements, trusted RPC service bindings, audience, App identity, routes, account or namespace identifiers, credentials, and secret values—must stay outside this codebase. Source workflows may name an external release-handoff repository and workflow as intentionally public, least-privilege coordination metadata; this does not make production runtime inventory source-owned.
