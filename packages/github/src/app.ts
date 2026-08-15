@@ -35,20 +35,23 @@ export interface InstallationAccessToken {
 export class GitHubAppConfigurationError extends Error {
   public constructor() {
     super("invalid GitHub App configuration");
-    this.name = "GitHubAppConfigurationError";
   }
 }
 
+Object.defineProperty(GitHubAppConfigurationError.prototype, "name", {
+  value: "GitHubAppConfigurationError",
+});
+
 export type GitHubAppEnv = GitHubApiEnv & {
-  GITHUB_APP_ID: string;
-  GITHUB_APP_PRIVATE_KEY: SecretTextBinding;
+  readonly GITHUB_APP_ID: string;
+  readonly GITHUB_APP_PRIVATE_KEY: SecretTextBinding;
 };
 
 export interface GitHubAppDependencies extends GitHubApiDependencies {
   now(): Date;
 }
 
-const defaultGitHubAppDependencies: GitHubAppDependencies = {
+export const defaultGitHubAppDependencies: GitHubAppDependencies = {
   ...defaultGitHubApiDependencies,
   now: () => new Date(),
 };
@@ -70,7 +73,7 @@ export async function resolveInstallationForRepository(
   dependencies: GitHubAppDependencies = defaultGitHubAppDependencies,
 ): Promise<ResolvedGitHubAppInstallation> {
   const body = await fetchGitHubApiJson(env, dependencies, {
-    headers: await appAuthenticationHeaders(env, dependencies),
+    headers: await githubAppAuthenticationHeaders(env, dependencies),
     path: `/repos/${repository}/installation`,
     responseSchema: githubInstallationResponseSchema,
   });
@@ -107,7 +110,7 @@ export async function createInstallationAccessTokenForRepositoryName(
   };
 
   const responseBody = await fetchGitHubApiJson(env, dependencies, {
-    headers: await appAuthenticationHeaders(env, dependencies),
+    headers: await githubAppAuthenticationHeaders(env, dependencies),
     init: {
       body: JSON.stringify(requestBody),
       headers: {
@@ -127,10 +130,11 @@ export async function createInstallationAccessTokenForRepositoryName(
   };
 }
 
-async function appAuthenticationHeaders(
+export async function githubAppAuthenticationHeaders(
   env: GitHubAppEnv,
   dependencies: GitHubAppDependencies,
 ): Promise<HeadersInit> {
+  assertValidGitHubAppConfiguration(env);
   const jwt = await createGitHubAppJwt(env, () => dependencies.now());
 
   return {
@@ -139,6 +143,26 @@ async function appAuthenticationHeaders(
     "user-agent": "github-app-token-broker",
     "x-github-api-version": githubApiVersion,
   };
+}
+
+function assertValidGitHubAppConfiguration(env: GitHubAppEnv): void {
+  if (!/^[1-9][0-9]*$/u.test(env.GITHUB_APP_ID)) {
+    throw new GitHubAppConfigurationError();
+  }
+
+  if (env.GITHUB_API_BASE_URL === undefined) {
+    return;
+  }
+
+  try {
+    const baseUrl = new URL(env.GITHUB_API_BASE_URL);
+
+    if (baseUrl.protocol !== "https:") {
+      throw new GitHubAppConfigurationError();
+    }
+  } catch {
+    throw new GitHubAppConfigurationError();
+  }
 }
 
 async function createGitHubAppJwt(env: GitHubAppEnv, now: () => Date): Promise<string> {

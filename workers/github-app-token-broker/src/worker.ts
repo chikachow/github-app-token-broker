@@ -1,6 +1,6 @@
 import { problemResponse } from "@github-app-token-broker/http/problem-details";
 import { createOidcIdTokenAuthenticator } from "@github-app-token-broker/oidc/id-token-authenticator";
-import type { SecretTextBinding } from "@github-app-token-broker/github/secrets";
+import type { GitHubAppEnv } from "@github-app-token-broker/github/app";
 import type { InstallationAccessTokenExchange } from "./installation-access-token-exchange.ts";
 import { createInstallationAccessTokenExchange } from "./installation-access-token-exchange.ts";
 import { parseSubjectTokenAudience } from "./subject-token-audience.ts";
@@ -27,10 +27,7 @@ export interface TokenExchangeWorkerRuntimeDependencies {
   readonly now: () => Date;
 }
 
-export interface TokenExchangeWorkerEnv {
-  readonly GITHUB_API_BASE_URL?: string;
-  readonly GITHUB_APP_ID: string;
-  readonly GITHUB_APP_PRIVATE_KEY: SecretTextBinding;
+export interface TokenExchangeWorkerEnv extends GitHubAppEnv {
   readonly TOKEN_BROKER_AUDIENCE: string;
   readonly TOKEN_EXCHANGE_RATE_LIMIT: {
     limit(options: { readonly key: string }): Promise<{ readonly success: boolean }>;

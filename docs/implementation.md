@@ -7,12 +7,35 @@
 - `packages/oidc-provider-fly`: source-supported exact Fly organization-scoped OIDC Provider Registration construction with an explicit null OIDC ID Token Profile
 - `packages/oidc-provider-github-actions`: GitHub Actions OIDC Provider Registration and ID Token profile
 - `packages/oidc-provider-google-service-account`: Google service-account OIDC Provider Registration and ID Token profile
-- `packages/github`: Installation Access Token Request normalization, GitHub App JWT, repository installation resolution, owner binding, and installation-token minting
+- `packages/github`: Installation Access Token Request normalization, GitHub App JWT, repository installation resolution, owner binding, installation-token minting, and GitHub App Information queries
 - `packages/token-issuance-policy`: structural Permit Statement compilation, validation, and evaluation
 - `packages/http`: bounded body readers and HTTP/problem-response helpers
 - `test`: behavioral unit tests plus a real Workerd integration project for the Worker entrypoint
 
 There is no webhook runtime, deployment endpoint, dynamic issuer registry, App selector, or multi-key service.
+
+## GitHub App Information RPC
+
+`packages/github/src/app-information.ts` is the runtime-neutral read-only
+module behind the Worker's named `GitHubAppInformationEntrypoint`. It uses the
+same configured App JWT machinery as token issuance but never creates an
+Installation Access Token. Its four methods map directly to GitHub's App-JWT
+metadata endpoints and return GitHub-shaped values. The entrypoint is exported
+from `generic-worker.ts` for an explicitly configured Cloudflare service
+binding; no HTTP route is added.
+
+The module validates positive installation IDs, bounded pagination, and
+single-segment repository inputs; accepts GitHub's user, enterprise, and
+nullable installation-account response variants; passes through additive
+GitHub response fields; and converts downstream and internal failures to stable
+RPC error names. The installation-list page uses a separate 1 MiB bound while
+the existing 64 KiB GitHub response default remains in place for smaller
+documents. The
+[GitHub App Information RPC decision](decisions/github-app-information-rpc.md)
+records the design rationale, the
+[research note](research/github-app-information.md) records the endpoint
+evidence, and the [service contract](service-contract.md) is authoritative for
+the implemented capability and security boundary.
 
 ## Worker composition
 

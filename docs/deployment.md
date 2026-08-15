@@ -4,9 +4,20 @@ This public repository owns the broker source, tests, documentation, public-safe
 
 ## One App per deployment
 
-`@github-app-token-broker/worker` is the sole Worker package and exposes only `POST /token`. Each deployed Worker instance receives one `GITHUB_APP_ID` and one `GITHUB_APP_PRIVATE_KEY`. Deploy a separate instance for another GitHub App. Do not add a public App selector or multi-key endpoint.
+`@github-app-token-broker/worker` is the sole Worker package. Its only public
+HTTP route is `POST /token`; it also exports the internal
+`GitHubAppInformationEntrypoint` for trusted service-binding RPC. Each deployed
+Worker instance receives one `GITHUB_APP_ID` and one
+`GITHUB_APP_PRIVATE_KEY`. Deploy a separate instance for another GitHub App. Do
+not add a public App selector or multi-key endpoint.
 
-An external deployment owns a TypeScript entrypoint that calls `createTokenExchangeWorker` with:
+An external deployment owns a TypeScript entrypoint that:
+
+- default-exports the result of calling `createTokenExchangeWorker`; and
+- re-exports `GitHubAppInformationEntrypoint` from
+  `@github-app-token-broker/worker` as a named export.
+
+The deployment calls `createTokenExchangeWorker` with:
 
 - the accepted OIDC Provider Registrations
 - the compiled Token Issuance Policy
@@ -24,12 +35,13 @@ The deployment system is maintained outside this repository. It must:
 1. select and pin a reviewed source revision
 2. install with Node 24 and the source repository's pinned Corepack/pnpm version
 3. run the public source checks independently
-4. compile a deployment-owned TypeScript entrypoint with reviewed OIDC Provider Registrations and Token Issuance Policy
+4. compile a deployment-owned TypeScript entrypoint with reviewed OIDC Provider Registrations and Token Issuance Policy, and re-export `GitHubAppInformationEntrypoint`
 5. test the exact composition, including accepted and rejected requests, without deriving expectations from the policy under test
 6. preserve the source compatibility date and flags unless a reviewed deployment change intentionally updates them
 7. supply the deployment-owned Worker name, routes, exact `TOKEN_BROKER_AUDIENCE`, GitHub App ID/private key, rate-limit namespace, and Cloudflare credentials
 8. run a strict dry-run against the deployment-owned entrypoint
 9. smoke-test the routed `POST /token` contract without logging tokens
+10. exercise `GitHubAppInformationEntrypoint` through a named service binding; each concrete consumer must test its exact production binding configuration
 
 The deployment system owns the Worker audience and public route. It must bind `TOKEN_BROKER_AUDIENCE` to the exact value requested in Clients' subject tokens and independently verify that Clients send requests to the intended Token Exchange Endpoint. Neither identity nor location may be inferred from an incoming `Host` header.
 

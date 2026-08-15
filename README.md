@@ -8,7 +8,7 @@ The only public service route is `POST /token`. The service has no webhook recei
 
 - `workers/github-app-token-broker` is the sole deployable Cloudflare Worker package (`@github-app-token-broker/worker`).
 - `packages/oidc` owns the deep ID Token authenticator, OIDC Provider Registration validation, discovery/JWK Set validation, bounded caches, and fail-closed error classification.
-- `packages/github` owns Installation Access Token Request normalization, GitHub App JWT signing, installation lookup, owner binding, and installation-token minting.
+- `packages/github` owns Installation Access Token Request normalization, GitHub App JWT signing, installation lookup, owner binding, installation-token minting, and GitHub App Information queries.
 - `packages/token-issuance-policy` owns Permit Statement compilation and evaluation.
 - `packages/http` owns bounded request/response body helpers and problem responses.
 - Provider packages contain reviewed GitHub Actions and Google service-account registrations plus exact organization-scoped Fly OIDC Provider Registration construction.
@@ -53,9 +53,9 @@ See [the service contract](docs/service-contract.md) for complete request, respo
 
 The Worker consumes one App identity per deployment:
 
-- `GITHUB_APP_ID`: non-secret GitHub App identifier
+- `GITHUB_APP_ID`: non-secret positive decimal GitHub App identifier
 - `GITHUB_APP_PRIVATE_KEY`: Worker secret or Secrets Store binding containing its PKCS#8 private key
-- `GITHUB_API_BASE_URL`: public-safe GitHub API base URL, normally `https://api.github.com`
+- `GITHUB_API_BASE_URL`: HTTPS GitHub API base URL, normally `https://api.github.com`
 - `TOKEN_BROKER_AUDIENCE`: required non-secret exact scalar Subject-Token Audience supplied by the deployment
 - `TOKEN_EXCHANGE_RATE_LIMIT`: Cloudflare rate-limit binding
 
@@ -80,7 +80,11 @@ Do not commit keys, `.dev.vars`, `.env`, `.wrangler/`, `.local-secrets/`, or pri
 
 ## Deployment boundary
 
-This public repository does not deploy the service. A deployment system outside this repository must pin a reviewed source revision, run the source checks, supply deployment-owned configuration and secrets, deploy the Worker, and verify `POST /token`.
+This public repository does not deploy the service. A deployment system outside
+this repository must pin a reviewed source revision, run the source checks,
+supply deployment-owned configuration and secrets, deploy the Worker, verify
+`POST /token`, and re-export and test `GitHubAppInformationEntrypoint` when
+providing the internal service-binding RPC.
 
 ## External references
 

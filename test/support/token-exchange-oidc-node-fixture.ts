@@ -3,6 +3,7 @@ import {
   tokenExchangeOidcIntegrationCases,
 } from "./oidc-integration-cases.ts";
 import { testPrivateKeyPem, testPublicJwk } from "./rsa-test-key-pair.ts";
+import type { TestOutboundRequest } from "./outbound-request.ts";
 import {
   createTokenExchangeRequestBody,
   testGithubActionsIssuer,
@@ -32,7 +33,7 @@ export const tokenExchangeOidcNodeFixture = Object.freeze({
   outboundService: tokenExchangeOidcOutboundService,
 });
 
-function tokenExchangeOidcOutboundService(request: Request): Response {
+function tokenExchangeOidcOutboundService(request: TestOutboundRequest): Response {
   if (request.method !== "GET") {
     throw new Error(`unexpected outbound request: ${request.method} ${request.url}`);
   }
