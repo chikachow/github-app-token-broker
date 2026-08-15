@@ -63,8 +63,10 @@ A GitHub response cannot retroactively change that policy outcome.
 
 The broker sends every GitHub request to `https://api.github.com`; neither a
 deployment binding nor a Client value can select another credential
-destination. Each request has one broker-owned 10-second deadline spanning the
-Fetch operation through receipt of response headers and consumption of the
+destination. Redirect responses are rejected before any follow-up request, so
+GitHub App credentials are not forwarded through redirects. Each request has
+one broker-owned 10-second deadline spanning the Fetch operation through
+receipt of response headers and consumption of the
 complete bounded response body. A caller abort is composed with, rather than
 replacing, this deadline. Deadline expiry and other transport failures use the
 `upstream_unavailable` classification.

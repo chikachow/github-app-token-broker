@@ -1122,6 +1122,180 @@ describe("github-app-token-broker-token-exchange", () => {
     }
   });
 
+  it("sanitizes a Subject-Token Audience configuration failure at the Worker boundary", async () => {
+    const failureDetail = "private invalid audience detail";
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const worker = createTokenExchangeWorker(
+      testTokenExchangeComposition,
+      testTokenExchangeWorkerRuntimeDependencies,
+    );
+
+    try {
+      const response = await worker.fetch?.(
+        new Request("https://example.test/token", {
+          body: await tokenExchangeRequestBody(),
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          method: "POST",
+        }) as Parameters<NonNullable<typeof worker.fetch>>[0],
+        {
+          ...testEnv,
+          TOKEN_BROKER_AUDIENCE: `invalid\n${failureDetail}`,
+        },
+        {} as ExecutionContext,
+      );
+
+      expect(response?.status).toBe(500);
+      expect(response?.headers.get("cache-control")).toBe("no-store");
+      expect(response?.headers.get("pragma")).toBe("no-cache");
+      expect(response?.headers.get("www-authenticate")).toBeNull();
+      await expect(response?.json()).resolves.toEqual({ error: "server_error" });
+      expect(consoleError).toHaveBeenCalledWith({
+        error: { name: "Error" },
+        event: "token_exchange_request_failed",
+      });
+      expect(JSON.stringify(consoleError.mock.calls)).not.toContain(failureDetail);
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it("sanitizes a URL routing failure at the Worker boundary", async () => {
+    const failureDetail = "private URL routing failure";
+    const request = new Request("https://example.test/token", { method: "GET" });
+    Object.defineProperty(request, "url", {
+      get() {
+        throw new Error(failureDetail);
+      },
+    });
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const worker = createTokenExchangeWorker(
+      testTokenExchangeComposition,
+      testTokenExchangeWorkerRuntimeDependencies,
+    );
+
+    try {
+      const response = await worker.fetch?.(
+        request as Parameters<NonNullable<typeof worker.fetch>>[0],
+        testEnv,
+        {} as ExecutionContext,
+      );
+
+      expect(response?.status).toBe(500);
+      expect(response?.headers.get("cache-control")).toBe("no-store");
+      expect(response?.headers.get("pragma")).toBe("no-cache");
+      expect(response?.headers.get("www-authenticate")).toBeNull();
+      await expect(response?.json()).resolves.toEqual({ error: "server_error" });
+      expect(consoleError).toHaveBeenCalledWith({
+        error: { name: "Error" },
+        event: "token_exchange_request_failed",
+      });
+      expect(JSON.stringify(consoleError.mock.calls)).not.toContain(failureDetail);
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it("sanitizes non-POST response-construction failure at the Worker boundary", async () => {
+    const failureDetail = "private non-POST response failure";
+    const request = new Request("https://example.test/token", { method: "GET" });
+    const PlatformResponse = Response;
+    let constructionCount = 0;
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.stubGlobal(
+      "Response",
+      class extends PlatformResponse {
+        constructor(body?: BodyInit | null, init?: ResponseInit) {
+          constructionCount += 1;
+
+          if (constructionCount === 1) {
+            throw new Error(failureDetail);
+          }
+
+          super(body, init);
+        }
+      },
+    );
+    const worker = createTokenExchangeWorker(
+      testTokenExchangeComposition,
+      testTokenExchangeWorkerRuntimeDependencies,
+    );
+
+    try {
+      const response = await worker.fetch?.(
+        request as Parameters<NonNullable<typeof worker.fetch>>[0],
+        testEnv,
+        {} as ExecutionContext,
+      );
+
+      expect(response?.status).toBe(500);
+      expect(response?.headers.get("cache-control")).toBe("no-store");
+      expect(response?.headers.get("pragma")).toBe("no-cache");
+      expect(response?.headers.get("www-authenticate")).toBeNull();
+      await expect(response?.json()).resolves.toEqual({ error: "server_error" });
+      expect(consoleError).toHaveBeenCalledWith({
+        error: { name: "Error" },
+        event: "token_exchange_request_failed",
+      });
+      expect(JSON.stringify(consoleError.mock.calls)).not.toContain(failureDetail);
+    } finally {
+      vi.unstubAllGlobals();
+      consoleError.mockRestore();
+    }
+  });
+
+  it("sanitizes a final rejected Token Endpoint promise at the Worker boundary", async () => {
+    const failureDetail = "private final Token Endpoint rejection";
+    const request = new Request("https://example.test/token", { method: "POST" });
+    const PlatformResponse = Response;
+    let constructionCount = 0;
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.stubGlobal(
+      "Response",
+      class extends PlatformResponse {
+        constructor(body?: BodyInit | null, init?: ResponseInit) {
+          constructionCount += 1;
+
+          if (constructionCount <= 2) {
+            throw new Error(`${failureDetail} ${constructionCount}`);
+          }
+
+          super(body, init);
+        }
+      },
+    );
+    const worker = createTokenExchangeWorker(
+      testTokenExchangeComposition,
+      testTokenExchangeWorkerRuntimeDependencies,
+    );
+
+    try {
+      const response = await worker.fetch?.(
+        request as Parameters<NonNullable<typeof worker.fetch>>[0],
+        testEnv,
+        {} as ExecutionContext,
+      );
+
+      expect(response?.status).toBe(500);
+      expect(response?.headers.get("cache-control")).toBe("no-store");
+      expect(response?.headers.get("pragma")).toBe("no-cache");
+      expect(response?.headers.get("www-authenticate")).toBeNull();
+      await expect(response?.json()).resolves.toEqual({ error: "server_error" });
+      expect(consoleError).toHaveBeenCalledTimes(2);
+      expect(consoleError).toHaveBeenNthCalledWith(1, {
+        error: { name: "Error" },
+        event: "token_exchange_request_failed",
+      });
+      expect(consoleError).toHaveBeenNthCalledWith(2, {
+        error: { name: "Error" },
+        event: "token_exchange_request_failed",
+      });
+      expect(JSON.stringify(consoleError.mock.calls)).not.toContain(failureDetail);
+    } finally {
+      vi.unstubAllGlobals();
+      consoleError.mockRestore();
+    }
+  });
+
   it("maps a failing request body stream to a sanitized server error", async () => {
     const bodyFailureDetail = "subject_token=secret-body-stream-detail";
     const body = new ReadableStream<Uint8Array>({

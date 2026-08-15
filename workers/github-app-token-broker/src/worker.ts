@@ -10,6 +10,7 @@ import { createInstallationAccessTokenExchange } from "./installation-access-tok
 import {
   handleTokenExchangeRequest,
   tokenExchangeMethodNotAllowedResponse,
+  unexpectedTokenExchangeFailureResponse,
 } from "./token-exchange.ts";
 import {
   assertTokenIssuancePolicyIssuersAreRegistered,
@@ -63,57 +64,61 @@ export function createTokenExchangeWorker(
     | undefined;
 
   return {
-    fetch(request, env) {
-      const audience = parseSubjectTokenAudience(env.TOKEN_BROKER_AUDIENCE);
-      configuredRuntime ??= {
-        audience,
-        tokenExchange: createInstallationAccessTokenExchange({
-          githubAppDependencies: workerDependencies,
-          oidcIdTokenAuthenticator: createOidcIdTokenAuthenticator(
-            {
-              providerRegistrations: workerDependencies.oidcProviderRegistrations,
-              subjectTokenAudience: audience,
-            },
-            {
-              fetch: (input, init) => workerDependencies.fetch(input, init),
-              now: () => workerDependencies.now(),
-              observe: (event) => console.warn(event),
-            },
-          ),
-          tokenIssuancePolicy: workerDependencies.tokenIssuancePolicy,
-        }),
-      };
-
-      if (configuredRuntime.audience !== audience) {
-        throw new TypeError(
-          "TOKEN_BROKER_AUDIENCE must not change during a Worker isolate lifetime",
-        );
-      }
-      const tokenExchange = configuredRuntime.tokenExchange;
-
-      const url = new URL(request.url);
-
-      if (url.pathname !== "/token") {
-        return problemResponse(404);
-      }
-
-      if (request.method !== "POST") {
-        return tokenExchangeMethodNotAllowedResponse();
-      }
-
-      return handleTokenExchangeRequest(request, {
-        exchange: (input) =>
-          tokenExchange.exchange({
-            ...input,
-            githubApp: githubApp(env),
+    async fetch(request, env) {
+      try {
+        const audience = parseSubjectTokenAudience(env.TOKEN_BROKER_AUDIENCE);
+        configuredRuntime ??= {
+          audience,
+          tokenExchange: createInstallationAccessTokenExchange({
+            githubAppDependencies: workerDependencies,
+            oidcIdTokenAuthenticator: createOidcIdTokenAuthenticator(
+              {
+                providerRegistrations: workerDependencies.oidcProviderRegistrations,
+                subjectTokenAudience: audience,
+              },
+              {
+                fetch: (input, init) => workerDependencies.fetch(input, init),
+                now: () => workerDependencies.now(),
+                observe: (event) => console.warn(event),
+              },
+            ),
+            tokenIssuancePolicy: workerDependencies.tokenIssuancePolicy,
           }),
-        now: () => workerDependencies.now(),
-        rateLimit: async (key) => {
-          const result = await env.TOKEN_EXCHANGE_RATE_LIMIT.limit({ key });
+        };
 
-          return result.success;
-        },
-      });
+        if (configuredRuntime.audience !== audience) {
+          throw new TypeError(
+            "TOKEN_BROKER_AUDIENCE must not change during a Worker isolate lifetime",
+          );
+        }
+        const tokenExchange = configuredRuntime.tokenExchange;
+
+        const url = new URL(request.url);
+
+        if (url.pathname !== "/token") {
+          return problemResponse(404);
+        }
+
+        if (request.method !== "POST") {
+          return tokenExchangeMethodNotAllowedResponse();
+        }
+
+        return await handleTokenExchangeRequest(request, {
+          exchange: (input) =>
+            tokenExchange.exchange({
+              ...input,
+              githubApp: githubApp(env),
+            }),
+          now: () => workerDependencies.now(),
+          rateLimit: async (key) => {
+            const result = await env.TOKEN_EXCHANGE_RATE_LIMIT.limit({ key });
+
+            return result.success;
+          },
+        });
+      } catch (error) {
+        return unexpectedTokenExchangeFailureResponse(error);
+      }
     },
   };
 }

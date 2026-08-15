@@ -44,10 +44,21 @@ export async function handleTokenExchangeRequest(
   try {
     return await handleTokenExchangeRequestCore(request, runtime);
   } catch (error) {
-    logUnexpectedTokenExchangeFailure(error);
-
-    return oauthErrorResponse(500, "server_error");
+    return unexpectedTokenExchangeFailureResponse(error);
   }
+}
+
+export function unexpectedTokenExchangeFailureResponse(error: unknown): Response {
+  try {
+    console.error({
+      error: { name: error instanceof Error ? "Error" : typeof error },
+      event: "token_exchange_request_failed",
+    });
+  } catch {
+    // Logging must not prevent the Token Endpoint from returning a sanitized response.
+  }
+
+  return oauthErrorResponse(500, "server_error");
 }
 
 async function handleTokenExchangeRequestCore(
@@ -135,17 +146,6 @@ async function handleTokenExchangeRequestCore(
     scope: tokenRequest.tokenRequest.scope,
     token_type: "Bearer",
   });
-}
-
-function logUnexpectedTokenExchangeFailure(error: unknown): void {
-  try {
-    console.error({
-      error: { name: error instanceof Error ? "Error" : typeof error },
-      event: "token_exchange_request_failed",
-    });
-  } catch {
-    // Logging must not prevent the Token Endpoint from returning a sanitized response.
-  }
 }
 
 function isFormUrlEncodedContentType(contentType: string | null): boolean {

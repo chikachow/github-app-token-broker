@@ -37,6 +37,35 @@ describe("GitHub API HTTP adapter", () => {
     expect(fetchGitHub).toHaveBeenCalledOnce();
   });
 
+  it("forces manual redirect handling so App credentials are never forwarded", async () => {
+    const fetchGitHub = vi.fn<typeof fetch>(async (input, init) => {
+      expect(input).toEqual(new URL("https://api.github.com/test/response"));
+      expect(init?.redirect).toBe("manual");
+      expect(new Headers(init?.headers).get("authorization")).toBe("Bearer private-app-jwt");
+
+      return new Response(null, {
+        headers: { location: "https://attacker.example/credential-target" },
+        status: 302,
+      });
+    });
+
+    await expect(
+      fetchGitHubApiJson(
+        { fetch: fetchGitHub },
+        {
+          headers: { authorization: "Bearer private-app-jwt" },
+          init: { redirect: "follow" },
+          path: requestPath,
+          responseSchema,
+        },
+      ),
+    ).rejects.toMatchObject({
+      status: 302,
+      upstreamStatus: 302,
+    });
+    expect(fetchGitHub).toHaveBeenCalledOnce();
+  });
+
   it.each(["https://attacker.example/private", "//attacker.example/private", "/\\attacker"])(
     "rejects the unsafe API path %s before forwarding credentials",
     async (path) => {
