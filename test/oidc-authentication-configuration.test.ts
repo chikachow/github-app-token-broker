@@ -2,10 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-github-actions";
 import { createFlyOidcProviderRegistration } from "../packages/oidc-provider-fly/src/provider-registration.ts";
-import {
-  createGitHubRepositoryResource,
-  type InstallationAccessTokenRequest,
-} from "@github-app-token-broker/github/installation-access-token-request";
+import { createInstallationAccessTokenRequest } from "@github-app-token-broker/github/installation-access-token-request";
 import { createOidcIdTokenAuthenticator } from "@github-app-token-broker/oidc/id-token-authenticator";
 import { parseSubjectTokenAudience } from "@github-app-token-broker/oidc/subject-token-audience";
 import {
@@ -13,7 +10,7 @@ import {
   compileTokenIssuancePolicy,
   githubRepositoryResourceConstraint,
   oidcSubjectTokenConstraint,
-  tokenIssuancePolicyPermits,
+  evaluateTokenIssuancePolicy,
 } from "@github-app-token-broker/token-issuance-policy";
 import { fetchOidcRemoteDocumentResponseTestDouble } from "./support/oidc.ts";
 import { createOidcToken } from "./support/oidc-token.ts";
@@ -109,17 +106,17 @@ describe("OIDC ID Token authentication configuration", () => {
         ),
       },
     ]);
-    const request: InstallationAccessTokenRequest = {
+    const request = createInstallationAccessTokenRequest({
+      owner: "owner",
       permissions: { contents: "read" },
-      resource: createGitHubRepositoryResource({ owner: "owner", repository: "repository" }),
-      scope: "contents:read",
-    };
+      repository: "repository",
+    });
 
-    expect(tokenIssuancePolicyPermits(policy, authentication.verifiedSubjectToken, request)).toBe(
-      true,
-    );
     expect(
-      tokenIssuancePolicyPermits(
+      evaluateTokenIssuancePolicy(policy, authentication.verifiedSubjectToken, request),
+    ).toEqual({ outcome: "permitted" });
+    expect(
+      evaluateTokenIssuancePolicy(
         policy,
         {
           ...authentication.verifiedSubjectToken,
@@ -127,6 +124,6 @@ describe("OIDC ID Token authentication configuration", () => {
         },
         request,
       ),
-    ).toBe(false);
+    ).toEqual({ outcome: "subject_token_unacceptable" });
   });
 });

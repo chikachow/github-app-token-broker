@@ -8,6 +8,10 @@ import {
   githubApiVersion,
   type GitHubApiDependencies,
 } from "./http.ts";
+import type {
+  GitHubInstallationPermissions,
+  GitHubRepositoryResource,
+} from "./installation-access-token-request.ts";
 import { resolveSecretText, type SecretTextBinding } from "./secrets.ts";
 
 const githubJwtLifetimeSeconds = 9 * 60;
@@ -19,12 +23,9 @@ let cachedPrivateKey:
     }
   | undefined;
 
-export interface ResolvedGitHubAppInstallation {
-  id: number;
-}
-
 export interface InstallationAccessToken {
   expiresAt: string;
+  installationId: number;
   permissions: Record<string, string>;
   token: string;
 }
@@ -37,6 +38,19 @@ export class GitHubAppConfigurationError extends Error {
 
 Object.defineProperty(GitHubAppConfigurationError.prototype, "name", {
   value: "GitHubAppConfigurationError",
+});
+
+export class GitHubInstallationAccessTokenIssuanceError extends Error {
+  public readonly installationId: number;
+
+  public constructor(installationId: number, cause: unknown) {
+    super("GitHub Installation Access Token Issuance failed", { cause });
+    this.installationId = installationId;
+  }
+}
+
+Object.defineProperty(GitHubInstallationAccessTokenIssuanceError.prototype, "name", {
+  value: "GitHubInstallationAccessTokenIssuanceError",
 });
 
 export interface GitHubAppEnv {
@@ -64,64 +78,54 @@ const githubInstallationAccessTokenResponseSchema = z.object({
   token: z.string().min(1),
 });
 
-export async function resolveInstallationForRepository(
+export async function issueInstallationAccessTokenForRepository(
   env: GitHubAppEnv,
-  repository: string,
-  dependencies: GitHubAppDependencies = defaultGitHubAppDependencies,
-): Promise<ResolvedGitHubAppInstallation> {
-  const body = await fetchGitHubApiJson(dependencies, {
-    headers: await githubAppAuthenticationHeaders(env, dependencies),
-    path: `/repos/${repository}/installation`,
-    responseSchema: githubInstallationResponseSchema.refine((installation) =>
-      githubRepositoryOwnerMatches(repository, installation.account.login),
-    ),
-  });
-
-  return { id: body.id };
-}
-
-function githubRepositoryOwnerMatches(repository: string, installationOwner: string): boolean {
-  const separator = repository.indexOf("/");
-
-  if (separator <= 0) {
-    return false;
-  }
-
-  const repositoryOwner = repository.slice(0, separator);
-
-  return repositoryOwner.toLowerCase() === installationOwner.toLowerCase();
-}
-
-export async function createInstallationAccessTokenForRepositoryName(
-  env: GitHubAppEnv,
-  installationId: number,
-  repositoryName: string,
-  permissions: Record<string, string>,
+  resource: GitHubRepositoryResource,
+  permissions: GitHubInstallationPermissions,
   dependencies: GitHubAppDependencies = defaultGitHubAppDependencies,
 ): Promise<InstallationAccessToken> {
+  const authenticationHeaders = await githubAppAuthenticationHeaders(env, dependencies);
+  const repositoryPath = `${resource.owner}/${resource.repository}`;
+  const installation = await fetchGitHubApiJson(dependencies, {
+    headers: authenticationHeaders,
+    path: `/repos/${repositoryPath}/installation`,
+    responseSchema: githubInstallationResponseSchema.refine((installation) =>
+      githubRepositoryOwnerMatches(resource.owner, installation.account.login),
+    ),
+  });
   const requestBody = {
     permissions,
-    repositories: [repositoryName],
+    repositories: [resource.repository],
   };
+  let responseBody: z.output<typeof githubInstallationAccessTokenResponseSchema>;
 
-  const responseBody = await fetchGitHubApiJson(dependencies, {
-    headers: await githubAppAuthenticationHeaders(env, dependencies),
-    init: {
-      body: JSON.stringify(requestBody),
-      headers: {
-        "content-type": "application/json",
+  try {
+    responseBody = await fetchGitHubApiJson(dependencies, {
+      headers: authenticationHeaders,
+      init: {
+        body: JSON.stringify(requestBody),
+        headers: {
+          "content-type": "application/json",
+        },
+        method: "POST",
       },
-      method: "POST",
-    },
-    path: `/app/installations/${installationId}/access_tokens`,
-    responseSchema: githubInstallationAccessTokenResponseSchema,
-  });
+      path: `/app/installations/${installation.id}/access_tokens`,
+      responseSchema: githubInstallationAccessTokenResponseSchema,
+    });
+  } catch (cause) {
+    throw new GitHubInstallationAccessTokenIssuanceError(installation.id, cause);
+  }
 
   return {
     expiresAt: responseBody.expires_at,
+    installationId: installation.id,
     permissions: responseBody.permissions,
     token: responseBody.token,
   };
+}
+
+function githubRepositoryOwnerMatches(repositoryOwner: string, installationOwner: string): boolean {
+  return repositoryOwner.toLowerCase() === installationOwner.toLowerCase();
 }
 
 export async function githubAppAuthenticationHeaders(

@@ -350,7 +350,7 @@ describe("github-app-token-broker-token-exchange", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(getPrivateKey).toHaveBeenCalledTimes(2);
+    expect(getPrivateKey).toHaveBeenCalledOnce();
   });
 
   it("uses the shared fetch dependency and reuses OIDC caches for the Worker lifetime", async () => {
