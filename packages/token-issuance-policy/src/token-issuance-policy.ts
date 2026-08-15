@@ -4,11 +4,11 @@ import {
   type OidcProviderRegistration,
 } from "@github-app-token-broker/oidc/provider-registration";
 import {
-  canonicalizeInstallationAccessTokenPermissions,
   createGitHubRepositoryResource,
   installationAccessTokenPermissionsAreValid,
   installationAccessTokenPermissionLevelCovers,
   isGitHubRepositoryResourcePathSegment,
+  type GitHubInstallationPermissionLevel,
   type GitHubInstallationPermissions,
   type InstallationAccessTokenRequest,
   type GitHubRepositoryResource,
@@ -198,10 +198,10 @@ export function evaluateTokenIssuancePolicy(
   verifiedSubjectToken: VerifiedSubjectToken,
   request: InstallationAccessTokenRequest,
 ): TokenIssuancePolicyEvaluation {
-  const permissionsUnsupported = new Set(
+  const permissionsNotCoveredForResource = new Set(
     Object.keys(request.permissions) as (keyof GitHubInstallationPermissions)[],
   );
-  const permissionsUnacceptable = new Set(permissionsUnsupported);
+  const permissionsNotCoveredForMatchingSubject = new Set(permissionsNotCoveredForResource);
   let targetSupported = false;
 
   for (const statement of policy.permitStatements) {
@@ -210,15 +210,23 @@ export function evaluateTokenIssuancePolicy(
     }
 
     targetSupported = true;
-    removeCoveredPermissions(permissionsUnsupported, statement.permissions, request.permissions);
+    removeCoveredPermissions(
+      permissionsNotCoveredForResource,
+      statement.permissions,
+      request.permissions,
+    );
 
     if (
       statement.subjectToken.issuer === verifiedSubjectToken.issuer &&
       claimPredicatesMatch(statement.subjectToken.claimPredicates, verifiedSubjectToken.claims)
     ) {
-      removeCoveredPermissions(permissionsUnacceptable, statement.permissions, request.permissions);
+      removeCoveredPermissions(
+        permissionsNotCoveredForMatchingSubject,
+        statement.permissions,
+        request.permissions,
+      );
 
-      if (permissionsUnacceptable.size === 0) {
+      if (permissionsNotCoveredForMatchingSubject.size === 0) {
         return permittedEvaluation;
       }
     }
@@ -226,7 +234,7 @@ export function evaluateTokenIssuancePolicy(
 
   return !targetSupported
     ? targetUnsupportedEvaluation
-    : permissionsUnsupported.size > 0
+    : permissionsNotCoveredForResource.size > 0
       ? requestedPermissionsUnsupportedEvaluation
       : subjectTokenUnacceptableEvaluation;
 }
@@ -334,10 +342,10 @@ function compilePermitStatement(value: unknown, path: string): PermitStatement {
     fail(`${path}.resource`, "must identify a canonical GitHub Repository Resource Constraint");
   }
 
-  validatePermissions(statement["permissions"], `${path}.permissions`);
+  const permissions = compilePermissions(statement["permissions"], `${path}.permissions`);
 
   return Object.freeze({
-    permissions: canonicalizeInstallationAccessTokenPermissions(statement["permissions"]),
+    permissions,
     resource,
     subjectToken: Object.freeze({ claimPredicates, issuer }),
   });
@@ -421,16 +429,15 @@ function claimPredicatesMatch(
   });
 }
 
-function validatePermissions(
-  value: unknown,
-  path: string,
-): asserts value is GitHubInstallationPermissions {
+function compilePermissions(value: unknown, path: string): GitHubInstallationPermissions {
   const permissions = readObject(value, path);
   const names = Object.getOwnPropertyNames(permissions);
 
   if (names.length === 0) {
     fail(path, "must not be empty");
   }
+
+  const entries: [string, GitHubInstallationPermissionLevel][] = [];
 
   for (const name of names) {
     const descriptor = Object.getOwnPropertyDescriptor(permissions, name);
@@ -439,10 +446,18 @@ function validatePermissions(
       fail(`${path}.${name}`, "must be an own data field");
     }
 
-    if (!installationAccessTokenPermissionsAreValid({ [name]: descriptor.value })) {
+    const permission = { [name]: descriptor.value };
+
+    if (!installationAccessTokenPermissionsAreValid(permission)) {
       fail(`${path}.${name}`, "has an invalid permission name or level");
     }
+
+    entries.push([name, permission[name] as GitHubInstallationPermissionLevel]);
   }
+
+  entries.sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
+
+  return Object.freeze(Object.fromEntries(entries));
 }
 
 function readExactObject(
