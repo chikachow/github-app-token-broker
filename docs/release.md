@@ -18,6 +18,9 @@ Run this checklist before making the repository public or tagging a release.
 - `docs/implementation.md` matches the workspace packages, Worker entrypoints, bindings, and verification commands.
 - `docs/deployment.md` documents only the generic interface between this source repository and an external deployment system.
 - The Worker package exposes the named composition Interface and no default production composition.
+- Deployment-owned entrypoints re-export `GitHubAppInformationEntrypoint` and
+  exercise it through a named service binding; each concrete consumer tests its
+  exact production binding configuration.
 - The generic Wrangler entrypoint remains deny-all and contains no deployment inventory.
 - No dynamic issuer-trust or authorization-policy binding has been introduced.
 - An external deployment owns and independently tests the OIDC Provider Registrations and Token Issuance Policy compiled into its artifact.

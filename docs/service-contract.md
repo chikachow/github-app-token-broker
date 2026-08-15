@@ -10,6 +10,62 @@ This document describes the public interface, security boundaries, and externall
 
 Unknown routes return `404` problem details. Unsupported methods on `/token` return OAuth error JSON with `400 {"error":"invalid_request"}`.
 
+## Internal GitHub App Information RPC
+
+The Worker also exports a named `GitHubAppInformationEntrypoint` for an
+explicitly configured Cloudflare Worker service binding. This is an internal
+Worker-to-Worker capability, not a public HTTP endpoint. The binding is the
+caller authorization boundary; callers do not provide an App selector, App
+JWT, private key, or Installation Access Token.
+
+The v1 methods are:
+
+```ts
+interface GitHubAppInformation {
+  getApp(): Promise<GitHubApp>;
+  listInstallations(input?: {
+    page?: number;
+    per_page?: number;
+    since?: string;
+    outdated?: string;
+  }): Promise<GitHubAppInstallation[]>;
+  getInstallation(input: { installation_id: number }): Promise<GitHubAppInstallation>;
+  getRepositoryInstallation(input: { owner: string; repo: string }): Promise<GitHubAppInstallation>;
+}
+```
+
+These methods map to GitHub `GET /app`, `GET /app/installations`,
+`GET /app/installations/{installation_id}`, and
+`GET /repos/{owner}/{repo}/installation`, respectively. Successful values
+retain GitHub's field names, nesting, and pagination response shape. The list
+method returns one upstream page and does not auto-paginate. `per_page` is
+bounded to 100; `since` and `outdated` are passed through as strings, including
+exact empty values; installation IDs are positive integers; and repository
+inputs are validated path components inside the service. Successful App and
+single-installation documents are bounded to `64 KiB`; installation-list pages
+are bounded to `1 MiB` so a documented 100-item GitHub page can be returned.
+GitHub currently documents `repository_selection` values `all` and `selected`.
+Because GitHub treats added enum values as additive, future non-empty values
+pass through unchanged.
+
+The RPC uses the configured App JWT and performs a live request for each call.
+It does not list repositories for an installation, because that GitHub
+operation requires an Installation Access Token for the intended private
+installation view. It also does not mint tokens or expose mutation methods.
+Trusted consumers own polling cadence and concurrency; GitHub rate-limit
+responses remain `GitHubAppUnavailableError`.
+
+RPC failures use stable error names: `GitHubAppNotFoundError`,
+`GitHubAppUnavailableError`, `GitHubAppUpstreamError`,
+`GitHubAppConfigurationError`, `GitHubAppInputError`, and
+`GitHubAppInternalError`. The configuration category covers an invalid App ID,
+GitHub API base URL, private key, or GitHub rejecting the service-owned App JWT
+or credentials with HTTP `401`; the internal category covers other sanitized
+local implementation failures. GitHub error bodies, credentials, tokens, and
+custom HTTP-status properties are not part of the RPC contract. See the
+[GitHub App Information RPC decision](decisions/github-app-information-rpc.md)
+and [research findings](research/github-app-information.md).
+
 ## Token Exchange
 
 ### Request and response behaviour
@@ -273,7 +329,10 @@ The implementation uses these runtime bindings:
 - `TOKEN_BROKER_AUDIENCE`
 - `TOKEN_EXCHANGE_RATE_LIMIT` Cloudflare rate-limit binding
 
-The public Wrangler configs declare binding names for local development, tests, and dry-runs. `GITHUB_API_BASE_URL` is optional for the token exchange Worker and defaults to `https://api.github.com`.
+The public Wrangler configs declare binding names for local development, tests,
+and dry-runs. `GITHUB_APP_ID` is a positive decimal identifier.
+`GITHUB_API_BASE_URL` is optional for the token exchange Worker, must use HTTPS,
+and defaults to `https://api.github.com`.
 
 ## Unsupported Behaviour
 

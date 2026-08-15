@@ -5,12 +5,12 @@ export const githubAcceptHeader = "application/vnd.github+json";
 export const githubApiVersion = "2022-11-28";
 const maxGitHubErrorBodyBytes = 16 * 1024;
 // Installation resolution and token responses are small, fixed-shape documents.
-// Keep a shared cap so a successful upstream response cannot allocate unbounded memory.
+// Larger bounded endpoints can override this default explicitly.
 const maxGitHubSuccessfulBodyBytes = 64 * 1024;
 const githubErrorResponseSchema = z.object({ message: z.string() });
 
 export interface GitHubApiEnv {
-  GITHUB_API_BASE_URL?: string;
+  readonly GITHUB_API_BASE_URL?: string;
 }
 
 export interface GitHubApiDependencies {
@@ -52,11 +52,13 @@ export async function fetchGitHubApiJson<Schema extends z.ZodType>(
   {
     headers,
     init,
+    maxResponseBodyBytes = maxGitHubSuccessfulBodyBytes,
     path,
     responseSchema,
   }: {
     headers: HeadersInit;
     init?: RequestInit;
+    maxResponseBodyBytes?: number;
     path: string;
     responseSchema: Schema;
   },
@@ -92,7 +94,7 @@ export async function fetchGitHubApiJson<Schema extends z.ZodType>(
   let bodyRead: Awaited<ReturnType<typeof readBodyUpTo>>;
 
   try {
-    bodyRead = await readBodyUpTo(response.body, maxGitHubSuccessfulBodyBytes);
+    bodyRead = await readBodyUpTo(response.body, maxResponseBodyBytes);
   } catch {
     throw new GitHubApiTransportError(`GitHub API request failed: ${path}`);
   }

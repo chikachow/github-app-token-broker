@@ -6,13 +6,26 @@ import {
   githubRepositoryResourceConstraint,
   oidcSubjectTokenConstraint,
 } from "@github-app-token-broker/token-issuance-policy";
-import { createTokenExchangeWorker } from "@github-app-token-broker/worker";
+import {
+  createTokenExchangeWorker,
+  GitHubAppInformationEntrypoint,
+} from "@github-app-token-broker/worker";
 import { parseOidcIssuerIdentifier } from "@github-app-token-broker/oidc/provider-registration";
 import genericTokenExchangeWorker from "../workers/github-app-token-broker/src/generic-worker.ts";
 import { tokenExchangeRequestBody } from "./support/worker.ts";
 import { testTokenIssuancePolicy } from "./support/token-issuance-policy.ts";
 
 describe("worker entrypoint shapes", () => {
+  it("exports only the reviewed GitHub App Information RPC methods", () => {
+    expect(Object.getOwnPropertyNames(GitHubAppInformationEntrypoint.prototype)).toEqual([
+      "constructor",
+      "getApp",
+      "listInstallations",
+      "getInstallation",
+      "getRepositoryInstallation",
+    ]);
+  });
+
   it("rejects duplicate OIDC Provider Registration issuers when composed", () => {
     expect(() =>
       createTokenExchangeWorker({

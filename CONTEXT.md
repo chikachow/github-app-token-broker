@@ -62,6 +62,14 @@ _Avoid_: redirected owner, installation ID as owner identity, repository basenam
 An installation of a GitHub App on a user, organization, or enterprise account, with repository selection configured independently where applicable.
 _Avoid_: App session, app login
 
+**GitHub App Information**:
+Read-only metadata about the configured GitHub App and its GitHub App Installations that the App JWT can retrieve, including app metadata, installation metadata, and the installation associated with a repository. It does not include installation-wide repository enumeration.
+_Avoid_: Installation Access Token, repository catalog, App selector
+
+**GitHub App Information RPC**:
+The trusted internal read-only capability through which a Worker exposes selected GitHub App Information to another Worker using the configured App's JWT.
+_Avoid_: public GitHub proxy, installation-token broker, caller-selected App
+
 **Installation Access Token**:
 A short-lived GitHub App token issued through one **GitHub App Installation**, narrowed by this service to one selected **Repository Resource** and the **Requested Permissions**.
 _Avoid_: PAT, app JWT, repository secret
