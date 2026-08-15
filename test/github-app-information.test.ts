@@ -28,7 +28,7 @@ const githubApp = {
 
 const now = new Date("2026-06-29T12:34:00.000Z");
 
-describe("GitHub App information", () => {
+describe("GitHub App Information", () => {
   it("models GitHub's documented required response fields", () => {
     expectTypeOf<GitHubApp["created_at"]>().toEqualTypeOf<string>();
     expectTypeOf<GitHubApp["description"]>().toEqualTypeOf<string | null>();

@@ -25,6 +25,9 @@ Run this checklist before making the repository public or tagging a release.
 - No dynamic issuer-trust or authorization-policy binding has been introduced.
 - An external deployment owns and independently tests the OIDC Provider Registrations and Token Issuance Policy compiled into its artifact.
 - Deployment validation proves the Worker audience binding exactly equals the audience requested by its Clients and separately proves that Clients use the intended routed HTTPS Token Exchange Endpoint.
+- The runtime binding inventory has no configurable GitHub API destination; all App-credential requests remain fixed to `https://api.github.com` and retain the 10-second broker deadline.
+- Installation Access Token integration tests cover both legacy opaque and JWT-shaped GitHub token values and prove that no temporary stateful-token override is sent.
+- The GitHub App Information service binding remains explicitly trusted, read-only, non-public, unable to mint tokens or expose the private key, and unable to enumerate installation repositories.
 - `CONTEXT.md` remains the glossary source of truth.
 - Deployment remains outside this codebase.
 - Source workflows do not hard-code deployment-owned audience or route values; any Token Exchange Endpoint override comes from repository configuration.

@@ -134,9 +134,28 @@ Issuance Policy snapshot containing the normalized Permit Statements.
 It accepts duplicate and overlapping Permit Statements because pointwise union
 is idempotent and overlap is intentional.
 
-Evaluation is total for compiled policy and normalized inputs and returns only
-a Boolean. The snapshot's structure is part of the package Interface; its
-current evaluation algorithm is not.
+Evaluation is total for compiled policy and normalized inputs. One evaluator
+returns exactly one discriminated outcome:
+
+- `permitted`: applicable statements compose Effective Permissions that cover
+  every Requested Permission;
+- `target_unsupported`: no Repository Resource Constraint supports the exact
+  Repository Resource;
+- `requested_permissions_unsupported`: the Repository Resource is supported,
+  but statements for that resource cannot compose coverage for every Requested
+  Permission even before applying OIDC Subject Token Constraints; or
+- `subject_token_unacceptable`: the Repository Resource and Requested
+  Permissions are supported, but statements applicable to the Verified Subject
+  Token do not cover every Requested Permission.
+
+The evaluator derives both authorization and protocol classification in one
+traversal. Callers do not first ask for a Boolean authorization result and then
+repeat policy traversals with separate target- and permission-support queries.
+Only `permitted` authorizes issuance. The other outcomes map to
+`invalid_target`, `invalid_scope`, and `invalid_request`, respectively, at the
+Token Endpoint. They do not expose matched statements, contributors, or
+Claim-predicate detail. The snapshot's structure is part of the package
+Interface; its current evaluation algorithm is not.
 
 The compiled snapshot's `permitStatements[].resource` is a structural
 Repository Resource Constraint:
@@ -147,18 +166,8 @@ Repository Resource Constraint:
 Policy consumers discriminate owner-wide constraints with
 `resource.repository === null`.
 
-No matched statement, stable statement identifier, contributor list,
-denial-reason collection, or third decision state is exposed.
-
-When policy does not permit issuance, the protocol boundary separately asks
-whether the policy supports the Repository Resource and Requested Permissions.
-Target support is a Boolean query over Repository Resource Constraints.
-Requested Permissions support uses permission coverage for that Repository
-Resource without considering OIDC Subject Token Constraints. Neither is an
-authorization result, and neither can permit issuance. An unsupported Repository Resource maps to RFC 8693
-`invalid_target`; unsupported Requested Permissions map to OAuth `invalid_scope`;
-when both are supported, the subject token is unacceptable to policy and maps
-to `invalid_request`.
+No matched statement, stable statement identifier, contributor list, denial
+detail, or independently callable support query is exposed.
 
 ### Trust Subject Token Claims
 
@@ -233,9 +242,11 @@ mechanism, callback registry, or service-specific base implementation.
   union.
 - Configured GitHub Actions and Fly Permit Statements trust verified Subject
   Token Claims rather than imposing redundant cross-Claim consistency checks.
-- A policy result that does not permit issuance is direct Boolean control flow.
+- Authorization and its Token Endpoint classification come from one total
+  policy-evaluation result rather than repeated policy traversals.
 - Operational logs retain the verified subject-token and normalized request
-  context but contain only the Boolean policy outcome.
+  context but contain only the policy outcome, not matched statements or
+  contributor detail.
 - Adding an OIDC Provider Registration does not authorize it; independent
   Permit Statements remain necessary.
 - Recursive freezing prevents later mutation of policy authoring inputs from
@@ -306,7 +317,7 @@ compromised issuer. It can also reject supported customized Claim formats.
 - Permit-only composition is monotonic and cannot forbid a combined request
   when each Requested Permission is independently permitted for the same
   subject token and resource.
-- Boolean authorization and logging do not attribute results to individual
+- Policy outcomes and logging do not attribute results to individual
   statements. A future attribution or inspection requirement needs a separate
   policy-version or inspection decision.
 

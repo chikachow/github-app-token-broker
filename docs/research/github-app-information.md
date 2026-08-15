@@ -1,4 +1,4 @@
-# GitHub App information RPC findings
+# GitHub App Information RPC findings
 
 Research-only findings for a read-only, internal Cloudflare RPC surface authenticated to GitHub with one App JWT. Verified 2026-08-15 against the official GitHub and Cloudflare documentation.
 

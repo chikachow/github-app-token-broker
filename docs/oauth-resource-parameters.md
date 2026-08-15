@@ -1,4 +1,4 @@
-# OAuth token endpoint: repeated and empty `resource` parameters
+# OAuth Token Endpoint: repeated and empty `resource` parameters
 
 ## Conclusion
 
@@ -26,7 +26,7 @@ This differs from ordinary RFC 6749 parameters: RFC 8693 expressly permits repea
 
 ### Empty values are omitted
 
-[RFC 6749 Section 3.2](https://www.rfc-editor.org/rfc/rfc6749.html#section-3.2) governs the token endpoint and states that parameters sent without a value **MUST** be treated as omitted.
+[RFC 6749 Section 3.2](https://www.rfc-editor.org/rfc/rfc6749.html#section-3.2) governs the Token Endpoint and states that parameters sent without a value **MUST** be treated as omitted.
 
 For the wire representation, RFC 8693 uses an `application/x-www-form-urlencoded` UTF-8 entity body ([RFC 8693 Section 2.1](https://www.rfc-editor.org/rfc/rfc8693.html#section-2.1)). The [WHATWG URL Standard, Section 5.1](https://url.spec.whatwg.org/#urlencoded-parsing) parses both `resource=` and `resource` into a tuple whose value is the empty string: a final `=` has an empty value, and a tuple without `=` is also assigned an empty value. Thus both spellings are value-less OAuth parameters and must be treated as omitted.
 

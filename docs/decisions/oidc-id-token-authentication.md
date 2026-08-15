@@ -84,11 +84,14 @@ Tokens. It owns:
 - OpenID Provider Configuration retrieval and validation;
 - JWK Set retrieval and caching;
 - signature, Issuer, Audience, algorithm, required-claim, and time validation;
+- immutable snapshotting of verified JSON Claims;
 - provider-specific OIDC ID Token Profile validation; and
 - authentication failure classification.
 
 The authenticator returns a Verified Subject Token containing the exact
-validated Issuer Identifier and verified Claims. Signing-key and cache details
+validated Issuer Identifier and an immutable, recursively frozen copy of the
+verified Claims. Provider profiles and Token Issuance Policy receive this
+snapshot rather than a mutable JOSE payload object. Signing-key and cache details
 are verification evidence for diagnostics, not identity or policy inputs.
 HTTP request handling, OAuth responses, request logging, Token Policy, and
 GitHub credential issuance remain outside this boundary.
@@ -100,7 +103,7 @@ meaning:
 
 | Concern                                           | Owner                                              | Decision                                                                                                                                                                                                                        |
 | ------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Subject-token audience                            | Deployment composition                             | One exact non-empty single-line scalar identifies this deployment's logical recipient and is not derived from endpoint location or requests. Source-supported capability: a deployment may choose a URL-shaped or opaque value. |
+| Subject-Token Audience                            | Deployment composition                             | One exact non-empty single-line scalar identifies this deployment's logical recipient and is not derived from endpoint location or requests. Source-supported capability: a deployment may choose a URL-shaped or opaque value. |
 | Trusted Issuer Identifier                         | OIDC Provider Registration                         | Each registration names one exact, case-sensitive HTTPS Issuer Identifier.                                                                                                                                                      |
 | Accepted ID Token signing algorithms              | OIDC Provider Registration                         | Each provider has an independently reviewed, non-empty asymmetric algorithm allowlist. Coincidentally equal provider allowlists do not become a global policy.                                                                  |
 | Token-kind constraints                            | OIDC Provider Registration's OIDC ID Token Profile | Code-owned cross-claim rules distinguish the accepted kind of ID Token after central verification.                                                                                                                              |
@@ -147,9 +150,13 @@ Authentication follows this sequence:
    validated value without following redirects.
 8. Verify the token signature and require the verified token `iss` to equal the
    same registered Issuer Identifier.
-9. Validate the service Audience, provider-local algorithm policy, required
-   Claims, time bounds, and the provider's OIDC ID Token Profile.
-10. Pass only the resulting Verified Subject Token to Token Policy.
+9. Capture one value from the injected clock and use it consistently for JOSE
+   time validation and cache decisions in this authentication operation.
+10. Validate the Subject-Token Audience, provider-local algorithm policy,
+    required Claims, and time bounds.
+11. Copy and recursively freeze the verified JSON Claims, then evaluate the
+    provider's OIDC ID Token Profile against that immutable snapshot.
+12. Pass only the resulting Verified Subject Token to Token Issuance Policy.
 
 Issuer comparison is exact string equality without URL canonicalization or
 Unicode normalization. Removing a trailing slash while constructing a request
@@ -202,6 +209,13 @@ compatible with that intersection. Provider Metadata advertises capability; it
 cannot widen local policy. Verifier implementation support is only a capability
 ceiling and likewise cannot authorize an algorithm for a provider.
 
+Every JWK in a consumed JWK Set is structurally validated before the set is
+made available to JOSE. `kty` is required and must be a string. Optional
+`alg`, `kid`, and `use` members must be strings; optional `key_ops` and `x5c`
+members must be arrays of strings. A malformed member invalidates the remote
+JWK Set rather than being silently ignored. Cryptographic import and
+algorithm/material compatibility remain separate usability checks.
+
 The `jwks_uri` is allowed to use a different HTTPS origin from the Issuer
 Identifier. OpenID Connect does not impose a same-origin requirement, and
 Google's supported Provider Metadata delegates its JWK Set to another origin.
@@ -241,13 +255,22 @@ Unknown signing-key identifiers can trigger controlled JWK Set refresh for
 normal key rotation. Provider Configuration refresh is not itself the ordinary
 key-rotation mechanism.
 
+When a token names a `kid` absent from an otherwise usable JWK Set, the
+authenticator retains the original no-matching-key classification while it
+attempts the controlled refresh. If refresh fails and the original entry is
+still fresh and cacheable, diagnostics retain that refresh failure while the
+token remains rejected as Client-presented input. A `no-cache` response cannot
+be reused after failed revalidation. If no usable JWK Set remains, the result
+is provider unavailability. Duplicate or otherwise ambiguous matching key
+material is likewise not accepted as a successful verification.
+
 ### Authentication, policy, and issuance remain separate
 
 Successful ID Token authentication does not create an authorization grant.
 Token Policy receives:
 
 - the exact issuer-qualified Verified Subject Token;
-- raw verified Claims;
+- its immutable verified Subject Token Claims snapshot;
 - one normalized Repository Resource; and
 - exact requested installation-access-token permissions.
 
@@ -312,6 +335,10 @@ validated state, not by silently changing the authoritative trust source.
   hidden trust-source fallback.
 - Provider-specific claims remain visible to Token Policy. This keeps policy
   expressive but deliberately avoids a configurable attribute-mapping layer.
+- One injected operation time prevents disagreement between cache freshness and
+  JOSE time-Claim validation during a single authentication attempt.
+- Copying and recursively freezing verified Claims prevents provider-profile or
+  policy code from mutating another trust stage's view of authenticated data.
 
 ## Rejected alternatives
 
