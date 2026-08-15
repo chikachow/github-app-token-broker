@@ -9,6 +9,7 @@ updates:
       timezone: Australia/Sydney
     commit-message:
       prefix: chore(github/workflows)
+    open-pull-requests-limit: 10
   - package-ecosystem: npm
     directory: /
     schedule:
