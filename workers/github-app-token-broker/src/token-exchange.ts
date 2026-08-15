@@ -41,6 +41,19 @@ export async function handleTokenExchangeRequest(
   request: Request,
   runtime: TokenExchangeEndpointRuntime,
 ): Promise<Response> {
+  try {
+    return await handleTokenExchangeRequestCore(request, runtime);
+  } catch (error) {
+    logUnexpectedTokenExchangeFailure(error);
+
+    return oauthErrorResponse(500, "server_error");
+  }
+}
+
+async function handleTokenExchangeRequestCore(
+  request: Request,
+  runtime: TokenExchangeEndpointRuntime,
+): Promise<Response> {
   const rateLimit = await runtime.rateLimit(tokenExchangeRateLimitKey(request));
 
   if (!rateLimit) {
@@ -122,6 +135,17 @@ export async function handleTokenExchangeRequest(
     scope: tokenRequest.tokenRequest.scope,
     token_type: "Bearer",
   });
+}
+
+function logUnexpectedTokenExchangeFailure(error: unknown): void {
+  try {
+    console.error({
+      error: { name: error instanceof Error ? "Error" : typeof error },
+      event: "token_exchange_request_failed",
+    });
+  } catch {
+    // Logging must not prevent the Token Endpoint from returning a sanitized response.
+  }
 }
 
 function isFormUrlEncodedContentType(contentType: string | null): boolean {
@@ -326,9 +350,5 @@ function expiresInSeconds(expiresAt: string, now: Date): number {
 }
 
 function tokenExchangeRateLimitKey(request: Request): string {
-  return (
-    request.headers.get("cf-connecting-ip") ??
-    request.headers.get("x-forwarded-for")?.split(",", 1)[0]?.trim() ??
-    unknownRateLimitKey
-  );
+  return request.headers.get("cf-connecting-ip") ?? unknownRateLimitKey;
 }

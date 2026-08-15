@@ -20,6 +20,7 @@ import {
   testTokenIssuancePolicy,
 } from "./support/token-issuance-policy.ts";
 import { createTokenExchangeWorker } from "@github-app-token-broker/worker";
+import { handleTokenExchangeRequest } from "../workers/github-app-token-broker/src/token-exchange.ts";
 import {
   compileTokenIssuancePolicy,
   githubRepositoryResourceConstraint,
@@ -1023,6 +1024,228 @@ describe("github-app-token-broker-token-exchange", () => {
       error: "temporarily_unavailable",
     });
     expect(fetchExternal).not.toHaveBeenCalled();
+  });
+
+  it("does not trust X-Forwarded-For as a Token Endpoint rate-limit key", async () => {
+    const rateLimitKeys: string[] = [];
+    const worker = createTokenExchangeWorker(
+      testTokenExchangeComposition,
+      testTokenExchangeWorkerRuntimeDependencies,
+    );
+    const response = await worker.fetch?.(
+      new Request("https://example.test/token", {
+        headers: { "x-forwarded-for": "198.51.100.12, 198.51.100.13" },
+        method: "POST",
+      }) as Parameters<NonNullable<typeof worker.fetch>>[0],
+      {
+        ...testEnv,
+        TOKEN_EXCHANGE_RATE_LIMIT: {
+          limit: async ({ key }) => {
+            rateLimitKeys.push(key);
+            return { success: true };
+          },
+        },
+      },
+      {} as ExecutionContext,
+    );
+
+    expect(response?.status).toBe(400);
+    expect(rateLimitKeys).toEqual(["unknown"]);
+  });
+
+  it("uses CF-Connecting-IP as the Token Endpoint rate-limit key", async () => {
+    const rateLimitKeys: string[] = [];
+    const worker = createTokenExchangeWorker(
+      testTokenExchangeComposition,
+      testTokenExchangeWorkerRuntimeDependencies,
+    );
+    const response = await worker.fetch?.(
+      new Request("https://example.test/token", {
+        headers: {
+          "cf-connecting-ip": "203.0.113.21",
+          "x-forwarded-for": "198.51.100.12",
+        },
+        method: "POST",
+      }) as Parameters<NonNullable<typeof worker.fetch>>[0],
+      {
+        ...testEnv,
+        TOKEN_EXCHANGE_RATE_LIMIT: {
+          limit: async ({ key }) => {
+            rateLimitKeys.push(key);
+            return { success: true };
+          },
+        },
+      },
+      {} as ExecutionContext,
+    );
+
+    expect(response?.status).toBe(400);
+    expect(rateLimitKeys).toEqual(["203.0.113.21"]);
+  });
+
+  it("maps a rejected rate-limit binding call to a sanitized server error", async () => {
+    const bindingFailureDetail = "rate limit binding leaked detail";
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
+      ...testTokenExchangeWorkerRuntimeDependencies,
+      fetch: vi.fn<typeof fetch>(),
+    });
+
+    try {
+      const response = await worker.fetch?.(
+        new Request("https://example.test/token", {
+          body: await tokenExchangeRequestBody(),
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          method: "POST",
+        }) as Parameters<NonNullable<typeof worker.fetch>>[0],
+        {
+          ...testEnv,
+          TOKEN_EXCHANGE_RATE_LIMIT: {
+            limit: async () => Promise.reject(new Error(bindingFailureDetail)),
+          },
+        },
+        {} as ExecutionContext,
+      );
+
+      expect(response?.status).toBe(500);
+      expect(response?.headers.get("cache-control")).toBe("no-store");
+      expect(response?.headers.get("pragma")).toBe("no-cache");
+      expect(response?.headers.get("www-authenticate")).toBeNull();
+      await expect(response?.json()).resolves.toEqual({ error: "server_error" });
+      expect(consoleError).toHaveBeenCalledWith({
+        error: { name: "Error" },
+        event: "token_exchange_request_failed",
+      });
+      expect(JSON.stringify(consoleError.mock.calls)).not.toContain(bindingFailureDetail);
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it("maps a failing request body stream to a sanitized server error", async () => {
+    const bodyFailureDetail = "subject_token=secret-body-stream-detail";
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.error(new Error(bodyFailureDetail));
+      },
+    });
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    try {
+      const response = await fetchTokenExchange(
+        new Request("https://example.test/token", {
+          body,
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          method: "POST",
+        }),
+      );
+
+      expect(response.status).toBe(500);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(response.headers.get("pragma")).toBe("no-cache");
+      expect(response.headers.get("www-authenticate")).toBeNull();
+      await expect(response.json()).resolves.toEqual({ error: "server_error" });
+      expect(consoleError).toHaveBeenCalledWith({
+        error: { name: "Error" },
+        event: "token_exchange_request_failed",
+      });
+      expect(JSON.stringify(consoleError.mock.calls)).not.toContain(bodyFailureDetail);
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it("maps an unexpected exchange rejection to a sanitized server error", async () => {
+    const exchangeFailureDetail = "subject token or upstream secret detail";
+    const exchangeFailureName = "SecretSubjectTokenError";
+    const exchangeFailure = new Error(exchangeFailureDetail);
+    exchangeFailure.name = exchangeFailureName;
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    try {
+      const response = await handleTokenExchangeRequest(
+        new Request("https://example.test/token", {
+          body: await tokenExchangeRequestBody(),
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          method: "POST",
+        }),
+        {
+          exchange: async () => Promise.reject(exchangeFailure),
+          now: () => testNow,
+          rateLimit: async () => true,
+        },
+      );
+
+      expect(response.status).toBe(500);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(response.headers.get("pragma")).toBe("no-cache");
+      expect(response.headers.get("www-authenticate")).toBeNull();
+      await expect(response.json()).resolves.toEqual({ error: "server_error" });
+      expect(consoleError).toHaveBeenCalledWith({
+        error: { name: "Error" },
+        event: "token_exchange_request_failed",
+      });
+      expect(JSON.stringify(consoleError.mock.calls)).not.toMatch(
+        new RegExp(`${exchangeFailureDetail}|${exchangeFailureName}`, "u"),
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it("maps an unexpected response construction failure to a sanitized server error", async () => {
+    const responseFailureDetail = "response construction secret detail";
+    const issuedToken = "ghs_response_construction_secret";
+    const request = new Request("https://example.test/token", {
+      body: await tokenExchangeRequestBody(),
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      method: "POST",
+    });
+    const PlatformResponse = Response;
+    let constructionCount = 0;
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.stubGlobal(
+      "Response",
+      class extends PlatformResponse {
+        constructor(body?: BodyInit | null, init?: ResponseInit) {
+          constructionCount += 1;
+
+          if (constructionCount === 1) {
+            throw new Error(responseFailureDetail);
+          }
+
+          super(body, init);
+        }
+      },
+    );
+
+    try {
+      const response = await handleTokenExchangeRequest(request, {
+        exchange: async () => ({
+          expiresAt: "2030-01-01T00:00:00Z",
+          ok: true,
+          token: issuedToken,
+        }),
+        now: () => testNow,
+        rateLimit: async () => true,
+      });
+
+      expect(response.status).toBe(500);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(response.headers.get("pragma")).toBe("no-cache");
+      expect(response.headers.get("www-authenticate")).toBeNull();
+      await expect(response.json()).resolves.toEqual({ error: "server_error" });
+      expect(consoleError).toHaveBeenCalledWith({
+        error: { name: "Error" },
+        event: "token_exchange_request_failed",
+      });
+      expect(JSON.stringify(consoleError.mock.calls)).not.toMatch(
+        new RegExp(`${responseFailureDetail}|${issuedToken}`, "u"),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+      consoleError.mockRestore();
+    }
   });
 
   it("rejects oversized token exchange request bodies", async () => {
