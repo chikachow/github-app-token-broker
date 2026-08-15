@@ -112,7 +112,7 @@ export async function createInstallationAccessTokenForRepositoryName(
       body: JSON.stringify(requestBody),
       headers: {
         "content-type": "application/json",
-        [githubStatelessS2STokenHeader]: "enabled",
+        [githubStatelessS2STokenHeader]: "disabled",
       },
       method: "POST",
     },
