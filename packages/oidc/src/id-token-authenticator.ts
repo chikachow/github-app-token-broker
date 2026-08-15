@@ -822,7 +822,7 @@ async function fetchAndParseOidcRemoteDocument(
   let bodyResult;
 
   try {
-    bodyResult = await readBodyUpTo(response.body, byteLimit);
+    bodyResult = await readBodyUpTo(response.body, byteLimit, requestSignal);
   } catch (error) {
     throw oidcRemoteDocumentTransportError(error, requestSignal, documentKind);
   }
