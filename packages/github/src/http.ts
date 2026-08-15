@@ -8,10 +8,11 @@ const maxGitHubErrorBodyBytes = 16 * 1024;
 // Larger bounded endpoints can override this default explicitly.
 const maxGitHubSuccessfulBodyBytes = 64 * 1024;
 const githubErrorResponseSchema = z.object({ message: z.string() });
+const githubApiBaseUrl = new URL("https://api.github.com/");
 
-export interface GitHubApiEnv {
-  readonly GITHUB_API_BASE_URL?: string;
-}
+// The deadline covers response headers and complete body consumption for one
+// GitHub request. It is fixed so callers cannot weaken this transport bound.
+const githubApiRequestDeadlineMilliseconds = 10_000;
 
 export interface GitHubApiDependencies {
   fetch: typeof fetch;
@@ -47,7 +48,6 @@ export class GitHubApiTransportError extends Error {
 }
 
 export async function fetchGitHubApiJson<Schema extends z.ZodType>(
-  env: GitHubApiEnv,
   dependencies: GitHubApiDependencies,
   {
     headers,
@@ -69,60 +69,67 @@ export async function fetchGitHubApiJson<Schema extends z.ZodType>(
     requestHeaders.set(name, value);
   }
 
-  const baseUrl = env.GITHUB_API_BASE_URL ?? "https://api.github.com";
-  const requestUrl = new URL(path.replace(/^\//u, ""), ensureTrailingSlash(baseUrl));
-
-  let response: Response;
+  const requestUrl = githubApiRequestUrl(path);
+  const deadlineSignal = AbortSignal.timeout(githubApiRequestDeadlineMilliseconds);
+  const requestSignal =
+    init?.signal === undefined || init.signal === null
+      ? deadlineSignal
+      : AbortSignal.any([deadlineSignal, init.signal]);
 
   try {
-    response = await dependencies.fetch(requestUrl, {
-      ...init,
-      headers: requestHeaders,
-    });
-  } catch {
-    throw new GitHubApiTransportError(`GitHub API request failed: ${path}`);
-  }
-
-  if (!response.ok) {
-    throw new GitHubApiError(
-      response.status,
-      `GitHub API request failed: ${path}`,
-      await githubResponseIsRateLimited(response),
+    const response = await awaitWithSignal(
+      dependencies.fetch(requestUrl, {
+        ...init,
+        headers: requestHeaders,
+        signal: requestSignal,
+      }),
+      requestSignal,
     );
-  }
+    throwIfAborted(requestSignal);
 
-  let bodyRead: Awaited<ReturnType<typeof readBodyUpTo>>;
+    if (!response.ok) {
+      const rateLimited = await githubResponseIsRateLimited(response, requestSignal);
+      throwIfAborted(requestSignal);
 
-  try {
-    bodyRead = await readBodyUpTo(response.body, maxResponseBodyBytes);
-  } catch {
+      throw new GitHubApiError(response.status, `GitHub API request failed: ${path}`, rateLimited);
+    }
+
+    const bodyRead = await readBodyUpTo(response.body, maxResponseBodyBytes, requestSignal);
+
+    if (!bodyRead.ok) {
+      throw invalidGitHubApiResponse(path, response.status);
+    }
+
+    const responseText = new TextDecoder().decode(bodyRead.bytes);
+
+    let responseBody: unknown;
+
+    try {
+      responseBody = JSON.parse(responseText);
+    } catch {
+      throw invalidGitHubApiResponse(path, response.status);
+    }
+
+    const parsed = responseSchema.safeParse(responseBody);
+
+    if (!parsed.success) {
+      throw invalidGitHubApiResponse(path, response.status);
+    }
+
+    return parsed.data;
+  } catch (error) {
+    if (error instanceof GitHubApiError) {
+      throw error;
+    }
+
     throw new GitHubApiTransportError(`GitHub API request failed: ${path}`);
   }
-
-  if (!bodyRead.ok) {
-    throw invalidGitHubApiResponse(path, response.status);
-  }
-
-  const responseText = new TextDecoder().decode(bodyRead.bytes);
-
-  let responseBody: unknown;
-
-  try {
-    responseBody = JSON.parse(responseText);
-  } catch {
-    throw invalidGitHubApiResponse(path, response.status);
-  }
-
-  const parsed = responseSchema.safeParse(responseBody);
-
-  if (!parsed.success) {
-    throw invalidGitHubApiResponse(path, response.status);
-  }
-
-  return parsed.data;
 }
 
-async function githubResponseIsRateLimited(response: Response): Promise<boolean> {
+async function githubResponseIsRateLimited(
+  response: Response,
+  signal: AbortSignal,
+): Promise<boolean> {
   if (response.status === 429) {
     return true;
   }
@@ -141,8 +148,10 @@ async function githubResponseIsRateLimited(response: Response): Promise<boolean>
   let bodyRead: Awaited<ReturnType<typeof readBodyUpTo>>;
 
   try {
-    bodyRead = await readBodyUpTo(response.body, maxGitHubErrorBodyBytes);
+    bodyRead = await readBodyUpTo(response.body, maxGitHubErrorBodyBytes, signal);
   } catch {
+    throwIfAborted(signal);
+
     return false;
   }
 
@@ -171,6 +180,51 @@ function invalidGitHubApiResponse(path: string, upstreamStatus: number): GitHubA
   );
 }
 
-function ensureTrailingSlash(url: string): string {
-  return url.endsWith("/") ? url : `${url}/`;
+function awaitWithSignal<Value>(operation: Promise<Value>, signal: AbortSignal): Promise<Value> {
+  if (signal.aborted) {
+    return Promise.reject(signal.reason);
+  }
+
+  return new Promise((resolve, reject) => {
+    const rejectForAbort = () => {
+      reject(signal.reason);
+    };
+    const removeAbortListener = () => {
+      signal.removeEventListener("abort", rejectForAbort);
+    };
+
+    signal.addEventListener("abort", rejectForAbort, { once: true });
+    void operation.then(
+      (value) => {
+        removeAbortListener();
+        resolve(value);
+      },
+      (error: unknown) => {
+        removeAbortListener();
+        reject(error);
+      },
+    );
+  });
+}
+
+function throwIfAborted(signal: AbortSignal): void {
+  if (signal.aborted) {
+    throw signal.reason;
+  }
+}
+
+function githubApiRequestUrl(path: string): URL {
+  if (!path.startsWith("/") || path.startsWith("//") || path.includes("\\")) {
+    throw new GitHubApiTransportError("GitHub API request path is invalid");
+  }
+
+  const queryStart = path.indexOf("?");
+  const requestUrl = new URL(githubApiBaseUrl);
+
+  requestUrl.pathname = queryStart === -1 ? path : path.slice(0, queryStart);
+  if (queryStart !== -1) {
+    requestUrl.search = path.slice(queryStart + 1);
+  }
+
+  return requestUrl;
 }

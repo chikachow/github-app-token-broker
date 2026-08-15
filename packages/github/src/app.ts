@@ -4,16 +4,13 @@ import * as z from "zod";
 import {
   defaultGitHubApiDependencies,
   fetchGitHubApiJson,
-  GitHubApiError,
   githubAcceptHeader,
   githubApiVersion,
   type GitHubApiDependencies,
-  type GitHubApiEnv,
 } from "./http.ts";
 import { resolveSecretText, type SecretTextBinding } from "./secrets.ts";
 
 const githubJwtLifetimeSeconds = 9 * 60;
-const githubStatelessS2STokenHeader = "X-GitHub-Stateless-S2S-Token";
 
 let cachedPrivateKey:
   | {
@@ -42,10 +39,10 @@ Object.defineProperty(GitHubAppConfigurationError.prototype, "name", {
   value: "GitHubAppConfigurationError",
 });
 
-export type GitHubAppEnv = GitHubApiEnv & {
+export interface GitHubAppEnv {
   readonly GITHUB_APP_ID: string;
   readonly GITHUB_APP_PRIVATE_KEY: SecretTextBinding;
-};
+}
 
 export interface GitHubAppDependencies extends GitHubApiDependencies {
   now(): Date;
@@ -72,15 +69,13 @@ export async function resolveInstallationForRepository(
   repository: string,
   dependencies: GitHubAppDependencies = defaultGitHubAppDependencies,
 ): Promise<ResolvedGitHubAppInstallation> {
-  const body = await fetchGitHubApiJson(env, dependencies, {
+  const body = await fetchGitHubApiJson(dependencies, {
     headers: await githubAppAuthenticationHeaders(env, dependencies),
     path: `/repos/${repository}/installation`,
-    responseSchema: githubInstallationResponseSchema,
+    responseSchema: githubInstallationResponseSchema.refine((installation) =>
+      githubRepositoryOwnerMatches(repository, installation.account.login),
+    ),
   });
-
-  if (!githubRepositoryOwnerMatches(repository, body.account.login)) {
-    throw new GitHubApiError(502, "invalid installation response");
-  }
 
   return { id: body.id };
 }
@@ -109,13 +104,12 @@ export async function createInstallationAccessTokenForRepositoryName(
     repositories: [repositoryName],
   };
 
-  const responseBody = await fetchGitHubApiJson(env, dependencies, {
+  const responseBody = await fetchGitHubApiJson(dependencies, {
     headers: await githubAppAuthenticationHeaders(env, dependencies),
     init: {
       body: JSON.stringify(requestBody),
       headers: {
         "content-type": "application/json",
-        [githubStatelessS2STokenHeader]: "disabled",
       },
       method: "POST",
     },
@@ -147,20 +141,6 @@ export async function githubAppAuthenticationHeaders(
 
 function assertValidGitHubAppConfiguration(env: GitHubAppEnv): void {
   if (!/^[1-9][0-9]*$/u.test(env.GITHUB_APP_ID)) {
-    throw new GitHubAppConfigurationError();
-  }
-
-  if (env.GITHUB_API_BASE_URL === undefined) {
-    return;
-  }
-
-  try {
-    const baseUrl = new URL(env.GITHUB_API_BASE_URL);
-
-    if (baseUrl.protocol !== "https:") {
-      throw new GitHubAppConfigurationError();
-    }
-  } catch {
     throw new GitHubAppConfigurationError();
   }
 }

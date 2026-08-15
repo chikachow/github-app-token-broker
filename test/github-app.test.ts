@@ -32,7 +32,7 @@ describe("GitHub App authentication", () => {
       });
 
       if (request.method === "POST") {
-        expect(request.headers.get("x-github-stateless-s2s-token")).toBe("disabled");
+        expect(request.headers.has("x-github-stateless-s2s-token")).toBe(false);
 
         return Response.json(
           {
@@ -78,7 +78,6 @@ describe("GitHub App authentication", () => {
 
     const installation = await resolveInstallationForRepository(
       {
-        GITHUB_API_BASE_URL: "https://api.github.test",
         GITHUB_APP_ID: "2419473",
         GITHUB_APP_PRIVATE_KEY: secretStoreBinding,
       },
@@ -90,7 +89,7 @@ describe("GitHub App authentication", () => {
             throw new Error("expected GitHub API request URL");
           }
 
-          expect(input.href).toBe(`https://api.github.test/repos/${testRepository}/installation`);
+          expect(input.href).toBe(`https://api.github.com/repos/${testRepository}/installation`);
 
           const headers = new Headers(init?.headers);
           expect(headers.get("accept")).toBe("application/vnd.github+json");
@@ -136,8 +135,9 @@ describe("GitHub App authentication", () => {
         githubInstallationResponse("transferred-owner", 12345),
       ),
     ).rejects.toMatchObject({
-      message: "invalid installation response",
+      message: invalidGitHubApiResponseMessage(`/repos/${testRepository}/installation`),
       status: 502,
+      upstreamStatus: 200,
     });
   });
 
@@ -149,8 +149,9 @@ describe("GitHub App authentication", () => {
     await expect(
       resolveTestInstallation(repository, githubInstallationResponse("fixture-owner", 12345)),
     ).rejects.toMatchObject({
-      message: "invalid installation response",
+      message: invalidGitHubApiResponseMessage(`/repos/${repository}/installation`),
       status: 502,
+      upstreamStatus: 200,
     });
   });
 
@@ -166,20 +167,26 @@ describe("GitHub App authentication", () => {
     });
   });
 
-  it("maps a valid access-token response and ignores unknown fields", async () => {
+  it.each([
+    { scenario: "opaque", token: "ghs_test_token" },
+    {
+      scenario: "JWT-shaped",
+      token: "ghs_eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiIyNDE5NDczIn0.fixture-signature",
+    },
+  ])("maps a valid $scenario access token and ignores unknown fields", async ({ token }) => {
     await expect(
       createTestInstallationAccessToken(
         Response.json({
           expires_at: "2030-01-01T00:00:00Z",
           permissions: { contents: "read" },
-          token: "ghs_test_token",
+          token,
           token_last_eight: "st_token",
         }),
       ),
     ).resolves.toEqual({
       expiresAt: "2030-01-01T00:00:00Z",
       permissions: { contents: "read" },
-      token: "ghs_test_token",
+      token,
     });
   });
 

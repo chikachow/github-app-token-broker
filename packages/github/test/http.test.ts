@@ -1,15 +1,19 @@
 import * as z from "zod";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { fetchGitHubApiJson, GitHubApiError, GitHubApiTransportError } from "../src/http.ts";
 
 const responseSchema = z.object({ value: z.string() });
 const requestPath = "/test/response";
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe("GitHub API HTTP adapter", () => {
-  it("builds the request URL, merges headers, and parses a valid response", async () => {
+  it("uses the fixed GitHub API origin, merges headers, and parses a valid response", async () => {
     const fetchGitHub = vi.fn<typeof fetch>(async (input, init) => {
-      expect(input).toEqual(new URL("https://api.github.test/base/test/response"));
+      expect(input).toEqual(new URL("https://api.github.com/test/response"));
       expect(init?.method).toBe("GET");
 
       const headers = new Headers(init?.headers);
@@ -21,7 +25,6 @@ describe("GitHub API HTTP adapter", () => {
 
     await expect(
       fetchGitHubApiJson(
-        { GITHUB_API_BASE_URL: "https://api.github.test/base" },
         { fetch: fetchGitHub },
         {
           headers: { accept: "application/json" },
@@ -33,6 +36,25 @@ describe("GitHub API HTTP adapter", () => {
     ).resolves.toEqual({ value: "parsed" });
     expect(fetchGitHub).toHaveBeenCalledOnce();
   });
+
+  it.each(["https://attacker.example/private", "//attacker.example/private", "/\\attacker"])(
+    "rejects the unsafe API path %s before forwarding credentials",
+    async (path) => {
+      const fetchGitHub = vi.fn<typeof fetch>();
+
+      await expect(
+        fetchGitHubApiJson(
+          { fetch: fetchGitHub },
+          {
+            headers: { authorization: "Bearer private-app-jwt" },
+            path,
+            responseSchema,
+          },
+        ),
+      ).rejects.toBeInstanceOf(GitHubApiTransportError);
+      expect(fetchGitHub).not.toHaveBeenCalled();
+    },
+  );
 
   it.each([
     { headers: {}, rateLimited: false, status: 400, scenario: "a bad request" },
@@ -63,7 +85,6 @@ describe("GitHub API HTTP adapter", () => {
     "classifies $scenario without exposing the response body",
     async ({ body, headers, rateLimited, status }) => {
       const error = fetchGitHubApiJson(
-        {},
         {
           fetch: async () => new Response(body ?? "private upstream detail", { headers, status }),
         },
@@ -89,7 +110,6 @@ describe("GitHub API HTTP adapter", () => {
 
     await expect(
       fetchGitHubApiJson(
-        {},
         { fetch: async () => new Response(finiteBody(body), { status: 403 }) },
         { headers: {}, path: requestPath, responseSchema },
       ),
@@ -99,7 +119,6 @@ describe("GitHub API HTTP adapter", () => {
   it("classifies an unreadable forbidden body as an ordinary upstream failure", async () => {
     await expect(
       fetchGitHubApiJson(
-        {},
         { fetch: async () => new Response(unreadableBody(), { status: 403 }) },
         { headers: {}, path: requestPath, responseSchema },
       ),
@@ -111,7 +130,6 @@ describe("GitHub API HTTP adapter", () => {
 
     await expect(
       fetchGitHubApiJson(
-        {},
         { fetch: async () => response },
         { headers: {}, path: requestPath, responseSchema },
       ),
@@ -125,7 +143,6 @@ describe("GitHub API HTTP adapter", () => {
   ] as const)("rejects %s as an invalid upstream response", async (_scenario, response, status) => {
     await expect(
       fetchGitHubApiJson(
-        {},
         { fetch: async () => response },
         { headers: {}, path: requestPath, responseSchema },
       ),
@@ -137,24 +154,16 @@ describe("GitHub API HTTP adapter", () => {
   });
 
   it("classifies response-body failures and fetch failures as transport errors", async () => {
-    const unreadableResponse = new Response(
-      new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.error(new Error("private response stream failure"));
-        },
-      }),
-    );
+    const unreadableResponse = new Response(unreadableBody());
 
     await expect(
       fetchGitHubApiJson(
-        {},
         { fetch: async () => unreadableResponse },
         { headers: {}, path: requestPath, responseSchema },
       ),
     ).rejects.toBeInstanceOf(GitHubApiTransportError);
     await expect(
       fetchGitHubApiJson(
-        {},
         {
           fetch: async () => {
             throw new Error("private network failure");
@@ -163,6 +172,100 @@ describe("GitHub API HTTP adapter", () => {
         { headers: {}, path: requestPath, responseSchema },
       ),
     ).rejects.toBeInstanceOf(GitHubApiTransportError);
+  });
+
+  it("applies one fixed broker deadline while waiting for response headers", async () => {
+    const deadline = new AbortController();
+    const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(deadline.signal);
+    let requestSignal: AbortSignal | null | undefined;
+    const result = fetchGitHubApiJson(
+      {
+        fetch: async (_input, init) => {
+          requestSignal = init?.signal;
+
+          return new Promise<Response>(() => undefined);
+        },
+      },
+      { headers: {}, path: requestPath, responseSchema },
+    );
+
+    deadline.abort(new DOMException("private timeout detail", "TimeoutError"));
+
+    await expect(result).rejects.toEqual(
+      new GitHubApiTransportError(`GitHub API request failed: ${requestPath}`),
+    );
+    expect(timeout).toHaveBeenCalledWith(10_000);
+    expect(requestSignal?.aborted).toBe(true);
+  });
+
+  it("composes a caller abort with the broker deadline", async () => {
+    const caller = new AbortController();
+    let requestSignal: AbortSignal | null | undefined;
+    const result = fetchGitHubApiJson(
+      {
+        fetch: async (_input, init) => {
+          requestSignal = init?.signal;
+
+          return new Promise<Response>(() => undefined);
+        },
+      },
+      {
+        headers: {},
+        init: { signal: caller.signal },
+        path: requestPath,
+        responseSchema,
+      },
+    );
+
+    caller.abort(new DOMException("private caller detail", "AbortError"));
+
+    await expect(result).rejects.toEqual(
+      new GitHubApiTransportError(`GitHub API request failed: ${requestPath}`),
+    );
+    expect(requestSignal).not.toBe(caller.signal);
+    expect(requestSignal?.aborted).toBe(true);
+  });
+
+  it.each([
+    { status: 200, scenario: "a successful response" },
+    {
+      status: 403,
+      scenario: "a forbidden error response",
+    },
+  ])("enforces the deadline and cancels the reader for $scenario body", async ({ status }) => {
+    const deadline = new AbortController();
+    vi.spyOn(AbortSignal, "timeout").mockReturnValue(deadline.signal);
+    const cancel = vi.fn();
+    let markReadStarted: () => void = () => undefined;
+    const readStarted = new Promise<void>((resolve) => {
+      markReadStarted = resolve;
+    });
+    const upstreamResponse = new Response(
+      new ReadableStream<Uint8Array>(
+        {
+          cancel,
+          pull: () => {
+            markReadStarted();
+
+            return new Promise<void>(() => undefined);
+          },
+        },
+        { highWaterMark: 0 },
+      ),
+      { status },
+    );
+    const result = fetchGitHubApiJson(
+      { fetch: async () => upstreamResponse },
+      { headers: {}, path: requestPath, responseSchema },
+    );
+
+    await readStarted;
+    deadline.abort(new DOMException("private body timeout detail", "TimeoutError"));
+
+    await expect(result).rejects.toEqual(
+      new GitHubApiTransportError(`GitHub API request failed: ${requestPath}`),
+    );
+    expect(cancel).toHaveBeenCalledOnce();
   });
 });
 
