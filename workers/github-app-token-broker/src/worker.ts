@@ -1,9 +1,12 @@
 import { problemResponse } from "@github-app-token-broker/http/problem-details";
 import { createOidcIdTokenAuthenticator } from "@github-app-token-broker/oidc/id-token-authenticator";
+import {
+  parseSubjectTokenAudience,
+  type SubjectTokenAudience,
+} from "@github-app-token-broker/oidc/subject-token-audience";
 import type { GitHubAppEnv } from "@github-app-token-broker/github/app";
 import type { InstallationAccessTokenExchange } from "./installation-access-token-exchange.ts";
 import { createInstallationAccessTokenExchange } from "./installation-access-token-exchange.ts";
-import { parseSubjectTokenAudience } from "./subject-token-audience.ts";
 import {
   handleTokenExchangeRequest,
   tokenExchangeMethodNotAllowedResponse,
@@ -54,7 +57,7 @@ export function createTokenExchangeWorker(
   });
   let configuredRuntime:
     | {
-        readonly audience: string;
+        readonly audience: SubjectTokenAudience;
         readonly tokenExchange: InstallationAccessTokenExchange;
       }
     | undefined;

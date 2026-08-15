@@ -17,11 +17,13 @@ import {
   parseOidcIssuerIdentifier,
   type OidcIdTokenSigningAlgorithm,
 } from "@github-app-token-broker/oidc/provider-registration";
+import { parseSubjectTokenAudience } from "@github-app-token-broker/oidc/subject-token-audience";
 
 import { testPrivateKeyPem, testPublicJwk } from "./support/rsa-test-key-pair.ts";
 
 const issuer = "https://issuer.example/tenant";
 const jwksUri = "https://keys.example/tenant/jwks";
+const subjectTokenAudience = parseSubjectTokenAudience("github-app-token-broker");
 type AuthenticationFailure = Extract<OidcIdTokenAuthenticationResult, { ok: false }>;
 const registration = createOidcProviderRegistration({
   acceptedIdTokenSigningAlgorithms: ["RS256"],
@@ -30,21 +32,12 @@ const registration = createOidcProviderRegistration({
 });
 
 describe("OIDC ID Token Authenticator", () => {
-  it("rejects empty audiences and duplicate provider registrations", () => {
-    expect(() =>
-      createOidcIdTokenAuthenticator(
-        {
-          providerRegistrations: [registration],
-          subjectTokenAudience: "",
-        },
-        { fetch: successfulProviderFetch, now: () => new Date() },
-      ),
-    ).toThrow("OIDC ID Token authentication subject-token audience must not be empty");
+  it("rejects duplicate provider registrations", () => {
     expect(() =>
       createOidcIdTokenAuthenticator(
         {
           providerRegistrations: [registration, registration],
-          subjectTokenAudience: "github-app-token-broker",
+          subjectTokenAudience,
         },
         { fetch: successfulProviderFetch, now: () => new Date() },
       ),
@@ -73,7 +66,7 @@ describe("OIDC ID Token Authenticator", () => {
     const authenticator = createOidcIdTokenAuthenticator(
       {
         providerRegistrations: [structuralRegistration],
-        subjectTokenAudience: "github-app-token-broker",
+        subjectTokenAudience,
       },
       { fetch: successfulProviderFetch, now: () => new Date() },
     );
@@ -93,7 +86,7 @@ describe("OIDC ID Token Authenticator", () => {
               acceptedIdTokenSigningAlgorithms: [],
             },
           ],
-          subjectTokenAudience: "github-app-token-broker",
+          subjectTokenAudience,
         },
         { fetch: successfulProviderFetch, now: () => new Date() },
       ),
@@ -146,7 +139,7 @@ describe("OIDC ID Token Authenticator", () => {
     const authenticator = createOidcIdTokenAuthenticator(
       {
         providerRegistrations: [registration],
-        subjectTokenAudience: "github-app-token-broker",
+        subjectTokenAudience,
       },
       {
         fetch: fetchOidcRemoteDocumentResponse,
@@ -225,7 +218,7 @@ describe("OIDC ID Token Authenticator", () => {
     const authenticator = createOidcIdTokenAuthenticator(
       {
         providerRegistrations: [registration],
-        subjectTokenAudience: "github-app-token-broker",
+        subjectTokenAudience,
       },
       {
         fetch: successfulProviderFetch,
@@ -250,7 +243,7 @@ describe("OIDC ID Token Authenticator", () => {
     const unavailableAuthenticator = createOidcIdTokenAuthenticator(
       {
         providerRegistrations: [registration],
-        subjectTokenAudience: "github-app-token-broker",
+        subjectTokenAudience,
       },
       {
         fetch: () => Promise.resolve(new Response(null, { status: 503 })),
@@ -335,7 +328,7 @@ describe("OIDC ID Token Authenticator", () => {
     const authenticator = createOidcIdTokenAuthenticator(
       {
         providerRegistrations: [profileRegistration],
-        subjectTokenAudience: "github-app-token-broker",
+        subjectTokenAudience,
       },
       { fetch: successfulProviderFetch, now: () => new Date() },
     );
@@ -348,6 +341,87 @@ describe("OIDC ID Token Authenticator", () => {
     expect(validate).toHaveBeenCalledWith(
       expect.objectContaining({ repository: "octo-org/example" }),
     );
+  });
+
+  it("protects top-level and nested verified Claims from profile mutation", async () => {
+    const profileRegistration = createOidcProviderRegistration({
+      acceptedIdTokenSigningAlgorithms: ["RS256"],
+      idTokenProfile: {
+        validate: (claims) => {
+          try {
+            // @ts-expect-error Verified Claims are readonly at the profile boundary.
+            claims.sub = "mutated-subject";
+          } catch {}
+
+          try {
+            const context = claims["context"];
+
+            if (typeof context === "object" && context !== null && !Array.isArray(context)) {
+              // @ts-expect-error Nested verified Claim values are recursively readonly.
+              context.branch = "refs/heads/mutated";
+            }
+          } catch {}
+
+          try {
+            const environments = claims["environments"];
+
+            if (Array.isArray(environments)) {
+              environments.push("production");
+            }
+          } catch {}
+
+          return true;
+        },
+      },
+      issuer,
+    });
+    const authenticator = createOidcIdTokenAuthenticator(
+      {
+        providerRegistrations: [profileRegistration],
+        subjectTokenAudience,
+      },
+      { fetch: successfulProviderFetch, now: () => new Date() },
+    );
+
+    await expect(
+      authenticator.authenticateIdToken(
+        await signedIdToken({
+          claims: {
+            context: { branch: "refs/heads/main" },
+            environments: ["staging"],
+          },
+        }),
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      verifiedSubjectToken: {
+        claims: {
+          context: { branch: "refs/heads/main" },
+          environments: ["staging"],
+          sub: "subject",
+        },
+      },
+    });
+  });
+
+  it("uses one injected operation time for caches and JWT expiry validation", async () => {
+    const now = vi
+      .fn<() => Date>()
+      .mockReturnValueOnce(new Date("2031-01-01T00:00:00Z"))
+      .mockReturnValue(new Date("2020-01-01T00:00:00Z"));
+    const authenticator = testAuthenticator(successfulProviderFetch, now);
+
+    await expect(
+      authenticator.authenticateIdToken(
+        await signedIdToken({
+          claims: {
+            exp: Date.parse("2030-01-01T00:00:00Z") / 1000,
+            iat: Date.parse("2020-01-01T00:00:00Z") / 1000,
+          },
+        }),
+      ),
+    ).resolves.toEqual(expectedFailure("subject_token_rejected", "ERR_JWT_EXPIRED"));
+    expect(now).toHaveBeenCalledOnce();
   });
 
   it.each([
@@ -425,7 +499,15 @@ describe("OIDC ID Token Authenticator", () => {
         keys: [jwksMode === "rotated" ? { ...testPublicJwk, kid: "unknown-key" } : testPublicJwk],
       });
     });
-    const authenticator = testAuthenticator(fetchOidcRemoteDocumentResponse, () => now);
+    const events: OidcIdTokenAuthenticationEvent[] = [];
+    const authenticator = createOidcIdTokenAuthenticator(
+      { providerRegistrations: [registration], subjectTokenAudience },
+      {
+        fetch: fetchOidcRemoteDocumentResponse,
+        now: () => now,
+        observe: (event) => events.push(event),
+      },
+    );
 
     await expect(authenticator.authenticateIdToken(await signedIdToken())).resolves.toMatchObject({
       ok: true,
@@ -435,10 +517,18 @@ describe("OIDC ID Token Authenticator", () => {
     now = new Date(now.getTime() + 10_001);
     const rotatedSubjectToken = await signedIdToken({ kid: "unknown-key" });
     await expect(authenticator.authenticateIdToken(rotatedSubjectToken)).resolves.toEqual(
-      expectedFailure("provider_unavailable", "ERR_OIDC_JWKS_HTTP_STATUS", 302),
+      expectedFailure("subject_token_rejected", "ERR_JWKS_NO_MATCHING_KEY"),
     );
     await expect(authenticator.authenticateIdToken(rotatedSubjectToken)).resolves.toEqual(
-      expectedFailure("provider_unavailable", "ERR_OIDC_JWKS_HTTP_STATUS", 302),
+      expectedFailure("subject_token_rejected", "ERR_JWKS_NO_MATCHING_KEY"),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        diagnosticCode: "ERR_OIDC_JWKS_HTTP_STATUS",
+        event: "oidc_remote_document_refresh_failed",
+        providerHttpStatus: 302,
+        remoteDocumentKind: "jwk_set",
+      }),
     );
     await expect(authenticator.authenticateIdToken(await signedIdToken())).resolves.toMatchObject({
       ok: true,
@@ -460,6 +550,32 @@ describe("OIDC ID Token Authenticator", () => {
       ),
     ).toHaveLength(3);
   });
+
+  it.each(["no-cache", "no-store"])(
+    "does not reuse a %s JWK Set after an unknown kid when refresh fails",
+    async (cacheControl) => {
+      let jwksRequests = 0;
+      const fetchOidcRemoteDocumentResponse = providerFetch({
+        jwksResponse: () => {
+          jwksRequests += 1;
+
+          return jwksRequests === 1
+            ? Response.json(
+                { keys: [testPublicJwk] },
+                { headers: { "cache-control": cacheControl } },
+              )
+            : oidcRedirectResponse();
+        },
+      });
+
+      await expect(
+        testAuthenticator(fetchOidcRemoteDocumentResponse).authenticateIdToken(
+          await signedIdToken({ kid: "unknown-key" }),
+        ),
+      ).resolves.toEqual(expectedFailure("provider_unavailable", "ERR_OIDC_JWKS_HTTP_STATUS", 302));
+      expect(jwksRequests).toBe(2);
+    },
+  );
 
   it("publishes each coalesced Provider Configuration refresh once", async () => {
     let now = new Date("2026-01-01T00:00:00Z");
@@ -489,7 +605,7 @@ describe("OIDC ID Token Authenticator", () => {
     const authenticator = createOidcIdTokenAuthenticator(
       {
         providerRegistrations: [registration],
-        subjectTokenAudience: "github-app-token-broker",
+        subjectTokenAudience,
       },
       {
         fetch: fetchOidcRemoteDocumentResponse,
@@ -562,7 +678,7 @@ describe("OIDC ID Token Authenticator", () => {
     const authenticator = createOidcIdTokenAuthenticator(
       {
         providerRegistrations: [registration],
-        subjectTokenAudience: "github-app-token-broker",
+        subjectTokenAudience,
       },
       {
         fetch: fetchOidcRemoteDocumentResponse,
@@ -669,7 +785,7 @@ describe("OIDC ID Token Authenticator", () => {
     const authenticator = createOidcIdTokenAuthenticator(
       {
         providerRegistrations: [algorithmRegistration],
-        subjectTokenAudience: "github-app-token-broker",
+        subjectTokenAudience,
       },
       { fetch: fetchOidcRemoteDocumentResponse, now: () => now },
     );
@@ -728,7 +844,7 @@ describe("OIDC ID Token Authenticator", () => {
     const authenticator = createOidcIdTokenAuthenticator(
       {
         providerRegistrations: [algorithmRegistration],
-        subjectTokenAudience: "github-app-token-broker",
+        subjectTokenAudience,
       },
       { fetch: fetchOidcRemoteDocumentResponse, now: () => now },
     );
@@ -804,7 +920,7 @@ describe("OIDC ID Token Authenticator", () => {
     const authenticator = createOidcIdTokenAuthenticator(
       {
         providerRegistrations: [algorithmRegistration],
-        subjectTokenAudience: "github-app-token-broker",
+        subjectTokenAudience,
       },
       { fetch: fetchOidcRemoteDocumentResponse, now: () => now },
     );
@@ -1127,6 +1243,46 @@ describe("OIDC ID Token Authenticator", () => {
   it.each([
     ["a non-object key", Response.json({ keys: ["invalid"] }), "ERR_OIDC_JWKS_INVALID"],
     [
+      "a key without kty",
+      Response.json({ keys: [{ ...testPublicJwk, kty: undefined }] }),
+      "ERR_OIDC_JWKS_INVALID",
+    ],
+    [
+      "a non-string alg",
+      Response.json({ keys: [{ ...testPublicJwk, alg: ["RS256"] }] }),
+      "ERR_OIDC_JWKS_INVALID",
+    ],
+    [
+      "a non-string use",
+      Response.json({ keys: [{ ...testPublicJwk, use: false }] }),
+      "ERR_OIDC_JWKS_INVALID",
+    ],
+    [
+      "a non-string kid",
+      Response.json({ keys: [{ ...testPublicJwk, kid: 1 }] }),
+      "ERR_OIDC_JWKS_INVALID",
+    ],
+    [
+      "non-array key_ops",
+      Response.json({ keys: [{ ...testPublicJwk, key_ops: "verify" }] }),
+      "ERR_OIDC_JWKS_INVALID",
+    ],
+    [
+      "a non-string key_ops member",
+      Response.json({ keys: [{ ...testPublicJwk, key_ops: ["verify", 1] }] }),
+      "ERR_OIDC_JWKS_INVALID",
+    ],
+    [
+      "non-array x5c",
+      Response.json({ keys: [{ ...testPublicJwk, x5c: "certificate" }] }),
+      "ERR_OIDC_JWKS_INVALID",
+    ],
+    [
+      "a non-string x5c member",
+      Response.json({ keys: [{ ...testPublicJwk, x5c: ["certificate", 1] }] }),
+      "ERR_OIDC_JWKS_INVALID",
+    ],
+    [
       "no usable verification key",
       Response.json({ keys: [] }),
       "ERR_OIDC_JWKS_NO_USABLE_VERIFICATION_KEY",
@@ -1196,6 +1352,16 @@ describe("OIDC ID Token Authenticator", () => {
             { ...privateJwk, kid: "test-key-1" },
           ],
         }),
+    });
+
+    await expect(
+      testAuthenticator(fetchOidcRemoteDocumentResponse).authenticateIdToken(await signedIdToken()),
+    ).resolves.toEqual(expectedFailure("provider_unavailable", "ERR_OIDC_JWKS_KEY_INVALID"));
+  });
+
+  it("classifies duplicate matching provider keys as provider unavailability", async () => {
+    const fetchOidcRemoteDocumentResponse = providerFetch({
+      jwksResponse: () => Response.json({ keys: [testPublicJwk, testPublicJwk] }),
     });
 
     await expect(
@@ -1418,7 +1584,7 @@ describe("OIDC ID Token Authenticator", () => {
     const authenticator = createOidcIdTokenAuthenticator(
       {
         providerRegistrations: [profileRegistration],
-        subjectTokenAudience: "github-app-token-broker",
+        subjectTokenAudience,
       },
       { fetch: successfulProviderFetch, now: () => new Date() },
     );
@@ -1442,7 +1608,7 @@ describe("OIDC ID Token Authenticator", () => {
     const authenticator = createOidcIdTokenAuthenticator(
       {
         providerRegistrations: [profileRegistration],
-        subjectTokenAudience: "github-app-token-broker",
+        subjectTokenAudience,
       },
       { fetch: successfulProviderFetch, now: () => new Date() },
     );
@@ -1506,7 +1672,7 @@ function testAuthenticator(
   return createOidcIdTokenAuthenticator(
     {
       providerRegistrations: [registration],
-      subjectTokenAudience: "github-app-token-broker",
+      subjectTokenAudience,
     },
     { fetch: fetchOidcRemoteDocumentResponse, now },
   );

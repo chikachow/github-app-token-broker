@@ -7,6 +7,7 @@ import {
   testGithubActionsIssuer,
   type TokenExchangeRequestBodyOptions,
 } from "./oidc-token.ts";
+import { testNow } from "./constants.ts";
 import { testPrivateKeyPem, testPublicJwk } from "./rsa-test-key-pair.ts";
 
 export { accessTokenType, legacyGithubInstallationAccessTokenType } from "./constants.ts";
@@ -39,15 +40,20 @@ export function authorizationHeaders(
   overrides?: Partial<Record<string, unknown>>,
   tokenOptions?: CreateOidcTokenOptions,
 ): Promise<Record<string, string>> {
-  return createOidcToken(testPrivateKeyPem, overrides, tokenOptions).then((token) => ({
-    authorization: `Bearer ${token}`,
-  }));
+  return createOidcToken(testPrivateKeyPem, overrides, { now: testNow, ...tokenOptions }).then(
+    (token) => ({
+      authorization: `Bearer ${token}`,
+    }),
+  );
 }
 
 export function tokenExchangeRequestBody(
   options: TokenExchangeRequestBodyOptions = {},
 ): Promise<string> {
-  return createTokenExchangeRequestBody(testPrivateKeyPem, options);
+  return createTokenExchangeRequestBody(testPrivateKeyPem, {
+    ...options,
+    tokenOptions: { now: testNow, ...options.tokenOptions },
+  });
 }
 
 export async function fetchOidcRemoteDocumentResponseTestDouble(input: RequestInfo | URL) {

@@ -409,7 +409,7 @@ describe("github-app-token-broker-token-exchange", () => {
       const worker = createTokenExchangeWorker(testTokenExchangeComposition);
       const response = await worker.fetch?.(
         new Request("https://example.test/token", {
-          body: await tokenExchangeRequestBody(),
+          body: await tokenExchangeRequestBody({ tokenOptions: { now: new Date() } }),
           headers: { "content-type": "application/x-www-form-urlencoded" },
           method: "POST",
         }) as Parameters<NonNullable<typeof worker.fetch>>[0],

@@ -14,6 +14,7 @@ export interface CreateOidcTokenOptions {
   issuer?: string;
   kid?: string;
   notBefore?: number;
+  now?: Date;
 }
 
 export interface TokenExchangeRequestBodyOptions {
@@ -61,7 +62,7 @@ export async function createOidcToken(
   overrides?: Partial<Record<string, unknown>>,
   options?: CreateOidcTokenOptions,
 ): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
+  const now = Math.floor((options?.now ?? new Date()).getTime() / 1000);
   const privateKey = await importPKCS8(privateKeyPem, "RS256");
   const { sub, ...payloadOverrides } = overrides ?? {};
   const audience = options?.audience === undefined ? "https://broker.example" : options.audience;

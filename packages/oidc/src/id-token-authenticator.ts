@@ -25,7 +25,12 @@ import {
   type OidcIdTokenSigningAlgorithm,
   type OidcProviderRegistration,
 } from "./provider-registration.ts";
-import type { VerifiedOidcIdToken, VerifiedOidcIdTokenClaims } from "./verified-id-token.ts";
+import type { SubjectTokenAudience } from "./subject-token-audience.ts";
+import type {
+  ReadonlyJsonValue,
+  VerifiedOidcIdToken,
+  VerifiedOidcIdTokenClaims,
+} from "./verified-id-token.ts";
 
 const providerConfigurationResponseByteLimit = 64 * 1024;
 const jwksResponseByteLimit = 256 * 1024;
@@ -61,7 +66,7 @@ const verificationJwkShapeByAlgorithm = {
 
 export interface OidcIdTokenAuthenticationTrust {
   readonly providerRegistrations: readonly OidcProviderRegistration[];
-  readonly subjectTokenAudience: string;
+  readonly subjectTokenAudience: SubjectTokenAudience;
 }
 
 export interface VerifiedSubjectToken {
@@ -213,16 +218,12 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
   readonly #dependencies: OidcIdTokenAuthenticatorDependencies;
   readonly #providerRegistrations: ReadonlyMap<OidcIssuerIdentifier, OidcProviderRegistration>;
   readonly #providerStates = new Map<OidcIssuerIdentifier, ProviderState>();
-  readonly #subjectTokenAudience: string;
+  readonly #subjectTokenAudience: SubjectTokenAudience;
 
   public constructor(
     trust: OidcIdTokenAuthenticationTrust,
     dependencies: OidcIdTokenAuthenticatorDependencies,
   ) {
-    if (trust.subjectTokenAudience.length === 0) {
-      throw new TypeError("OIDC ID Token authentication subject-token audience must not be empty");
-    }
-
     const providerRegistrations = new Map<OidcIssuerIdentifier, OidcProviderRegistration>();
 
     for (const providerRegistration of snapshotOidcProviderRegistrations(
@@ -259,7 +260,13 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
     }
 
     try {
-      const providerMetadata = await this.#providerMetadata(providerRegistration, providerState);
+      const operationDate = new Date(this.#dependencies.now().getTime());
+      const operationTime = operationDate.getTime();
+      const providerMetadata = await this.#providerMetadata(
+        providerRegistration,
+        providerState,
+        operationTime,
+      );
       const acceptedIdTokenSigningAlgorithms = providerMetadata.acceptedIdTokenSigningAlgorithms;
       const protectedHeader = decodeProtectedHeader(idToken);
 
@@ -271,7 +278,12 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
         return subjectTokenRejected("ERR_JOSE_ALG_NOT_ALLOWED");
       }
 
-      let cachedJwks = await this.#remoteJwks(providerMetadata, providerState, false);
+      let cachedJwks = await this.#remoteJwks(
+        providerMetadata,
+        providerState,
+        false,
+        operationTime,
+      );
       let verifiedIdToken: VerifiedOidcIdToken;
 
       try {
@@ -280,6 +292,7 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
           cachedJwks,
           providerRegistration,
           idToken,
+          operationDate,
           subjectTokenAudience: this.#subjectTokenAudience,
         });
       } catch (error) {
@@ -287,12 +300,22 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
           throw error;
         }
 
-        cachedJwks = await this.#remoteJwks(providerMetadata, providerState, true);
+        try {
+          cachedJwks = await this.#remoteJwks(providerMetadata, providerState, true, operationTime);
+        } catch (refreshError) {
+          if (this.#isFreshCachedJwks(providerMetadata, providerState, cachedJwks, operationTime)) {
+            throw error;
+          }
+
+          throw refreshError;
+        }
+
         verifiedIdToken = await verifyIdToken({
           acceptedIdTokenSigningAlgorithms,
           cachedJwks,
           providerRegistration,
           idToken,
+          operationDate,
           subjectTokenAudience: this.#subjectTokenAudience,
         });
       }
@@ -322,9 +345,8 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
   async #providerMetadata(
     providerRegistration: OidcProviderRegistration,
     providerState: ProviderState,
+    now: number,
   ): Promise<ValidatedOidcProviderMetadata> {
-    const now = this.#dependencies.now().getTime();
-
     if (providerState.metadata !== undefined && now < providerState.metadata.freshUntil) {
       return providerState.metadata.value;
     }
@@ -387,7 +409,7 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
     now: number,
   ): Promise<ValidatedOidcProviderMetadata> {
     try {
-      const refreshed = await this.#fetchAndValidateProviderMetadata(providerRegistration);
+      const refreshed = await this.#fetchAndValidateProviderMetadata(providerRegistration, now);
       const previousJwksUri = providerState.metadata?.value.jwksUri.href;
       const metadataGeneration = providerState.metadataGeneration + 1;
 
@@ -437,6 +459,7 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
 
   async #fetchAndValidateProviderMetadata(
     providerRegistration: OidcProviderRegistration,
+    now: number,
   ): Promise<CacheEntry<ValidatedOidcProviderMetadata>> {
     const configurationUrl = deriveOidcProviderConfigurationUrl(providerRegistration.issuer);
     let response: { cacheControl: string | null; document: unknown };
@@ -458,15 +481,15 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
 
     const providerMetadata = parseOidcProviderMetadata(response.document, providerRegistration);
 
-    return cacheEntry(providerMetadata, response.cacheControl, this.#dependencies.now().getTime());
+    return cacheEntry(providerMetadata, response.cacheControl, now);
   }
 
   async #remoteJwks(
     providerMetadata: ValidatedOidcProviderMetadata,
     providerState: ProviderState,
     forceRefresh: boolean,
+    now: number,
   ): Promise<CachedJwks> {
-    const now = this.#dependencies.now().getTime();
     const current = providerState.jwks;
     const identity = createJwksResolutionIdentity(
       providerMetadata.jwksUri,
@@ -486,6 +509,7 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
       forceRefresh &&
       current !== undefined &&
       jwksResolutionIdentitiesEqual(current.value.identity, identity) &&
+      now < current.freshUntil &&
       now < (providerState.jwksRefreshAllowedAfter ?? 0)
     ) {
       this.#observe({
@@ -527,7 +551,11 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
     if (refresh === undefined || !jwksResolutionIdentitiesEqual(refresh.identity, identity)) {
       refresh = {
         identity,
-        result: this.#fetchRemoteJwks(identity, providerMetadata.acceptedIdTokenSigningAlgorithms),
+        result: this.#fetchRemoteJwks(
+          identity,
+          providerMetadata.acceptedIdTokenSigningAlgorithms,
+          now,
+        ),
       };
       providerState.jwksRefresh = refresh;
     }
@@ -543,7 +571,7 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
         providerState.jwks = refreshed.cacheable ? refreshed : undefined;
         providerState.jwksFailure = undefined;
         providerState.jwksRefreshAllowedAfter = refreshed.cacheable
-          ? this.#dependencies.now().getTime() + jwksRefreshCooldownMilliseconds
+          ? now + jwksRefreshCooldownMilliseconds
           : undefined;
       }
 
@@ -591,6 +619,7 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
   async #fetchRemoteJwks(
     identity: JwksResolutionIdentity,
     acceptedIdTokenSigningAlgorithms: readonly OidcIdTokenSigningAlgorithm[],
+    now: number,
   ): Promise<CacheEntry<CachedJwks>> {
     const jwksUri = new URL(identity.jwksUri);
     const response = await fetchAndParseOidcRemoteDocument(
@@ -600,7 +629,7 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
       "JWKS",
     );
 
-    if (!isJsonWebKeySet(response.document)) {
+    if (!isJsonWebKeySetContainer(response.document)) {
       throw new OidcRemoteDocumentError("ERR_OIDC_JWKS_INVALID");
     }
 
@@ -608,8 +637,14 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
       throw new OidcRemoteDocumentError("ERR_OIDC_JWKS_KEY_LIMIT_EXCEEDED");
     }
 
+    if (!response.document.keys.every(isStructurallyValidJsonWebKey)) {
+      throw new OidcRemoteDocumentError("ERR_OIDC_JWKS_INVALID");
+    }
+
+    const jwks: JSONWebKeySet = { keys: response.document.keys };
+
     const hasUsableVerificationKey = await jsonWebKeySetHasUsableVerificationKey(
-      response.document,
+      jwks,
       acceptedIdTokenSigningAlgorithms,
     );
 
@@ -617,7 +652,7 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
       throw new OidcRemoteDocumentError("ERR_OIDC_JWKS_NO_USABLE_VERIFICATION_KEY");
     }
 
-    const localGetKey = createLocalJWKSet(response.document);
+    const localGetKey = createLocalJWKSet(jwks);
 
     const getKey: JWTVerifyGetKey = async (protectedHeader, token) => {
       try {
@@ -639,7 +674,29 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
         identity,
       }),
       response.cacheControl,
-      this.#dependencies.now().getTime(),
+      now,
+    );
+  }
+
+  #isFreshCachedJwks(
+    providerMetadata: ValidatedOidcProviderMetadata,
+    providerState: ProviderState,
+    cachedJwks: CachedJwks,
+    now: number,
+  ): boolean {
+    const current = providerState.jwks;
+
+    return (
+      current !== undefined &&
+      current.value === cachedJwks &&
+      jwksResolutionIdentitiesEqual(
+        current.value.identity,
+        createJwksResolutionIdentity(
+          providerMetadata.jwksUri,
+          providerMetadata.acceptedIdTokenSigningAlgorithms,
+        ),
+      ) &&
+      now < current.freshUntil
     );
   }
 
@@ -697,13 +754,15 @@ async function verifyIdToken(input: {
   acceptedIdTokenSigningAlgorithms: readonly OidcIdTokenSigningAlgorithm[];
   cachedJwks: CachedJwks;
   idToken: string;
+  operationDate: Date;
   providerRegistration: OidcProviderRegistration;
-  subjectTokenAudience: string;
+  subjectTokenAudience: SubjectTokenAudience;
 }): Promise<VerifiedOidcIdToken> {
   const { payload, protectedHeader } = await jwtVerify(input.idToken, input.cachedJwks.getKey, {
     algorithms: [...input.acceptedIdTokenSigningAlgorithms],
     audience: input.subjectTokenAudience,
     issuer: input.providerRegistration.issuer,
+    currentDate: input.operationDate,
     requiredClaims: ["aud", "sub", "exp", "iat"],
   });
 
@@ -983,21 +1042,76 @@ function issuerClaimWithoutVerification(idToken: string): string | null {
 
 function parseVerifiedOidcIdTokenClaims(
   input: Record<string, unknown>,
-  subjectTokenAudience: string,
+  subjectTokenAudience: SubjectTokenAudience,
 ): VerifiedOidcIdTokenClaims | null {
   const parsed = verifiedOidcIdTokenClaimsSchema.safeParse(input);
 
-  return parsed.success && parsed.data.aud === subjectTokenAudience ? parsed.data : null;
+  if (!parsed.success || parsed.data.aud !== subjectTokenAudience) {
+    return null;
+  }
+
+  return recursivelyFreezeJsonValue(
+    structuredClone(parsed.data) as ReadonlyJsonValue,
+  ) as VerifiedOidcIdTokenClaims;
 }
 
-function isJsonWebKeySet(input: unknown): input is JSONWebKeySet {
+function recursivelyFreezeJsonValue(value: ReadonlyJsonValue): ReadonlyJsonValue {
+  if (Array.isArray(value)) {
+    for (const member of value) {
+      recursivelyFreezeJsonValue(member);
+    }
+
+    return Object.freeze(value);
+  }
+
+  if (typeof value === "object" && value !== null) {
+    for (const member of Object.values(value)) {
+      if (member !== undefined) {
+        recursivelyFreezeJsonValue(member);
+      }
+    }
+
+    return Object.freeze(value);
+  }
+
+  return value;
+}
+
+function isJsonWebKeySetContainer(input: unknown): input is { readonly keys: unknown[] } {
   return (
-    typeof input === "object" &&
-    input !== null &&
-    "keys" in input &&
-    Array.isArray(input.keys) &&
-    input.keys.every((key) => typeof key === "object" && key !== null && !Array.isArray(key))
+    typeof input === "object" && input !== null && "keys" in input && Array.isArray(input.keys)
   );
+}
+
+function isStructurallyValidJsonWebKey(input: unknown): input is JWK {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    return false;
+  }
+
+  const jwk = input as Record<string, unknown>;
+
+  return (
+    typeof jwk["kty"] === "string" &&
+    optionalMemberIsString(jwk, "alg") &&
+    optionalMemberIsString(jwk, "kid") &&
+    optionalMemberIsString(jwk, "use") &&
+    optionalMemberIsStringArray(jwk, "key_ops") &&
+    optionalMemberIsStringArray(jwk, "x5c")
+  );
+}
+
+function optionalMemberIsString(input: Record<string, unknown>, member: string): boolean {
+  return !(member in input) || typeof input[member] === "string";
+}
+
+function optionalMemberIsStringArray(input: Record<string, unknown>, member: string): boolean {
+  if (!(member in input)) {
+    return true;
+  }
+
+  const value = input[member];
+
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
 }
 
 function createJwksResolutionIdentity(
