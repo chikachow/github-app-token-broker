@@ -1118,35 +1118,91 @@ describe("OIDC ID Token Authenticator", () => {
     },
   );
 
+  it("classifies a Provider Configuration response with a body transport failure as unavailable", async () => {
+    const response = new Response(
+      new ReadableStream({
+        pull(controller) {
+          controller.error(
+            Object.assign(new Error("provider body unavailable"), {
+              name: "NetworkError",
+            }),
+          );
+        },
+      }),
+      { headers: { "content-type": "application/json" } },
+    );
+
+    await expect(
+      testAuthenticator(
+        providerFetch({ providerConfigurationResponse: () => response }),
+      ).authenticateIdToken(await signedIdToken()),
+    ).resolves.toEqual(
+      expectedFailure("provider_unavailable", "ERR_OIDC_PROVIDER_CONFIGURATION_FETCH_FAILED"),
+    );
+  });
+
   it.each([
-    ["a body transport failure", "NetworkError", "FETCH_FAILED"],
-    ["a body timeout", "TimeoutError", "TIMEOUT"],
-  ] as const)(
-    "classifies a Provider Configuration response with %s as unavailable",
-    async (_description, errorName, diagnosticCodeSuffix) => {
+    {
+      diagnosticCode: "ERR_OIDC_PROVIDER_CONFIGURATION_TIMEOUT",
+      documentName: "Provider Configuration",
+      providerResponse: (response: Response) =>
+        providerFetch({ providerConfigurationResponse: () => response }),
+    },
+    {
+      diagnosticCode: "ERR_OIDC_JWKS_TIMEOUT",
+      documentName: "JWK Set",
+      providerResponse: (response: Response) => providerFetch({ jwksResponse: () => response }),
+    },
+  ])(
+    "cancels a stalled $documentName body and classifies the deadline as provider unavailability",
+    async ({ diagnosticCode, providerResponse }) => {
+      const timeoutControllers: AbortController[] = [];
+      const timeout = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => {
+        const controller = new AbortController();
+        timeoutControllers.push(controller);
+
+        return controller.signal;
+      });
+      const cancel = vi.fn();
+      const bodyRead = Promise.withResolvers<void>();
       const response = new Response(
-        new ReadableStream({
-          pull(controller) {
-            controller.error(
-              Object.assign(new Error("provider body unavailable"), {
-                name: errorName,
-              }),
-            );
+        new ReadableStream(
+          {
+            cancel,
+            pull() {
+              bodyRead.resolve();
+
+              return new Promise<void>(() => undefined);
+            },
           },
-        }),
+          { highWaterMark: 0 },
+        ),
         { headers: { "content-type": "application/json" } },
       );
 
-      await expect(
-        testAuthenticator(
-          providerFetch({ providerConfigurationResponse: () => response }),
-        ).authenticateIdToken(await signedIdToken()),
-      ).resolves.toEqual(
-        expectedFailure(
-          "provider_unavailable",
-          `ERR_OIDC_PROVIDER_CONFIGURATION_${diagnosticCodeSuffix}`,
-        ),
-      );
+      try {
+        const authentication = testAuthenticator(providerResponse(response)).authenticateIdToken(
+          await signedIdToken(),
+        );
+        await bodyRead.promise;
+        expect(timeout).toHaveBeenLastCalledWith(5_000);
+        const deadline = new DOMException("OIDC provider deadline exceeded", "TimeoutError");
+        const timeoutController = timeoutControllers.at(-1);
+
+        if (timeoutController === undefined) {
+          throw new Error("expected an OIDC provider request timeout signal");
+        }
+
+        timeoutController.abort(deadline);
+
+        await expect(authentication).resolves.toEqual(
+          expectedFailure("provider_unavailable", diagnosticCode),
+        );
+        expect(cancel).toHaveBeenCalledOnce();
+        expect(cancel).toHaveBeenCalledWith(deadline);
+      } finally {
+        timeout.mockRestore();
+      }
     },
   );
 
