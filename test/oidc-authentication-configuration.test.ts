@@ -7,6 +7,7 @@ import {
   type InstallationAccessTokenRequest,
 } from "@github-app-token-broker/github/installation-access-token-request";
 import { createOidcIdTokenAuthenticator } from "@github-app-token-broker/oidc/id-token-authenticator";
+import { parseSubjectTokenAudience } from "@github-app-token-broker/oidc/subject-token-audience";
 import {
   claimEquals,
   compileTokenIssuancePolicy,
@@ -24,7 +25,7 @@ describe("OIDC ID Token authentication configuration", () => {
     const authenticator = createOidcIdTokenAuthenticator(
       {
         providerRegistrations: [registration],
-        subjectTokenAudience: "https://broker.example",
+        subjectTokenAudience: parseSubjectTokenAudience("https://broker.example"),
       },
       {
         fetch: fetchOidcRemoteDocumentResponseTestDouble,
@@ -58,7 +59,7 @@ describe("OIDC ID Token authentication configuration", () => {
       createOidcIdTokenAuthenticator(
         {
           providerRegistrations: [registration, registration],
-          subjectTokenAudience: "github-app-token-broker",
+          subjectTokenAudience: parseSubjectTokenAudience("github-app-token-broker"),
         },
         {
           fetch: fetchOidcRemoteDocumentResponseTestDouble,
@@ -73,7 +74,7 @@ describe("OIDC ID Token authentication configuration", () => {
     const authenticator = createOidcIdTokenAuthenticator(
       {
         providerRegistrations: [registration],
-        subjectTokenAudience: "github-app-token-broker",
+        subjectTokenAudience: parseSubjectTokenAudience("github-app-token-broker"),
       },
       {
         fetch: fetchOidcRemoteDocumentResponseTestDouble,
