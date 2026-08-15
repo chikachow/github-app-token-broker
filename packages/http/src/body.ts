@@ -10,7 +10,10 @@ export type BoundedBodyRead =
 export async function readBodyUpTo(
   body: ReadableStream<Uint8Array> | null,
   maxBytes: number,
+  signal?: AbortSignal,
 ): Promise<BoundedBodyRead> {
+  throwIfAborted(signal);
+
   if (body === null) {
     return { bytes: new Uint8Array(), ok: true };
   }
@@ -18,10 +21,18 @@ export async function readBodyUpTo(
   const reader = body.getReader();
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
+  const cancelForAbort = () => {
+    void reader.cancel(signal?.reason).catch(() => undefined);
+  };
+
+  signal?.addEventListener("abort", cancelForAbort, { once: true });
 
   try {
+    throwIfAborted(signal);
+
     for (;;) {
       const read = await reader.read();
+      throwIfAborted(signal);
 
       if (read.done) {
         break;
@@ -37,6 +48,7 @@ export async function readBodyUpTo(
       chunks.push(read.value);
     }
   } finally {
+    signal?.removeEventListener("abort", cancelForAbort);
     reader.releaseLock();
   }
 
@@ -49,4 +61,10 @@ export async function readBodyUpTo(
   }
 
   return { bytes, ok: true };
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted === true) {
+    throw signal.reason;
+  }
 }

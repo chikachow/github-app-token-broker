@@ -22,7 +22,6 @@ import {
 import { testPrivateKeyPem } from "./support/rsa-test-key-pair.ts";
 
 const githubApp = {
-  GITHUB_API_BASE_URL: "https://api.github.test",
   GITHUB_APP_ID: "2419473",
   GITHUB_APP_PRIVATE_KEY: testPrivateKeyPem,
 };
@@ -388,14 +387,6 @@ describe("GitHub App information", () => {
       configuration: { ...githubApp, GITHUB_APP_ID: "02419473" },
       description: "App ID with a leading zero",
     },
-    {
-      configuration: { ...githubApp, GITHUB_API_BASE_URL: "not a URL" },
-      description: "invalid GitHub API base URL",
-    },
-    {
-      configuration: { ...githubApp, GITHUB_API_BASE_URL: "http://api.github.test" },
-      description: "plaintext GitHub API base URL",
-    },
   ])("classifies $description as invalid configuration", async ({ configuration }) => {
     const fetchGitHub = vi.fn<typeof fetch>();
 
@@ -471,6 +462,25 @@ describe("GitHub App information", () => {
     });
 
     await expect(information.getApp()).rejects.toBeInstanceOf(GitHubAppUnavailableError);
+  });
+
+  it("maps the broker-owned GitHub deadline to an unavailable RPC error", async () => {
+    const deadline = new AbortController();
+    const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(deadline.signal);
+    const information = createGitHubAppInformation(githubApp, {
+      fetch: async () => new Promise<Response>(() => undefined),
+      now: () => now,
+    });
+    const result = information.getApp();
+
+    deadline.abort(new DOMException("private timeout detail", "TimeoutError"));
+
+    try {
+      await expect(result).rejects.toBeInstanceOf(GitHubAppUnavailableError);
+      expect(timeout).toHaveBeenCalledWith(10_000);
+    } finally {
+      timeout.mockRestore();
+    }
   });
 });
 

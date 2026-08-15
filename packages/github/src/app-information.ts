@@ -243,7 +243,7 @@ async function requestGitHubAppInformation<Schema extends z.ZodType>(
   },
 ): Promise<z.output<Schema>> {
   try {
-    return await fetchGitHubApiJson(configuration, dependencies, {
+    return await fetchGitHubApiJson(dependencies, {
       headers: await githubAppAuthenticationHeaders(configuration, dependencies),
       ...(maxResponseBodyBytes === undefined ? {} : { maxResponseBodyBytes }),
       path,

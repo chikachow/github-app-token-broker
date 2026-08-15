@@ -64,4 +64,37 @@ describe("bounded body reading", () => {
     await expect(readBodyUpTo(body, 1)).resolves.toEqual({ ok: false });
     await Promise.resolve();
   });
+
+  it("cancels an in-progress body read and rejects with the abort reason", async () => {
+    const cancel = vi.fn();
+    const controller = new AbortController();
+    const abortReason = new DOMException("fixture deadline", "TimeoutError");
+    const body = new ReadableStream<Uint8Array>({ cancel });
+    const read = readBodyUpTo(body, 3, controller.signal);
+
+    controller.abort(abortReason);
+
+    await expect(read).rejects.toBe(abortReason);
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(cancel).toHaveBeenCalledWith(abortReason);
+  });
+
+  it("does not start reading a body when its signal is already aborted", async () => {
+    const pull = vi.fn();
+    const cancel = vi.fn();
+    const controller = new AbortController();
+    const abortReason = new DOMException("fixture cancellation", "AbortError");
+
+    controller.abort(abortReason);
+
+    await expect(
+      readBodyUpTo(
+        new ReadableStream<Uint8Array>({ cancel, pull }, { highWaterMark: 0 }),
+        3,
+        controller.signal,
+      ),
+    ).rejects.toBe(abortReason);
+    expect(pull).not.toHaveBeenCalled();
+    expect(cancel).not.toHaveBeenCalled();
+  });
 });
