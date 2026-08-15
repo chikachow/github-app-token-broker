@@ -31,7 +31,8 @@ updates:
         patterns:
           - vitest
           - "@vitest/*"
-      oxlint:
+      oxc-tooling:
         patterns:
+          - oxfmt
           - oxlint
           - oxlint-tsgolint
