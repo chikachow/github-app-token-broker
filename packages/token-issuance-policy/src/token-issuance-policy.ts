@@ -82,6 +82,21 @@ export interface TokenIssuancePolicy {
   readonly permitStatements: readonly PermitStatement[];
 }
 
+export type TokenIssuancePolicyEvaluation =
+  | Readonly<{ outcome: "permitted" }>
+  | Readonly<{ outcome: "requested_permissions_unsupported" }>
+  | Readonly<{ outcome: "subject_token_unacceptable" }>
+  | Readonly<{ outcome: "target_unsupported" }>;
+
+const permittedEvaluation = Object.freeze({ outcome: "permitted" } as const);
+const requestedPermissionsUnsupportedEvaluation = Object.freeze({
+  outcome: "requested_permissions_unsupported",
+} as const);
+const subjectTokenUnacceptableEvaluation = Object.freeze({
+  outcome: "subject_token_unacceptable",
+} as const);
+const targetUnsupportedEvaluation = Object.freeze({ outcome: "target_unsupported" } as const);
+
 export function claimEquals(
   claimName: string,
   expectedValue: string | boolean,
@@ -178,36 +193,42 @@ export function compileTokenIssuancePolicy(
   return Object.freeze({ permitStatements: statements });
 }
 
-export function tokenIssuancePolicyPermits(
+export function evaluateTokenIssuancePolicy(
   policy: TokenIssuancePolicy,
   verifiedSubjectToken: VerifiedSubjectToken,
   request: InstallationAccessTokenRequest,
-): boolean {
-  return policyStatementsCoverRequest(policy.permitStatements, request, (statement) => {
-    return (
-      resourceConstraintMatches(statement.resource, request.resource) &&
+): TokenIssuancePolicyEvaluation {
+  const permissionsUnsupported = new Set(
+    Object.keys(request.permissions) as (keyof GitHubInstallationPermissions)[],
+  );
+  const permissionsUnacceptable = new Set(permissionsUnsupported);
+  let targetSupported = false;
+
+  for (const statement of policy.permitStatements) {
+    if (!resourceConstraintMatches(statement.resource, request.resource)) {
+      continue;
+    }
+
+    targetSupported = true;
+    removeCoveredPermissions(permissionsUnsupported, statement.permissions, request.permissions);
+
+    if (
       statement.subjectToken.issuer === verifiedSubjectToken.issuer &&
       claimPredicatesMatch(statement.subjectToken.claimPredicates, verifiedSubjectToken.claims)
-    );
-  });
-}
+    ) {
+      removeCoveredPermissions(permissionsUnacceptable, statement.permissions, request.permissions);
 
-export function tokenIssuancePolicySupportsTarget(
-  policy: TokenIssuancePolicy,
-  request: InstallationAccessTokenRequest,
-): boolean {
-  return policy.permitStatements.some((statement) =>
-    resourceConstraintMatches(statement.resource, request.resource),
-  );
-}
+      if (permissionsUnacceptable.size === 0) {
+        return permittedEvaluation;
+      }
+    }
+  }
 
-export function tokenIssuancePolicySupportsRequestedPermissions(
-  policy: TokenIssuancePolicy,
-  request: InstallationAccessTokenRequest,
-): boolean {
-  return policyStatementsCoverRequest(policy.permitStatements, request, (statement) =>
-    resourceConstraintMatches(statement.resource, request.resource),
-  );
+  return !targetSupported
+    ? targetUnsupportedEvaluation
+    : permissionsUnsupported.size > 0
+      ? requestedPermissionsUnsupportedEvaluation
+      : subjectTokenUnacceptableEvaluation;
 }
 
 function resourceConstraintMatches(
@@ -220,40 +241,24 @@ function resourceConstraintMatches(
   );
 }
 
-function policyStatementsCoverRequest(
-  statements: readonly PermitStatement[],
-  request: InstallationAccessTokenRequest,
-  statementContributes: (statement: PermitStatement) => boolean,
-): boolean {
-  const uncoveredPermissions = new Set(
-    Object.keys(request.permissions) as (keyof GitHubInstallationPermissions)[],
-  );
+function removeCoveredPermissions(
+  uncoveredPermissions: Set<keyof GitHubInstallationPermissions>,
+  configuredPermissions: GitHubInstallationPermissions,
+  requestedPermissions: GitHubInstallationPermissions,
+): void {
+  for (const permissionName of uncoveredPermissions) {
+    const requestedLevel = requestedPermissions[permissionName];
 
-  for (const statement of statements) {
-    if (!statementContributes(statement)) {
-      continue;
-    }
-
-    for (const permissionName of uncoveredPermissions) {
-      const requestedLevel = request.permissions[permissionName];
-
-      if (
-        requestedLevel !== undefined &&
-        installationAccessTokenPermissionLevelCovers(
-          statement.permissions[permissionName],
-          requestedLevel,
-        )
-      ) {
-        uncoveredPermissions.delete(permissionName);
-      }
-    }
-
-    if (uncoveredPermissions.size === 0) {
-      return true;
+    if (
+      requestedLevel !== undefined &&
+      installationAccessTokenPermissionLevelCovers(
+        configuredPermissions[permissionName],
+        requestedLevel,
+      )
+    ) {
+      uncoveredPermissions.delete(permissionName);
     }
   }
-
-  return false;
 }
 
 export function assertTokenIssuancePolicyIssuersAreRegistered(

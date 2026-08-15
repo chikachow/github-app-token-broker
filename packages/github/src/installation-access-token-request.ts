@@ -4,10 +4,13 @@ export type GitHubInstallationPermissions = Readonly<
   Record<string, GitHubInstallationPermissionLevel>
 >;
 
+const installationAccessTokenRequestBrand: unique symbol = Symbol("InstallationAccessTokenRequest");
+
 export interface InstallationAccessTokenRequest {
   readonly permissions: GitHubInstallationPermissions;
   readonly resource: GitHubRepositoryResource;
   readonly scope: string;
+  readonly [installationAccessTokenRequestBrand]: true;
 }
 
 export interface GitHubRepositoryResource {
@@ -43,20 +46,50 @@ export function normalizeInstallationAccessTokenRequest(options: {
     return { error: "invalid_target", ok: false };
   }
 
-  const scope = options.scope === null ? null : parseGitHubInstallationScope(options.scope);
+  const permissions = options.scope === null ? null : parseGitHubInstallationScope(options.scope);
 
-  if (scope === null) {
+  if (permissions === null) {
     return { error: "invalid_scope", ok: false };
   }
 
   return {
     ok: true,
-    tokenRequest: {
-      permissions: scope.permissions,
-      resource,
-      scope: scope.scope,
+    tokenRequest: createInstallationAccessTokenRequest({
+      owner: resource.owner,
+      permissions,
+      repository: resource.repository,
+    }),
+  };
+}
+
+export function createInstallationAccessTokenRequest(options: {
+  readonly owner: string;
+  readonly permissions: GitHubInstallationPermissions;
+  readonly repository: string;
+}): InstallationAccessTokenRequest {
+  const permissions = canonicalizeInstallationAccessTokenPermissions(options.permissions);
+
+  if (Object.keys(permissions).length === 0) {
+    throw new TypeError("Requested Permissions must not be empty");
+  }
+
+  const resource = createGitHubRepositoryResource({
+    owner: options.owner,
+    repository: options.repository,
+  });
+  const request = {
+    permissions,
+    resource,
+    get scope(): string {
+      return Object.entries(permissions)
+        .map(([name, level]) => `${name}:${level}`)
+        .join(" ");
     },
   };
+
+  Object.defineProperty(request, installationAccessTokenRequestBrand, { value: true });
+
+  return Object.freeze(request) as InstallationAccessTokenRequest;
 }
 
 export function parseGitHubRepositoryResource(value: string): GitHubRepositoryResource | null {
@@ -97,11 +130,7 @@ export function parseGitHubRepositoryResource(value: string): GitHubRepositoryRe
     return null;
   }
 
-  return Object.freeze({
-    href: resource.href,
-    owner: parts[2],
-    repository: parts[3],
-  });
+  return createGitHubRepositoryResource({ owner: parts[2], repository: parts[3] });
 }
 
 export function createGitHubRepositoryResource(options: {
@@ -115,19 +144,15 @@ export function createGitHubRepositoryResource(options: {
     throw new TypeError("invalid GitHub Repository Resource path segment");
   }
 
-  const resource = parseGitHubRepositoryResource(
-    `https://api.github.com/repos/${options.owner}/${options.repository}`,
-  );
+  const { owner, repository } = options;
 
-  if (
-    resource === null ||
-    resource.owner !== options.owner ||
-    resource.repository !== options.repository
-  ) {
-    throw new TypeError("GitHub Repository Resource does not round-trip canonically");
-  }
-
-  return resource;
+  return Object.freeze({
+    get href(): string {
+      return `https://api.github.com/repos/${owner}/${repository}`;
+    },
+    owner,
+    repository,
+  });
 }
 
 export function installationAccessTokenPermissionsAreValid(
@@ -157,36 +182,7 @@ export function installationAccessTokenPermissionLevelCovers(
   );
 }
 
-export function unionGitHubInstallationPermissions(
-  left: GitHubInstallationPermissions,
-  right: GitHubInstallationPermissions,
-): GitHubInstallationPermissions {
-  const permissions: Record<string, GitHubInstallationPermissionLevel> = Object.create(null);
-
-  for (const name of new Set([...Object.keys(left), ...Object.keys(right)])) {
-    const leftLevel = Object.hasOwn(left, name) ? left[name] : undefined;
-    const rightLevel = Object.hasOwn(right, name) ? right[name] : undefined;
-
-    if (leftLevel === undefined) {
-      if (rightLevel !== undefined) {
-        permissions[name] = rightLevel;
-      }
-    } else if (
-      rightLevel === undefined ||
-      permissionLevelRanks[leftLevel] >= permissionLevelRanks[rightLevel]
-    ) {
-      permissions[name] = leftLevel;
-    } else {
-      permissions[name] = rightLevel;
-    }
-  }
-
-  return canonicalizeInstallationAccessTokenPermissions(permissions);
-}
-
-function parseGitHubInstallationScope(
-  value: string,
-): { permissions: GitHubInstallationPermissions; scope: string } | null {
+function parseGitHubInstallationScope(value: string): GitHubInstallationPermissions | null {
   const scopeTokens = value.split(" ");
 
   if (scopeTokens.some((scope) => scope.length === 0)) {
@@ -217,10 +213,7 @@ function parseGitHubInstallationScope(
     seen.add(scope);
   }
 
-  return {
-    permissions: canonicalizeInstallationAccessTokenPermissions(permissions),
-    scope: [...seen].sort(compareStrings).join(" "),
-  };
+  return permissions;
 }
 
 function comparePermissionEntry(
