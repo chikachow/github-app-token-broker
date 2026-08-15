@@ -8,7 +8,7 @@ The only public service route is `POST /token`. The service has no webhook recei
 
 - `workers/github-app-token-broker` is the sole deployable Cloudflare Worker package (`@github-app-token-broker/worker`).
 - `packages/oidc` owns the deep ID Token authenticator, OIDC Provider Registration validation, discovery/JWK Set validation, bounded caches, and fail-closed error classification.
-- `packages/github` owns Installation Access Token Request normalization, GitHub App JWT signing, installation lookup, owner binding, installation-token minting, and GitHub App Information queries.
+- `packages/github` owns Installation Access Token Request normalization, the Repository Resource-oriented issuance capability, GitHub App JWT authentication, owner binding, installation-token minting, and GitHub App Information queries.
 - `packages/token-issuance-policy` owns Permit Statement compilation and evaluation.
 - `packages/http` owns bounded request/response body helpers and problem responses.
 - Provider packages contain reviewed GitHub Actions and Google service-account registrations plus exact organization-scoped Fly OIDC Provider Registration construction.
@@ -39,13 +39,15 @@ Important invariants:
 
 - issuer trust comes only from exact OIDC Provider Registrations compiled into the Worker artifact
 - the ID Token must have the deployment's exact single-string `TOKEN_BROKER_AUDIENCE`; the RFC 8693 `audience` parameter is unsupported and grants nothing
-- every request names exactly one canonical GitHub Repository Resource
+- verified Claims are copied into an immutable snapshot before a provider profile or Token Issuance Policy can inspect them; profile admission and policy authorization remain separate decisions
+- every request names exactly one canonical Repository Resource
 - every request explicitly names a non-empty `scope`; the broker has no default Requested Permissions
 - Subject Token Claims never select the target repository
 - authentication never grants authorization; independently complete Permit Statements must cover the requested resource and every permission
 - installation lookup must return an installation whose `account.login` matches the requested owner, case-insensitively, before minting
 - the configured GitHub App installation remains the upper bound on repositories and permissions
-- OAuth token responses are non-cacheable and raw subject/access tokens are not logged
+- GitHub requests use only `https://api.github.com` and have a broker-owned 10-second deadline covering response headers and the complete bounded body
+- every Token Endpoint success and error response is non-cacheable; an unexpected failure is sanitized to `500 {"error":"server_error"}`, and raw subject/access tokens are not logged
 
 See [the service contract](docs/service-contract.md) for complete request, response, error, provider, and policy behavior; [implementation](docs/implementation.md) for code boundaries; and [deployment](docs/deployment.md) for the public-source/external-deployment interface.
 
@@ -55,11 +57,10 @@ The Worker consumes one App identity per deployment:
 
 - `GITHUB_APP_ID`: non-secret positive decimal GitHub App identifier
 - `GITHUB_APP_PRIVATE_KEY`: Worker secret or Secrets Store binding containing its PKCS#8 private key
-- `GITHUB_API_BASE_URL`: HTTPS GitHub API base URL, normally `https://api.github.com`
 - `TOKEN_BROKER_AUDIENCE`: required non-secret exact scalar Subject-Token Audience supplied by the deployment
 - `TOKEN_EXCHANGE_RATE_LIMIT`: Cloudflare rate-limit binding
 
-The audience must be a non-empty, non-whitespace, single-line string and is validated before request routing. It is an identity, not a Worker location binding: the Worker never derives it from the incoming URL, `Host`, forwarded headers, or `/token` route. OIDC Provider Registrations and Token Issuance Policy are reviewed TypeScript supplied to `createTokenExchangeWorker` and compiled into the artifact; neither is a runtime deployment binding or Client input.
+The audience must be a non-empty, non-whitespace, single-line string and is validated before request routing. It is an identity, not a Worker location binding: the Worker never derives it from the incoming URL, `Host`, forwarded headers, or `/token` route. OIDC Provider Registrations and Token Issuance Policy are reviewed TypeScript supplied to `createTokenExchangeWorker` and compiled into the artifact; neither is a runtime deployment binding or Client input. The GitHub API destination is fixed by the broker and is not a runtime binding.
 
 ## Local development
 

@@ -127,7 +127,7 @@ export type GitHubAppRepositoryInstallationInput = z.input<
 
 export class GitHubAppNotFoundError extends Error {
   public constructor() {
-    super("GitHub App information was not found");
+    super("GitHub App Information was not found");
   }
 }
 
@@ -137,7 +137,7 @@ Object.defineProperty(GitHubAppNotFoundError.prototype, "name", {
 
 export class GitHubAppUnavailableError extends Error {
   public constructor() {
-    super("GitHub App information is temporarily unavailable");
+    super("GitHub App Information is temporarily unavailable");
   }
 }
 
@@ -147,7 +147,7 @@ Object.defineProperty(GitHubAppUnavailableError.prototype, "name", {
 
 export class GitHubAppUpstreamError extends Error {
   public constructor() {
-    super("GitHub App information request failed upstream");
+    super("GitHub App Information request failed upstream");
   }
 }
 
@@ -157,7 +157,7 @@ Object.defineProperty(GitHubAppUpstreamError.prototype, "name", {
 
 export class GitHubAppInputError extends Error {
   public constructor() {
-    super("invalid GitHub App information request");
+    super("invalid GitHub App Information request");
   }
 }
 
@@ -167,7 +167,7 @@ Object.defineProperty(GitHubAppInputError.prototype, "name", {
 
 export class GitHubAppInternalError extends Error {
   public constructor() {
-    super("GitHub App information request failed internally");
+    super("GitHub App Information request failed internally");
   }
 }
 

@@ -76,7 +76,10 @@ pass through unchanged. A `listInstallations` page has a separate 1 MiB bound
 so GitHub's documented `per_page=100` response can be represented while
 upstream memory use remains bounded.
 
-The implementation performs a live GitHub request for every call. It does not
+The implementation performs a live GitHub request to the fixed
+`https://api.github.com` destination for every call. One broker-owned 10-second
+deadline spans receipt of response headers and the complete bounded response
+body. It does not
 cache metadata, mint an installation token, enumerate repositories, mutate an
 installation, or expose GitHub response bodies through a public HTTP route.
 Trusted consumers own polling cadence and concurrency; GitHub rate-limit
@@ -88,7 +91,8 @@ Only stable error names and sanitized messages are part of the RPC contract:
 
 - `GitHubAppNotFoundError`: a 404 from `getInstallation` or
   `getRepositoryInstallation`;
-- `GitHubAppUnavailableError`: transport failure, rate limit, or GitHub 503;
+- `GitHubAppUnavailableError`: transport failure, including broker-deadline
+  expiry, rate limit, or GitHub 503;
 - `GitHubAppUpstreamError`: another GitHub failure or malformed successful
   response;
 - `GitHubAppConfigurationError`: invalid service-owned App configuration,

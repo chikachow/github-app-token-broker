@@ -38,7 +38,7 @@ than inferring OAuth target validity from a GitHub response status.
 | `404`                                         | `upstream_failure`     | `502 {"error":"server_error"}`                  |
 | rate-limit `403` or `429`                     | `upstream_unavailable` | `503 {"error":"temporarily_unavailable"}`       |
 | `503`                                         | `upstream_unavailable` | `503 {"error":"temporarily_unavailable"}`       |
-| transport failure                             | `upstream_unavailable` | `503 {"error":"temporarily_unavailable"}`       |
+| transport failure, including deadline expiry  | `upstream_unavailable` | `503 {"error":"temporarily_unavailable"}`       |
 | malformed or invalid successful response      | `upstream_failure`     | `502 {"error":"server_error"}`                  |
 | other GitHub `5xx`                            | `upstream_failure`     | `502 {"error":"server_error"}`                  |
 | otherwise unclassified failure                | `internal_failure`     | `500 {"error":"server_error"}`                  |
@@ -55,9 +55,19 @@ and `503` statuses as an explicit service contract; this decision does not
 claim that those pairs comply with RFC 6749 section 5.2. Clients must interpret
 the complete status and error-code pair.
 
-Only Token Issuance Policy's Repository Resource support query can produce
+Only Token Issuance Policy's single evaluation can produce
 `target_unsupported` and therefore `invalid_target` after request normalization.
-A GitHub response cannot retroactively change that policy result.
+A GitHub response cannot retroactively change that policy outcome.
+
+### Fixed destination and deadline
+
+The broker sends every GitHub request to `https://api.github.com`; neither a
+deployment binding nor a Client value can select another credential
+destination. Each request has one broker-owned 10-second deadline spanning the
+Fetch operation through receipt of response headers and consumption of the
+complete bounded response body. A caller abort is composed with, rather than
+replacing, this deadline. Deadline expiry and other transport failures use the
+`upstream_unavailable` classification.
 
 ### Rate-limit evidence
 
@@ -80,9 +90,13 @@ The github-app-token-broker Token Endpoint response contains only the documented
 does not expose GitHub response bodies, GitHub credentials, installation access
 tokens, network exception messages, or installation identifiers that were not
 yet resolved.
-Operational logs retain the sanitized GitHub request path, upstream status when
-available, whether Token Issuance Policy permitted the request, and a target
-installation ID only after resolution succeeds.
+Operational logs retain the sanitized GitHub request path, actual upstream
+status in `error.upstream_status` when available, the broker's separately
+labelled status in `error.status`, the Token Issuance Policy outcome, and a
+target installation ID only after resolution succeeds. That resolved ID
+remains in the log context if the subsequent token-minting request fails. A
+broker-selected `502` for an invalid successful representation is therefore
+not recorded as though GitHub returned HTTP `502`.
 
 This decision does not add retries or forward GitHub `retry-after` or
 `x-ratelimit-reset` values. Retry policy and externally observable retry headers

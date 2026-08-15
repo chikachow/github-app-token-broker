@@ -2,7 +2,7 @@ import { exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 
 describe("GitHub App Information RPC", () => {
-  it("returns GitHub App information through the named Worker entrypoint", async () => {
+  it("returns GitHub App Information through the named Worker entrypoint", async () => {
     await expect(exports.GitHubAppInformationEntrypoint.getApp()).resolves.toMatchObject({
       id: 2419473,
       owner: { login: "fixture-owner" },
@@ -13,7 +13,7 @@ describe("GitHub App Information RPC", () => {
     await expectRpcError(
       exports.GitHubAppInformationEntrypoint.getInstallation({ installation_id: 0 }),
       {
-        message: "invalid GitHub App information request",
+        message: "invalid GitHub App Information request",
         name: "GitHubAppInputError",
       },
     );
@@ -23,7 +23,7 @@ describe("GitHub App Information RPC", () => {
     await expectRpcError(
       exports.GitHubAppInformationEntrypoint.getInstallation({ installation_id: 99999 }),
       {
-        message: "GitHub App information request failed upstream",
+        message: "GitHub App Information request failed upstream",
         name: "GitHubAppUpstreamError",
       },
     );

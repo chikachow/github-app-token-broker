@@ -11,7 +11,7 @@ If private vulnerability reporting is unavailable, contact the repository mainta
 github-app-token-broker accepts Client-presented OpenID Connect ID Tokens from configured issuers and exchanges only the resulting Verified Subject Tokens for GitHub App installation access tokens narrowed to one selected repository and the Requested Permissions. Requested permission keys may include GitHub organization- or account-level permissions; repository selection and permission narrowing are independent controls. The Client is not authenticated and is not assumed to be the ID Token Subject. The important security properties are:
 
 - issuer trust is configured, not discovered from Client-presented tokens
-- the Verified Subject Token is derived only from Subject Token Claims in an ID Token accepted through an exact OIDC Provider Registration and, when non-null, its OIDC ID Token Profile
+- the Verified Subject Token is derived only from an immutable copy of Subject Token Claims in an ID Token accepted through an exact OIDC Provider Registration; a non-null OIDC ID Token Profile evaluates that immutable verified snapshot before the separate Token Issuance Policy decision
 - the ID Token audience must be the exact single-string value in the deployment-owned `TOKEN_BROKER_AUDIENCE` binding; the binding is a non-empty, non-whitespace, single-line scalar, and the unsupported token-exchange `audience` parameter grants nothing
 - the Worker owns no public-location binding and never derives the audience from the incoming URL, `Host`, forwarded headers, or `/token` route
 - source workflows pin an immutable external action release; each invocation uses the pinned action's broker request configuration, with workflows explicitly overriding the Repository Resource and Requested Permissions where needed
@@ -24,9 +24,19 @@ github-app-token-broker accepts Client-presented OpenID Connect ID Tokens from c
 - compiled Token Issuance Policy Permit Statements must compose Effective Permissions that cover the Requested Permissions for the Verified Subject Token and Repository Resource before a token is issued
 - the GitHub App installation independently remains the upper bound on repositories and permissions
 - the GitHub App private key remains inside the deployment secret boundary
+- GitHub API requests are restricted to `https://api.github.com` and to a broker-owned 10-second deadline spanning response headers and the complete bounded response body
+- Installation Access Token values are treated as opaque credentials; the broker sends no temporary stateful-token override and accepts both GitHub's opaque and JWT-shaped token formats
+
+The GitHub App Information RPC is a separate privileged capability boundary:
+
+- only an explicitly configured, trusted Cloudflare Worker service binding may reach it
+- it is read-only and exposes no public HTTP route
+- it never returns the GitHub App private key or an App JWT
+- it never mints or returns an Installation Access Token
+- it does not enumerate repositories accessible to an installation
 
 ## Deployment Secrets
 
 Never commit deployment secrets, local `.dev.vars`, `.env`, GitHub App private keys, Cloudflare API tokens, or generated Wrangler state.
 
-The source repository intentionally carries only public-safe Wrangler templates for local development, tests, and dry-runs. Production OIDC Provider Registrations, Permit Statements, deployment details, credentials, secret values, and deployment configuration must stay outside this codebase.
+The source repository intentionally carries only public-safe Wrangler templates for local development, tests, and dry-runs. Production OIDC Provider Registrations, Permit Statements, trusted RPC service-binding configuration, deployment details, credentials, secret values, and deployment configuration must stay outside this codebase.
