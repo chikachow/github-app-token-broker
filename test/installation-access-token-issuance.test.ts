@@ -193,6 +193,7 @@ describe("Installation Access Token Issuance", () => {
   it.each([
     { reason: "internal_failure", status: 400 },
     { reason: "internal_failure", status: 401 },
+    { reason: "internal_failure", status: 422 },
     { reason: "upstream_failure", status: 403 },
     { reason: "upstream_failure", status: 404 },
     { reason: "upstream_unavailable", status: 429 },
