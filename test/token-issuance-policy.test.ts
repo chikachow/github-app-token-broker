@@ -498,7 +498,6 @@ describe("Token Issuance Policy compilation", () => {
 
 const permissionNames = ["future_permission", "issues"] as const;
 const permissionLevels = [undefined, "read", "write", "admin"] as const;
-const testPermissionLevelRanks = { admin: 3, read: 1, write: 2 } as const;
 const allPermissionMaps = permissionLevels.flatMap((futurePermission) =>
   permissionLevels.map((issues) =>
     Object.freeze({
@@ -556,41 +555,49 @@ function materializedPermissionsCover(
 ): boolean {
   return permissionNames.every((name) => {
     const requestedLevel = requested[name];
-    const configuredLevel = configured[name];
 
-    return (
-      requestedLevel === undefined ||
-      (configuredLevel !== undefined &&
-        testPermissionLevelRanks[configuredLevel] >= testPermissionLevelRanks[requestedLevel])
-    );
+    return requestedLevel === undefined || permissionLevelCovers(configured[name], requestedLevel);
   });
 }
 
-function materializePermissionUnion(
+// Keep the expected-value oracle separate from the production permission helpers. In
+// particular, this deliberately uses a rank table and a reduction over the two
+// contributions rather than reusing the implementation's branch structure.
+const permissionRanks = { read: 1, write: 2, admin: 3 } as const;
+
+function permissionLevelCovers(
+  configured: GitHubInstallationPermissions[string] | undefined,
+  requested: GitHubInstallationPermissions[string],
+): boolean {
+  return configured !== undefined && permissionRanks[configured] >= permissionRanks[requested];
+}
+
+function expectedPermissionUnion(
   left: GitHubInstallationPermissions,
   right: GitHubInstallationPermissions,
 ): GitHubInstallationPermissions {
-  const result: Record<string, "admin" | "read" | "write"> = {};
+  const names = new Set([...Object.keys(left), ...Object.keys(right)]);
+  const entries = [...names]
+    .map((name) => {
+      const levels = [left[name], right[name]].filter(
+        (level): level is GitHubInstallationPermissions[string] => level !== undefined,
+      );
+      const highest = levels.reduce<GitHubInstallationPermissions[string] | undefined>(
+        (current, level) =>
+          current === undefined || permissionRanks[level] > permissionRanks[current]
+            ? level
+            : current,
+        undefined,
+      );
 
-  for (const name of new Set([...Object.keys(left), ...Object.keys(right)])) {
-    const leftLevel = left[name];
-    const rightLevel = right[name];
+      return highest === undefined ? undefined : ([name, highest] as const);
+    })
+    .filter(
+      (entry): entry is readonly [string, GitHubInstallationPermissions[string]] =>
+        entry !== undefined,
+    );
 
-    if (leftLevel === undefined) {
-      if (rightLevel !== undefined) {
-        result[name] = rightLevel;
-      }
-    } else if (
-      rightLevel === undefined ||
-      testPermissionLevelRanks[leftLevel] >= testPermissionLevelRanks[rightLevel]
-    ) {
-      result[name] = leftLevel;
-    } else {
-      result[name] = rightLevel;
-    }
-  }
-
-  return result;
+  return Object.fromEntries(entries) as GitHubInstallationPermissions;
 }
 
 function policyEvaluationPermits(
@@ -986,7 +993,7 @@ describe("Token Issuance Policy evaluation", () => {
     for (const left of allPermissionMaps) {
       for (const right of allPermissionMaps) {
         const policy = policyForContributions(left, right);
-        const effective = materializePermissionUnion(left, right);
+        const effective = expectedPermissionUnion(left, right);
 
         for (const requested of nonEmptyPermissionMaps) {
           expect(policyEvaluationPermits(policy, matchingSubjectToken, requestFor(requested))).toBe(
@@ -1008,7 +1015,7 @@ describe("Token Issuance Policy evaluation", () => {
 
       for (const left of nonEmptyPermissionMaps) {
         for (const right of nonEmptyPermissionMaps) {
-          const union = materializePermissionUnion(left, right);
+          const union = expectedPermissionUnion(left, right);
           const permitsUnion = policyEvaluationPermits(
             policy,
             matchingSubjectToken,

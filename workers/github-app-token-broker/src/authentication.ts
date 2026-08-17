@@ -4,6 +4,7 @@ import type {
   OidcVerificationEvidence,
   VerifiedSubjectToken,
 } from "@github-app-token-broker/oidc/id-token-authenticator";
+import type { ObserveTokenExchange } from "./observability.ts";
 
 export interface AuthenticatedContext {
   readonly verificationEvidence: OidcVerificationEvidence;
@@ -33,6 +34,7 @@ export async function authenticateOidcIdToken(
   subjectToken: string,
   request: Request,
   authenticator: OidcIdTokenAuthenticator,
+  observe: ObserveTokenExchange,
 ): Promise<AuthenticateRequestResult> {
   const authentication = await authenticator.authenticateIdToken(subjectToken);
 
@@ -41,7 +43,7 @@ export async function authenticateOidcIdToken(
     const reason = authenticationFailureReason(failure);
     const diagnostics = authenticationFailureDiagnostics(failure);
 
-    logAuthenticationFailure(request, reason, diagnostics);
+    observeAuthenticationFailure(observe, request, reason, diagnostics);
 
     return {
       ...diagnostics,
@@ -59,19 +61,24 @@ export async function authenticateOidcIdToken(
   };
 }
 
-function logAuthenticationFailure(
+function observeAuthenticationFailure(
+  observe: ObserveTokenExchange,
   request: Request,
   reason: OidcAuthenticationFailureReason,
   diagnostics: Pick<AuthenticateRequestFailure, "diagnosticCode" | "providerHttpStatus">,
 ): void {
   const url = new URL(request.url);
 
-  console.warn("OIDC authentication failed", {
-    ...diagnostics,
-    path: url.pathname,
-    rayId: request.headers.get("cf-ray"),
-    reason,
-    userAgent: request.headers.get("user-agent"),
+  observe({
+    fields: {
+      ...diagnostics,
+      path: url.pathname,
+      rayId: request.headers.get("cf-ray"),
+      reason,
+      userAgent: request.headers.get("user-agent"),
+    },
+    level: "warn",
+    message: "OIDC authentication failed",
   });
 }
 

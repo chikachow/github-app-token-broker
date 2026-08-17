@@ -10,8 +10,6 @@ import {
 import { testNow } from "./constants.ts";
 import { testPrivateKeyPem, testPublicJwk } from "./rsa-test-key-pair.ts";
 
-export { accessTokenType, legacyGithubInstallationAccessTokenType } from "./constants.ts";
-
 export function createVerifiedSubjectToken(
   claims: Partial<VerifiedSubjectToken["claims"]> = {},
   options: { issuer?: string } = {},
@@ -66,14 +64,7 @@ export async function fetchOidcRemoteDocumentResponseTestDouble(input: RequestIn
         jwksUri: "https://token.actions.githubusercontent.com/.well-known/jwks",
       },
     ],
-    [
-      "https://accounts.google.com/.well-known/openid-configuration",
-      {
-        issuer: "https://accounts.google.com",
-        jwksUri: "https://www.googleapis.com/oauth2/v3/certs",
-      },
-    ],
-    ...["example-org", "first-org", "second-org"].map(
+    ...["example-org"].map(
       (organizationSlug) =>
         [
           `https://oidc.fly.io/${organizationSlug}/.well-known/openid-configuration`,
@@ -100,9 +91,6 @@ export async function fetchOidcRemoteDocumentResponseTestDouble(input: RequestIn
   const supportedJwksUrls = new Set([
     "https://token.actions.githubusercontent.com/.well-known/jwks",
     "https://oidc.fly.io/example-org/.well-known/jwks",
-    "https://oidc.fly.io/first-org/.well-known/jwks",
-    "https://oidc.fly.io/second-org/.well-known/jwks",
-    "https://www.googleapis.com/oauth2/v3/certs",
   ]);
 
   if (request.method !== "GET" || !supportedJwksUrls.has(request.url)) {

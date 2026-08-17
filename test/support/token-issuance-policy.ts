@@ -6,15 +6,8 @@ import {
   githubRepositoryResourceConstraint,
   oidcSubjectTokenConstraint,
 } from "@github-app-token-broker/token-issuance-policy";
-import { createVerifiedSubjectToken } from "./oidc.ts";
 
-import {
-  testRepository,
-  testRepositoryId,
-  testRepositoryOwnerId,
-  testRepositoryVisibility,
-  testWorkflowDispatchRepository,
-} from "./constants.ts";
+import { testRepository, testWorkflowDispatchRepository } from "./constants.ts";
 
 const testGitRef = "refs/heads/fixture-base-branch";
 const testWorkflowRef = `${testRepository}/.github/workflows/fixture-token-request.yml@${testGitRef}`;
@@ -42,26 +35,6 @@ export const testTokenIssuancePolicy = compileTokenIssuancePolicy([
     subjectToken: testSubjectTokenConstraint,
   },
 ]);
-
-export const testSubjectConstraintMatchingVerifiedSubjectToken = createVerifiedSubjectToken(
-  {
-    actor: "dependabot[bot]",
-    event_name: "workflow_dispatch",
-    ref: testGitRef,
-    ref_type: "branch",
-    repository: testRepository,
-    repository_id: testRepositoryId,
-    repository_owner_id: testRepositoryOwnerId,
-    repository_visibility: testRepositoryVisibility,
-    run_attempt: "1",
-    run_id: "987654321",
-    sha: "0123456789abcdef0123456789abcdef01234567",
-    sub: `repo:${testRepository}:ref:${testGitRef}`,
-    workflow: "fixture token request",
-    workflow_ref: testWorkflowRef,
-  },
-  { issuer: githubActionsOidcProviderRegistration.issuer },
-);
 
 function repositoryParts(repository: string): [string, string] {
   const [owner, name, extra] = repository.split("/");

@@ -10,7 +10,7 @@
 - `packages/github`: Installation Access Token Request normalization, the Repository Resource-oriented issuance capability, GitHub App JWT authentication, owner binding, installation-token minting, and GitHub App Information queries
 - `packages/token-issuance-policy`: structural Permit Statement compilation, validation, and evaluation
 - `packages/http`: bounded body readers and HTTP/problem-response helpers
-- `test`: behavioral unit tests plus a real Workerd integration project for the Worker entrypoint
+- `test`: behavioral unit tests for the Token Endpoint and domain packages, plus a real Workerd integration project for the GitHub App Information RPC entrypoint
 
 There is no webhook runtime, deployment endpoint, dynamic issuer registry, App selector, or multi-key service.
 
@@ -51,7 +51,7 @@ consumers discriminate owner-wide constraints with `repository === null`.
 
 An external deployment owns the TypeScript entrypoint that supplies those two values. The source package root has named exports only. `generic-worker.ts` is the public-safe Wrangler entrypoint and deliberately composes empty registrations with an empty, deny-all Token Issuance Policy. A built artifact cannot replace its composition through bindings or requests.
 
-The optional `TokenExchangeWorkerRuntimeDependencies` parameter is a construction and test seam for Fetch and time. The default adapters late-bind the runtime Fetch implementation and clock. It is not a trust or authorization configuration surface.
+The optional `TokenExchangeWorkerRuntimeDependencies` parameter is a construction and test seam for Fetch, time, and structured observations. The default adapters late-bind the runtime Fetch implementation and clock and write observations to the console. It is not a trust or authorization configuration surface.
 
 The deployment supplies one non-secret `TOKEN_BROKER_AUDIENCE` Worker binding. Before routing any request, the OIDC package's single Subject-Token Audience parser validates it as an exact non-empty, non-whitespace, single-line domain value. `worker.ts` constructs and caches the exchange with that explicit audience and rejects an audience change within an isolate. It owns no public endpoint-location binding and does not derive the audience from the incoming request URL, headers, or source-owned `/token` route. The OIDC ID Token Authenticator accepts this composed domain value rather than embedding a project name, preserving reuse and exact scalar-audience validation.
 
@@ -98,4 +98,4 @@ fnm exec --using=24 corepack pnpm run env-types:check
 fnm exec --using=24 corepack pnpm run deploy:dry-run
 ```
 
-The root Wrangler file is a unit-test harness. It intentionally repeats the package Worker's compatibility flags and binding shapes so Workerd unit tests execute under the production runtime constraints; `env-types:check`, the Worker integration project, and the package dry-run validate the deployable config. The package Wrangler file is a public-safe dry-run template; deployment-owned identifiers and routes are supplied by the external deployment system.
+The root Wrangler file is a unit-test harness. It intentionally repeats the package Worker's compatibility flags and binding shapes so Workerd unit tests execute under the production runtime constraints; `env-types:check`, the GitHub App Information Workerd integration project, and the package dry-run validate the deployable config. The package Wrangler file is a public-safe dry-run template; deployment-owned identifiers and routes are supplied by the external deployment system.
