@@ -1,12 +1,8 @@
 import {
   testInstallationId,
   testRepository,
-  testRepositoryId,
-  testRepositoryOwnerId,
-  testRepositoryVisibility,
   testWorkflowDispatchInstallationId,
   testWorkflowDispatchRepository,
-  testWorkflowDispatchRepositoryId,
 } from "./constants.ts";
 
 export async function fetchGitHubTestDouble(
@@ -35,28 +31,6 @@ export async function fetchGitHubTestDouble(
     apiPath === `/repos/${testWorkflowDispatchRepository}/installation`
   ) {
     return githubInstallationResponse("fixture-target-owner", testWorkflowDispatchInstallationId);
-  }
-
-  if (request.method === "GET" && apiPath === `/repos/${testRepository}`) {
-    return Response.json({
-      default_branch: "fixture-base-branch",
-      id: Number.parseInt(testRepositoryId, 10),
-      owner: {
-        id: Number.parseInt(testRepositoryOwnerId, 10),
-      },
-      visibility: testRepositoryVisibility,
-    });
-  }
-
-  if (request.method === "GET" && apiPath === `/repos/${testWorkflowDispatchRepository}`) {
-    return Response.json({
-      default_branch: "fixture-base-branch",
-      id: Number.parseInt(testWorkflowDispatchRepositoryId, 10),
-      owner: {
-        id: Number.parseInt(testRepositoryOwnerId, 10),
-      },
-      visibility: testRepositoryVisibility,
-    });
   }
 
   if (

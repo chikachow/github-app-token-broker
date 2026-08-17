@@ -24,6 +24,7 @@ import { testPrivateKeyPem, testPublicJwk } from "./support/rsa-test-key-pair.ts
 const issuer = "https://issuer.example/tenant";
 const jwksUri = "https://keys.example/tenant/jwks";
 const subjectTokenAudience = parseSubjectTokenAudience("github-app-token-broker");
+const authenticationTestNow = new Date("2026-01-01T00:00:00.000Z");
 type AuthenticationFailure = Extract<OidcIdTokenAuthenticationResult, { ok: false }>;
 const registration = createOidcProviderRegistration({
   acceptedIdTokenSigningAlgorithms: ["RS256"],
@@ -39,7 +40,7 @@ describe("OIDC ID Token Authenticator", () => {
           providerRegistrations: [registration, registration],
           subjectTokenAudience,
         },
-        { fetch: successfulProviderFetch, now: () => new Date() },
+        { fetch: successfulProviderFetch, now: () => authenticationTestNow },
       ),
     ).toThrow("duplicate OIDC Provider Registration issuer");
   });
@@ -68,7 +69,7 @@ describe("OIDC ID Token Authenticator", () => {
         providerRegistrations: [structuralRegistration],
         subjectTokenAudience,
       },
-      { fetch: successfulProviderFetch, now: () => new Date() },
+      { fetch: successfulProviderFetch, now: () => authenticationTestNow },
     );
 
     acceptedIdTokenSigningAlgorithms.splice(0);
@@ -88,7 +89,7 @@ describe("OIDC ID Token Authenticator", () => {
           ],
           subjectTokenAudience,
         },
-        { fetch: successfulProviderFetch, now: () => new Date() },
+        { fetch: successfulProviderFetch, now: () => authenticationTestNow },
       ),
     ).toThrow("invalid OIDC ID Token signing algorithm allowlist");
   });
@@ -222,7 +223,7 @@ describe("OIDC ID Token Authenticator", () => {
       },
       {
         fetch: successfulProviderFetch,
-        now: () => new Date(),
+        now: () => authenticationTestNow,
         observe: (event) => successfulEvents.push(event),
       },
     );
@@ -247,7 +248,7 @@ describe("OIDC ID Token Authenticator", () => {
       },
       {
         fetch: () => Promise.resolve(new Response(null, { status: 503 })),
-        now: () => new Date(),
+        now: () => authenticationTestNow,
         observe: (event) => failedEvents.push(event),
       },
     );
@@ -330,7 +331,7 @@ describe("OIDC ID Token Authenticator", () => {
         providerRegistrations: [profileRegistration],
         subjectTokenAudience,
       },
-      { fetch: successfulProviderFetch, now: () => new Date() },
+      { fetch: successfulProviderFetch, now: () => authenticationTestNow },
     );
 
     await expect(
@@ -380,7 +381,7 @@ describe("OIDC ID Token Authenticator", () => {
         providerRegistrations: [profileRegistration],
         subjectTokenAudience,
       },
-      { fetch: successfulProviderFetch, now: () => new Date() },
+      { fetch: successfulProviderFetch, now: () => authenticationTestNow },
     );
 
     await expect(
@@ -441,6 +442,16 @@ describe("OIDC ID Token Authenticator", () => {
     },
   );
 
+  it("uses the injected clock when validating token expiry", async () => {
+    const afterTokenExpiry = new Date(authenticationTestNow.getTime() + 301_000);
+
+    await expect(
+      testAuthenticator(successfulProviderFetch, () => afterTokenExpiry).authenticateIdToken(
+        await signedIdToken(),
+      ),
+    ).resolves.toEqual(expectedFailure("subject_token_rejected", "ERR_JWT_EXPIRED"));
+  });
+
   it("rejects a subject token when provider metadata omits required RS256", async () => {
     const fetchOidcRemoteDocumentResponse = providerFetch({
       advertisedIdTokenSigningAlgorithms: ["ES256"],
@@ -458,7 +469,7 @@ describe("OIDC ID Token Authenticator", () => {
   });
 
   it("rate-limits JWKS refreshes triggered by attacker-controlled unknown kids", async () => {
-    let now = new Date();
+    let now = authenticationTestNow;
     const fetchOidcRemoteDocumentResponse = vi.fn(successfulProviderFetch);
     const authenticator = testAuthenticator(fetchOidcRemoteDocumentResponse, () => now);
     const unknownKeyToken = await signedIdToken({ kid: "unknown-key" });
@@ -1545,7 +1556,7 @@ describe("OIDC ID Token Authenticator", () => {
         : Promise.resolve(new Response(null, { status: 503 })),
     );
     const authenticator = testAuthenticator(fetchOidcRemoteDocumentResponse, () => now);
-    const subjectToken = await signedIdToken();
+    const subjectToken = await signedIdToken({ expiresInSeconds: 7_200 });
 
     expect((await authenticator.authenticateIdToken(subjectToken)).ok).toBe(true);
     available = false;
@@ -1642,7 +1653,7 @@ describe("OIDC ID Token Authenticator", () => {
         providerRegistrations: [profileRegistration],
         subjectTokenAudience,
       },
-      { fetch: successfulProviderFetch, now: () => new Date() },
+      { fetch: successfulProviderFetch, now: () => authenticationTestNow },
     );
 
     await expect(authenticator.authenticateIdToken(await signedIdToken())).resolves.toEqual(
@@ -1666,7 +1677,7 @@ describe("OIDC ID Token Authenticator", () => {
         providerRegistrations: [profileRegistration],
         subjectTokenAudience,
       },
-      { fetch: successfulProviderFetch, now: () => new Date() },
+      { fetch: successfulProviderFetch, now: () => authenticationTestNow },
     );
 
     await expect(authenticator.authenticateIdToken(await signedIdToken())).resolves.toEqual(
@@ -1723,7 +1734,7 @@ function expectedFailure(
 
 function testAuthenticator(
   fetchOidcRemoteDocumentResponse: typeof fetch,
-  now: () => Date = () => new Date(),
+  now: () => Date = () => authenticationTestNow,
 ): OidcIdTokenAuthenticator {
   return createOidcIdTokenAuthenticator(
     {
@@ -1870,16 +1881,17 @@ async function signedIdToken(
     algorithm?: string;
     audience?: string | string[];
     claims?: Record<string, unknown>;
+    expiresInSeconds?: number;
     kid?: string;
     tokenIssuer?: string;
   } = {},
 ): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
+  const now = Math.floor(authenticationTestNow.getTime() / 1000);
   const privateKey = await importPKCS8(testPrivateKeyPem, options.algorithm ?? "RS256");
 
   return new SignJWT({
     aud: options.audience ?? "github-app-token-broker",
-    exp: now + 300,
+    exp: now + (options.expiresInSeconds ?? 300),
     iat: now - 10,
     iss: options.tokenIssuer ?? issuer,
     sub: "subject",

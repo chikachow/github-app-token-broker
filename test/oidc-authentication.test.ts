@@ -5,6 +5,7 @@ import type {
   OidcIdTokenAuthenticator,
 } from "@github-app-token-broker/oidc/id-token-authenticator";
 import { authenticateOidcIdToken } from "../workers/github-app-token-broker/src/authentication.ts";
+import type { TokenExchangeObservation } from "../workers/github-app-token-broker/src/observability.ts";
 
 type AuthenticationFailure = Extract<OidcIdTokenAuthenticationResult, { ok: false }>;
 
@@ -51,11 +52,29 @@ describe("OIDC authentication HTTP boundary", () => {
     const authenticator: OidcIdTokenAuthenticator = {
       authenticateIdToken: async () => failure,
     };
+    const observations: TokenExchangeObservation[] = [];
 
-    await expect(authenticateOidcIdToken("token", request, authenticator)).resolves.toMatchObject({
+    await expect(
+      authenticateOidcIdToken("token", request, authenticator, (observation) =>
+        observations.push(observation),
+      ),
+    ).resolves.toMatchObject({
       ...failure.failure.diagnostics,
       ok: false,
       reason,
     });
+    expect(observations).toEqual([
+      {
+        fields: {
+          ...failure.failure.diagnostics,
+          path: "/token",
+          rayId: null,
+          reason,
+          userAgent: null,
+        },
+        level: "warn",
+        message: "OIDC authentication failed",
+      },
+    ]);
   });
 });

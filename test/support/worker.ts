@@ -12,12 +12,7 @@ import { fetchOidcRemoteDocumentResponseTestDouble } from "./oidc.ts";
 import { testTokenIssuancePolicy } from "./token-issuance-policy.ts";
 import { testEnv } from "./worker-env.ts";
 
-export {
-  authorizationHeaders,
-  accessTokenType,
-  legacyGithubInstallationAccessTokenType,
-  tokenExchangeRequestBody,
-} from "./oidc.ts";
+export { authorizationHeaders, tokenExchangeRequestBody } from "./oidc.ts";
 export { testEnv };
 
 type TestEnv = TokenExchangeWorkerEnv;
@@ -30,6 +25,7 @@ export const testTokenExchangeComposition = {
 export const testTokenExchangeWorkerRuntimeDependencies = {
   fetch: fetchTokenExchangeExternalTestDouble,
   now: () => testNow,
+  observe: () => undefined,
 } satisfies TokenExchangeWorkerRuntimeDependencies;
 
 const tokenExchangeApp = createTokenExchangeWorker(
@@ -50,31 +46,6 @@ export function fetchTokenExchangeWithEnv(
   env: TestEnv,
 ): Promise<Response> {
   return fetchWorkerWithApp(tokenExchangeApp, input, init, env);
-}
-
-export function fetchTokenExchangeWithDependencies(
-  input: RequestInfo | URL,
-  init: RequestInit | undefined,
-  overrides: Partial<TokenExchangeComposition & TokenExchangeWorkerRuntimeDependencies>,
-): Promise<Response> {
-  return fetchWorkerWithApp(
-    createTokenExchangeWorker(
-      {
-        ...testTokenExchangeComposition,
-        oidcProviderRegistrations:
-          overrides.oidcProviderRegistrations ??
-          testTokenExchangeComposition.oidcProviderRegistrations,
-        tokenIssuancePolicy:
-          overrides.tokenIssuancePolicy ?? testTokenExchangeComposition.tokenIssuancePolicy,
-      },
-      {
-        fetch: overrides.fetch ?? testTokenExchangeWorkerRuntimeDependencies.fetch,
-        now: overrides.now ?? testTokenExchangeWorkerRuntimeDependencies.now,
-      },
-    ),
-    input,
-    init,
-  );
 }
 
 function fetchWorkerWithApp(

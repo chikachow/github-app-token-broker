@@ -1,340 +1,235 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  createTokenExchangeWorker,
+  type TokenExchangeWorkerEnv,
+} from "@github-app-token-broker/worker";
+import { compileTokenIssuancePolicy } from "@github-app-token-broker/token-issuance-policy";
+
+import { testNow } from "./support/constants.ts";
+import { fetchGitHubTestDouble } from "./support/github-api.ts";
+import { fetchOidcRemoteDocumentResponseTestDouble } from "./support/oidc.ts";
+import { testTokenIssuancePolicy } from "./support/token-issuance-policy.ts";
 import {
   authorizationHeaders,
   fetchTokenExchange,
-  fetchTokenExchangeWithDependencies,
   fetchTokenExchangeWithEnv,
-  accessTokenType,
-  legacyGithubInstallationAccessTokenType,
   testEnv,
-  tokenExchangeRequestBody,
   testTokenExchangeComposition,
   testTokenExchangeWorkerRuntimeDependencies,
+  tokenExchangeRequestBody,
 } from "./support/worker.ts";
-import { fetchGitHubTestDouble } from "./support/github-api.ts";
-import { fetchOidcRemoteDocumentResponseTestDouble } from "./support/oidc.ts";
-import { testNow } from "./support/constants.ts";
-import {
-  testSubjectConstraintMatchingVerifiedSubjectToken,
-  testTokenIssuancePolicy,
-} from "./support/token-issuance-policy.ts";
-import { createTokenExchangeWorker } from "@github-app-token-broker/worker";
-import { handleTokenExchangeRequest } from "../workers/github-app-token-broker/src/token-exchange.ts";
-import {
-  compileTokenIssuancePolicy,
-  githubRepositoryResourceConstraint,
-  oidcSubjectTokenConstraint,
-} from "@github-app-token-broker/token-issuance-policy";
+import type { TokenExchangeObservation } from "../workers/github-app-token-broker/src/observability.ts";
 
-describe("github-app-token-broker-token-exchange", () => {
-  it("rejects non-POST token requests before authentication or exchange", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      method: "GET",
-    });
-
-    expect(response.status).toBe(400);
-    expect(response.headers.get("cache-control")).toBe("no-store");
-    await expect(response.json()).resolves.toEqual({ error: "invalid_request" });
+describe("Token Exchange Worker boundary", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ now: testNow });
   });
 
-  it("maps GitHub permission validation after policy approval to 500 server_error", async () => {
-    const response = await fetchTokenExchangeWithDependencies(
-      "https://example.test/token",
-      {
-        body: await tokenExchangeRequestBody(),
-        headers: { "content-type": "application/x-www-form-urlencoded" },
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it.each(["/github/claims", "/github/installations/token"])(
+    "does not expose the removed %s endpoint",
+    async (pathname) => {
+      const response = await fetchTokenExchange(`https://example.test${pathname}`, {
+        headers: await authorizationHeaders(),
         method: "POST",
-      },
-      {
-        fetch: async (input, init) => {
-          const request = new Request(input, init);
+      });
 
-          if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
-            return fetchOidcRemoteDocumentResponseTestDouble(request);
-          }
-
-          return request.method === "POST"
-            ? new Response("GitHub validation detail", { status: 422 })
-            : fetchGitHubTestDouble(input, init);
-        },
-      },
-    );
-
-    expect(response.status).toBe(500);
-    await expect(response.json()).resolves.toEqual({ error: "server_error" });
-  });
-
-  it("maps rejected OIDC subject tokens to invalid_request without a client challenge", async () => {
-    const body = new URLSearchParams(await tokenExchangeRequestBody());
-    body.set("subject_token", "not-a-jwt");
-    const fetchExternal = vi.fn(testTokenExchangeWorkerRuntimeDependencies.fetch);
-
-    const response = await fetchTokenExchangeWithDependencies(
-      "https://example.test/token",
-      {
-        body,
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        method: "POST",
-      },
-      { fetch: fetchExternal },
-    );
-
-    expect(response.status).toBe(400);
-    expect(response.headers.get("www-authenticate")).toBeNull();
-    await expect(response.json()).resolves.toEqual({ error: "invalid_request" });
-    expect(fetchExternal).not.toHaveBeenCalled();
-  });
-
-  it("maps unavailable OIDC providers before GitHub issuance", async () => {
-    const githubRequests: string[] = [];
-    const response = await fetchTokenExchangeWithDependencies(
-      "https://example.test/token",
-      {
-        body: await tokenExchangeRequestBody(),
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        method: "POST",
-      },
-      {
-        fetch: async (input, init) => {
-          const request = new Request(input, init);
-
-          if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
-            return new Response("provider unavailable", { status: 503 });
-          }
-
-          githubRequests.push(request.url);
-          return fetchGitHubTestDouble(input, init);
-        },
-      },
-    );
-
-    expect(response.status).toBe(503);
-    expect(response.headers.get("www-authenticate")).toBeNull();
-    await expect(response.json()).resolves.toEqual({ error: "temporarily_unavailable" });
-    expect(githubRequests).toEqual([]);
-  });
-
-  it("maps invalid Provider Configuration metadata to invalid_request", async () => {
-    const githubRequests: string[] = [];
-    const response = await fetchTokenExchangeWithDependencies(
-      "https://example.test/token",
-      {
-        body: await tokenExchangeRequestBody(),
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        method: "POST",
-      },
-      {
-        fetch: async (input, init) => {
-          const request = new Request(input, init);
-
-          if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
-            return new Response("{}", { headers: { "content-type": "text/plain" } });
-          }
-
-          githubRequests.push(request.url);
-          return fetchGitHubTestDouble(input, init);
-        },
-      },
-    );
-
-    expect(response.status).toBe(400);
-    expect(response.headers.get("www-authenticate")).toBeNull();
-    await expect(response.json()).resolves.toEqual({ error: "invalid_request" });
-    expect(githubRequests).toEqual([]);
-  });
-
-  it.each([
-    {
-      error: "server_error",
-      scenario: "non-rate-limit upstream failure",
-      status: 404,
-      tokenEndpointStatus: 502,
-    },
-    {
-      error: "temporarily_unavailable",
-      scenario: "retryable upstream failure",
-      status: 503,
-      tokenEndpointStatus: 503,
-    },
-  ])(
-    "maps a $scenario to its public Token Endpoint error",
-    async ({ error, status, tokenEndpointStatus }) => {
-      const response = await fetchTokenExchangeWithDependencies(
-        "https://example.test/token",
-        {
-          body: await tokenExchangeRequestBody(),
-          headers: { "content-type": "application/x-www-form-urlencoded" },
-          method: "POST",
-        },
-        {
-          fetch: async (input, init) => {
-            const request = new Request(input, init);
-
-            if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
-              return fetchOidcRemoteDocumentResponseTestDouble(request);
-            }
-
-            return request.method === "GET"
-              ? new Response("GitHub failure detail", { status })
-              : fetchGitHubTestDouble(input, init);
-          },
-        },
-      );
-
-      expect(response.status).toBe(tokenEndpointStatus);
-      await expect(response.json()).resolves.toEqual({ error });
+      expect(response.status).toBe(404);
+      expect(response.headers.get("content-type")).toBe("application/problem+json; charset=utf-8");
+      await expect(response.json()).resolves.toEqual({
+        status: 404,
+        title: "Not Found",
+        type: "about:blank",
+      });
     },
   );
 
-  it("maps internal OIDC failures to server_error without a client challenge", async () => {
-    const fetchExternal = vi.fn(testTokenExchangeWorkerRuntimeDependencies.fetch);
-    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  it("rejects non-POST requests at the Token Endpoint boundary", async () => {
+    const response = await fetchTokenExchange("https://example.test/token", { method: "GET" });
 
-    try {
-      const response = await fetchTokenExchangeWithDependencies(
-        "https://example.test/token",
-        {
-          body: await tokenExchangeRequestBody(),
-          headers: { "content-type": "application/x-www-form-urlencoded" },
-          method: "POST",
-        },
-        {
-          fetch: fetchExternal,
-          now: () => {
-            throw new Error("test clock failure");
-          },
-        },
-      );
-
-      expect(response.status).toBe(500);
-      expect(response.headers.get("www-authenticate")).toBeNull();
-      expect(response.headers.get("cache-control")).toBe("no-store");
-      expect(response.headers.get("pragma")).toBe("no-cache");
-      await expect(response.json()).resolves.toEqual({ error: "server_error" });
-      expect(fetchExternal).not.toHaveBeenCalled();
-      expect(consoleWarn).toHaveBeenCalledWith(
-        "OIDC authentication failed",
-        expect.objectContaining({ reason: "oidc_internal_failure" }),
-      );
-    } finally {
-      consoleWarn.mockRestore();
-    }
-  });
-
-  it("does not expose the removed claims endpoint", async () => {
-    const response = await fetchTokenExchange("https://example.test/github/claims", {
-      headers: await authorizationHeaders(),
-      method: "POST",
-    });
-
-    expect(response.status).toBe(404);
-    await expect(response.json()).resolves.toEqual({
-      status: 404,
-      title: "Not Found",
-      type: "about:blank",
-    });
-  });
-
-  it("does not expose the legacy installation access token endpoint", async () => {
-    const response = await fetchTokenExchange("https://example.test/github/installations/token", {
-      headers: await authorizationHeaders(),
-      method: "POST",
-    });
-
-    expect(response.status).toBe(404);
-    await expect(response.json()).resolves.toEqual({
-      status: 404,
-      title: "Not Found",
-      type: "about:blank",
-    });
-  });
-
-  it("exchanges a github actions oidc token at the token exchange endpoint", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody(),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(400);
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(response.headers.get("pragma")).toBe("no-cache");
-    const body = (await response.json()) as {
-      access_token: string;
-      expires_in: number;
-      issued_token_type: string;
-      scope: string;
-      token_type: string;
-    };
-    expect(body.access_token).toBe("ghs_test_token");
-    expect(body.issued_token_type).toBe(accessTokenType);
-    expect(body.scope).toBe("contents:write pull_requests:write");
-    expect(body.token_type).toBe("Bearer");
-    expect(body.expires_in).toEqual(expect.any(Number));
-    expect(body.expires_in).toBeGreaterThan(0);
+    await expect(response.json()).resolves.toEqual({ error: "invalid_request" });
   });
 
-  it("preserves the legacy token-type contract for pinned v0.0.12 action clients", async () => {
-    const requestedTokenType = legacyGithubInstallationAccessTokenType;
+  it("wires a representative valid request through OIDC authentication, policy, and GitHub issuance", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({ requestedTokenType }),
+      body: await tokenExchangeRequestBody(),
       headers: { "content-type": "application/x-www-form-urlencoded" },
       method: "POST",
     });
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    expect(response.headers.get("content-type")).toBe("application/json; charset=utf-8");
+    await expect(response.json()).resolves.toEqual({
       access_token: "ghs_test_token",
-      issued_token_type: requestedTokenType,
+      expires_in: 113875200,
+      issued_token_type: "urn:ietf:params:oauth:token-type:access_token",
+      scope: "contents:write pull_requests:write",
       token_type: "Bearer",
     });
   });
 
-  it("exchanges an actions-write permission request for a token scoped to the target repository", async () => {
+  it("wires a policy rejection to the public Token Endpoint contract", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
         form: {
-          resource: "https://api.github.com/repos/fixture-target-owner/fixture-target-repository",
+          resource: "https://api.github.com/repos/fixture-target-owner/fixture-unconfigured-target",
           scope: "actions:write",
         },
       }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
+      headers: { "content-type": "application/x-www-form-urlencoded" },
       method: "POST",
     });
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      access_token: "ghs_test_workflow_dispatch_token",
-      issued_token_type: accessTokenType,
-      scope: "actions:write",
-      token_type: "Bearer",
-    });
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "invalid_target" });
   });
 
-  it("accepts reordered scope tokens for the same permission set", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({
-        form: {
-          resource: "https://api.github.com/repos/fixture-owner/fixture-source-repository",
-          scope: "pull_requests:write contents:write",
-        },
-      }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
+  it("rejects a malformed subject token without provider or GitHub I/O", async () => {
+    const body = new URLSearchParams(await tokenExchangeRequestBody());
+    body.set("subject_token", "not-a-jwt");
+    const fetchExternal = vi.fn<typeof fetch>();
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.stubGlobal("fetch", fetchExternal);
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      access_token: "ghs_test_token",
-      scope: "contents:write pull_requests:write",
+    try {
+      const worker = createTokenExchangeWorker(testTokenExchangeComposition);
+      const response = await invokeWorker(
+        worker,
+        new Request("https://example.test/token", {
+          body,
+          headers: {
+            "cf-ray": "fixture-ray-id",
+            "content-type": "application/x-www-form-urlencoded",
+            "user-agent": "fixture-test-agent",
+          },
+          method: "POST",
+        }),
+      );
+
+      expect(response.status).toBe(400);
+      expect(response.headers.get("www-authenticate")).toBeNull();
+      await expect(response.json()).resolves.toEqual({ error: "invalid_request" });
+      expect(fetchExternal).not.toHaveBeenCalled();
+      expect(consoleWarn).toHaveBeenCalledExactlyOnceWith("OIDC authentication failed", {
+        diagnosticCode: "ERR_JWT_INVALID",
+        path: "/token",
+        rayId: "fixture-ray-id",
+        reason: "invalid_token",
+        userAgent: "fixture-test-agent",
+      });
+    } finally {
+      vi.unstubAllGlobals();
+      consoleWarn.mockRestore();
+    }
+  });
+
+  it("maps provider unavailability without attempting GitHub issuance", async () => {
+    const githubRequests: Request[] = [];
+    const fetchExternal = vi.fn<typeof fetch>((input, init) => {
+      const request = new Request(input, init);
+
+      if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
+        return Promise.resolve(new Response(null, { status: 503 }));
+      }
+
+      githubRequests.push(request);
+      return fetchGitHubTestDouble(input, init);
     });
+    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
+      fetch: fetchExternal,
+      now: () => testNow,
+      observe: () => undefined,
+    });
+    const response = await invokeWorker(worker, await tokenRequest());
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({ error: "temporarily_unavailable" });
+    expect(githubRequests).toEqual([]);
+  });
+
+  it("wires an issuance failure through the exchange-stage classifier", async () => {
+    const fetchExternal = vi.fn<typeof fetch>((input, init) => {
+      const request = new Request(input, init);
+
+      if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
+        return fetchOidcRemoteDocumentResponseTestDouble(request);
+      }
+
+      return request.method === "GET"
+        ? Promise.resolve(new Response("GitHub failure detail", { status: 404 }))
+        : fetchGitHubTestDouble(input, init);
+    });
+    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
+      fetch: fetchExternal,
+      now: () => testNow,
+      observe: () => undefined,
+    });
+    const response = await invokeWorker(worker, await tokenRequest());
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual({ error: "server_error" });
+  });
+
+  it("sanitizes a real OIDC internal failure and records safe request context", async () => {
+    const failureDetail = "private OIDC clock failure with credential detail";
+    const fetchExternal = vi.fn<typeof fetch>();
+    const observations: TokenExchangeObservation[] = [];
+    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
+      fetch: fetchExternal,
+      now: () => {
+        throw new Error(failureDetail);
+      },
+      observe: (observation) => observations.push(observation),
+    });
+    const body = await tokenExchangeRequestBody();
+    const subjectToken = new URLSearchParams(body).get("subject_token");
+    if (subjectToken === null) {
+      throw new Error("test Token Exchange request did not contain a subject token");
+    }
+    const response = await invokeWorker(
+      worker,
+      new Request("https://example.test/token", {
+        body,
+        headers: {
+          "cf-ray": "fixture-ray-id",
+          "content-type": "application/x-www-form-urlencoded",
+          "user-agent": "fixture-test-agent",
+        },
+        method: "POST",
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get("content-type")).toBe("application/json; charset=utf-8");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("pragma")).toBe("no-cache");
+    expect(response.headers.get("www-authenticate")).toBeNull();
+    await expect(response.json()).resolves.toEqual({ error: "server_error" });
+    expect(fetchExternal).not.toHaveBeenCalled();
+    expect(observations).toEqual([
+      {
+        fields: {
+          path: "/token",
+          rayId: "fixture-ray-id",
+          reason: "oidc_internal_failure",
+          userAgent: "fixture-test-agent",
+        },
+        level: "warn",
+        message: "OIDC authentication failed",
+      },
+    ]);
+    const serializedObservations = JSON.stringify(observations);
+    expect(serializedObservations).not.toContain(failureDetail);
+    expect(serializedObservations).not.toContain(subjectToken);
+    expect(serializedObservations).not.toContain(testEnv.GITHUB_APP_PRIVATE_KEY);
+    expect(serializedObservations).not.toContain("ghs_test_token");
   });
 
   it("accepts a structural GitHub App private-key binding", async () => {
@@ -353,7 +248,7 @@ describe("github-app-token-broker-token-exchange", () => {
     expect(getPrivateKey).toHaveBeenCalledOnce();
   });
 
-  it("uses the shared fetch dependency and reuses OIDC caches for the Worker lifetime", async () => {
+  it("reuses OIDC caches for the Worker lifetime", async () => {
     const sharedFetch = vi.fn<typeof fetch>((input, init) => {
       const url = new Request(input).url;
 
@@ -361,25 +256,14 @@ describe("github-app-token-broker-token-exchange", () => {
         ? fetchOidcRemoteDocumentResponseTestDouble(input)
         : fetchGitHubTestDouble(input, init);
     });
-    const app = createTokenExchangeWorker(testTokenExchangeComposition, {
+    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
       fetch: sharedFetch,
       now: () => testNow,
+      observe: () => undefined,
     });
-    const exchangeToken = async () =>
-      app.fetch?.(
-        new Request("https://example.test/token", {
-          body: await tokenExchangeRequestBody(),
-          headers: {
-            "content-type": "application/x-www-form-urlencoded",
-          },
-          method: "POST",
-        }) as Parameters<NonNullable<typeof app.fetch>>[0],
-        testEnv,
-        {} as ExecutionContext,
-      );
 
-    expect((await exchangeToken())?.status).toBe(200);
-    expect((await exchangeToken())?.status).toBe(200);
+    expect((await invokeWorker(worker, await tokenRequest())).status).toBe(200);
+    expect((await invokeWorker(worker, await tokenRequest())).status).toBe(200);
     expect(
       sharedFetch.mock.calls.filter(
         ([input]) =>
@@ -407,24 +291,16 @@ describe("github-app-token-broker-token-exchange", () => {
 
     try {
       const worker = createTokenExchangeWorker(testTokenExchangeComposition);
-      const response = await worker.fetch?.(
-        new Request("https://example.test/token", {
-          body: await tokenExchangeRequestBody({ tokenOptions: { now: new Date() } }),
-          headers: { "content-type": "application/x-www-form-urlencoded" },
-          method: "POST",
-        }) as Parameters<NonNullable<typeof worker.fetch>>[0],
-        testEnv,
-        {} as ExecutionContext,
-      );
+      const response = await invokeWorker(worker, await tokenRequest());
 
-      expect(response?.status).toBe(200);
+      expect(response.status).toBe(200);
       expect(fetchExternal).toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();
     }
   });
 
-  it("captures dependencies when the Worker is constructed", async () => {
+  it("captures composition and runtime dependencies when constructed", async () => {
     const initialFetch = vi.fn<typeof fetch>((input, init) => {
       const url = new Request(input).url;
 
@@ -448,643 +324,32 @@ describe("github-app-token-broker-token-exchange", () => {
     oidcProviderRegistrations.length = 0;
     composition.tokenIssuancePolicy = compileTokenIssuancePolicy([]);
 
-    const response = await worker.fetch?.(
-      new Request("https://example.test/token", {
-        body: await tokenExchangeRequestBody(),
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        method: "POST",
-      }) as Parameters<NonNullable<typeof worker.fetch>>[0],
-      testEnv,
-      {} as ExecutionContext,
-    );
+    const response = await invokeWorker(worker, await tokenRequest());
 
-    expect(response?.status).toBe(200);
+    expect(response.status).toBe(200);
     expect(initialFetch).toHaveBeenCalled();
     expect(replacementFetch).not.toHaveBeenCalled();
   });
 
-  it("exchanges a read permission request when Token Issuance Policy permits it", async () => {
-    const response = await fetchTokenExchangeWithDependencies(
-      "https://example.test/token",
-      {
-        body: await tokenExchangeRequestBody({
-          form: {
-            resource: "https://api.github.com/repos/fixture-owner/fixture-source-repository",
-            scope: "pull_requests:read contents:read",
-          },
-        }),
-        headers: {
-          "content-type": "application/x-www-form-urlencoded",
-        },
-        method: "POST",
-      },
-      {},
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      access_token: "ghs_test_read_token",
-      issued_token_type: accessTokenType,
-      scope: "contents:read pull_requests:read",
-      token_type: "Bearer",
-    });
-  });
-
-  it("rejects actions-write permission requests for unconfigured target repositories", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({
-        form: {
-          resource: "https://api.github.com/repos/fixture-target-owner/fixture-unconfigured-target",
-          scope: "actions:write",
-        },
-      }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_target",
-    });
-  });
-
-  it("rejects arbitrary permissions not covered by policy with invalid_scope", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({
-        form: {
-          resource: "https://api.github.com/repos/fixture-owner/fixture-source-repository",
-          scope: "future_permission:admin",
-        },
-      }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_scope",
-    });
-  });
-
-  it("issues a token with arbitrary Requested Permissions when policy covers them", async () => {
-    const requestedPermissions = { future_permission: "admin" } as const;
-    const tokenIssuancePolicy = compileTokenIssuancePolicy([
-      {
-        permissions: requestedPermissions,
-        resource: githubRepositoryResourceConstraint("fixture-owner", "fixture-source-repository"),
-        subjectToken: oidcSubjectTokenConstraint(
-          testSubjectConstraintMatchingVerifiedSubjectToken.issuer,
-        ),
-      },
-    ]);
-    let forwardedBody: unknown;
-    const response = await fetchTokenExchangeWithDependencies(
-      "https://example.test/token",
-      {
-        body: await tokenExchangeRequestBody({ form: { scope: "future_permission:admin" } }),
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        method: "POST",
-      },
-      {
-        fetch: async (input, init) => {
-          const request = new Request(input, init);
-
-          if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
-            return fetchOidcRemoteDocumentResponseTestDouble(request);
-          }
-
-          if (request.method === "POST") {
-            forwardedBody = await request.json();
-
-            return Response.json(
-              {
-                expires_at: "2030-01-01T00:00:00Z",
-                permissions: requestedPermissions,
-                token: "ghs_future_permission",
-              },
-              { status: 201 },
-            );
-          }
-
-          return fetchGitHubTestDouble(input, init);
-        },
-        tokenIssuancePolicy,
-      },
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      access_token: "ghs_future_permission",
-      scope: "future_permission:admin",
-    });
-    expect(forwardedBody).toEqual({
-      permissions: requestedPermissions,
-      repositories: ["fixture-source-repository"],
-    });
-  });
-
-  it.each([
-    { privateKey: "", scenario: "missing" },
-    { privateKey: "not a private key", scenario: "invalid" },
-  ])(
-    "maps a $scenario GitHub App private key to a sanitized 500 server_error",
-    async ({ privateKey }) => {
-      const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-      const response = await fetchTokenExchangeWithEnv(
-        "https://example.test/token",
-        {
-          body: await tokenExchangeRequestBody(),
-          headers: { "content-type": "application/x-www-form-urlencoded" },
-          method: "POST",
-        },
-        { ...testEnv, GITHUB_APP_PRIVATE_KEY: privateKey },
-      );
-
-      expect(response.status).toBe(500);
-      await expect(response.json()).resolves.toEqual({ error: "server_error" });
-      expect(JSON.stringify(consoleError.mock.calls)).not.toMatch(
-        /missing GitHub App private key|not a private key/u,
-      );
-    },
-  );
-
-  it("rejects an unsupported requested token type URI", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({
-        requestedTokenType: "https://tokens.example/unsupported",
-      }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_request",
-    });
-  });
-
-  it("rejects token exchange requests without a requested token type", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({ requestedTokenType: null }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    expect(response.headers.get("cache-control")).toBe("no-store");
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_request",
-    });
-  });
-
-  it("rejects the generic JWT subject token type", async () => {
-    const body = new URLSearchParams(await tokenExchangeRequestBody());
-    body.set("subject_token_type", "urn:ietf:params:oauth:token-type:jwt");
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body,
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_request",
-    });
-  });
-
-  it("rejects token exchange requests with non-empty audience parameters", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({
-        form: {
-          audience: "https://github.com/apps/github-app-token-broker",
-        },
-      }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_target",
-    });
-  });
-
-  it("does not accept GitHub App URLs as the OIDC audience", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({
-        tokenOptions: {
-          audience: "https://github.com/apps/github-app-token-broker",
-        },
-      }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_request",
-    });
-  });
-
-  it("rejects duplicate non-empty audience parameters as unsupported targets", async () => {
-    const body = new URLSearchParams(await tokenExchangeRequestBody());
-    body.append("audience", "https://github.com/apps/github-app-token-broker");
-    body.append("audience", "https://github.com/apps/fixture-other-app");
-
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body,
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_target",
-    });
-  });
-
-  it("rejects unsupported token exchange actor token parameters", async () => {
-    const body = new URLSearchParams(await tokenExchangeRequestBody());
-    body.set("actor_token", "actor");
-    body.set("actor_token_type", "urn:ietf:params:oauth:token-type:jwt");
-
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body,
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_request",
-    });
-  });
-
-  it("rejects multiple non-empty resource parameters as unsupported targets", async () => {
-    const body = new URLSearchParams(await tokenExchangeRequestBody());
-    body.append(
-      "resource",
-      "https://api.github.com/repos/fixture-target-owner/fixture-target-repository",
-    );
-
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body,
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_target",
-    });
-  });
-
-  it.each([
-    ["before", ["", `https://api.github.com/repos/fixture-owner/fixture-source-repository`]],
-    ["after", [`https://api.github.com/repos/fixture-owner/fixture-source-repository`, ""]],
-  ])("treats an empty resource occurrence %s the target as omitted", async (_order, values) => {
-    const body = new URLSearchParams(await tokenExchangeRequestBody());
-    body.delete("resource");
-
-    for (const value of values) {
-      body.append("resource", value);
-    }
-
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body,
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      access_token: "ghs_test_token",
-    });
-  });
-
-  it("rejects repeated empty resource occurrences as a missing target", async () => {
-    const body = new URLSearchParams(await tokenExchangeRequestBody());
-    body.delete("resource");
-    body.append("resource", "");
-    body.append("resource", "");
-
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body,
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_target",
-    });
-  });
-
-  it("rejects duplicate grant type parameters as malformed requests", async () => {
-    const body = new URLSearchParams(await tokenExchangeRequestBody());
-    body.append("grant_type", "urn:example:grant-type:duplicate");
-
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body,
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_request",
-    });
-  });
-
-  it("treats empty duplicate grant type parameters as omitted", async () => {
-    const body = new URLSearchParams(await tokenExchangeRequestBody());
-    body.append("grant_type", "");
-
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body,
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      access_token: "ghs_test_token",
-      issued_token_type: accessTokenType,
-      scope: "contents:write pull_requests:write",
-      token_type: "Bearer",
-    });
-  });
-
-  it.each([
-    "authorization_details",
-    "client_assertion",
-    "client_assertion_type",
-    "client_id",
-    "client_secret",
-  ])("rejects unsupported token exchange parameter %s", async (parameter) => {
-    const body = new URLSearchParams(await tokenExchangeRequestBody());
-    body.set(parameter, "unsupported");
-
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body,
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_request",
-    });
-  });
-
-  it.each([
-    "actor_token",
-    "actor_token_type",
-    "authorization_details",
-    "client_assertion",
-    "client_assertion_type",
-    "client_id",
-    "client_secret",
-  ])("treats empty unsupported token exchange parameter %s as omitted", async (parameter) => {
-    const body = new URLSearchParams(await tokenExchangeRequestBody());
-    body.set(parameter, "");
-
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body,
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      access_token: "ghs_test_token",
-      issued_token_type: accessTokenType,
-      scope: "contents:write pull_requests:write",
-      token_type: "Bearer",
-    });
-  });
-
-  it("rejects authorization header client authentication", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody(),
-      headers: {
-        authorization: "Basic dW5zdXBwb3J0ZWQ=",
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(401);
-    expect(response.headers.get("www-authenticate")).toBe('Basic realm="github-app-token-broker"');
-    expect(response.headers.get("cache-control")).toBe("no-store");
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_client",
-    });
-  });
-
-  it("uses a Basic challenge when the authorization scheme is malformed", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody(),
-      headers: {
-        authorization: "1invalid credentials",
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(401);
-    expect(response.headers.get("www-authenticate")).toBe('Basic realm="github-app-token-broker"');
-    expect(response.headers.get("cache-control")).toBe("no-store");
-    await expect(response.json()).resolves.toEqual({ error: "invalid_client" });
-  });
-
-  it.each([
-    ["omitted scope", null],
-    ["empty scope", ""],
-  ] as const)("rejects %s with invalid_scope", async (_caseName, scope) => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({
-        form: {
-          scope,
-        },
-      }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error: "invalid_scope" });
-  });
-
-  it.each([
-    ["whitespace-only scope", { scope: "  " }, "invalid_scope"],
-    ["padded scope", { scope: " actions:write " }, "invalid_scope"],
-    ["repeated-space scope", { scope: "contents:write  pull_requests:write" }, "invalid_scope"],
-    ["tab-separated scope", { scope: "contents:write\tpull_requests:write" }, "invalid_scope"],
-    ["newline-separated scope", { scope: "contents:write\npull_requests:write" }, "invalid_scope"],
-    ["whitespace-only resource", { resource: "  " }, "invalid_target"],
-    [
-      "padded resource",
-      { resource: " https://api.github.com/repos/fixture-target-owner/fixture-target-repository " },
-      "invalid_target",
-    ],
-  ])("rejects invalid token request hints: %s", async (_caseName, options, error) => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({ form: options }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error,
-    });
-  });
-
-  it("rejects token exchange requests without a supported requested token type", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({
-        requestedTokenType: "urn:example:token-type:unknown",
-      }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    expect(response.headers.get("cache-control")).toBe("no-store");
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_request",
-    });
-  });
-
-  it("rate limits token exchange requests before parsing the request body", async () => {
-    const fetchExternal = vi.fn<typeof fetch>();
-    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
-      ...testTokenExchangeWorkerRuntimeDependencies,
-      fetch: fetchExternal,
-    });
-    const response = await worker.fetch?.(
-      new Request("https://example.test/token", {
-        body: "not a form body",
-        headers: {
-          "content-type": "application/x-www-form-urlencoded",
-        },
-        method: "POST",
-      }) as Parameters<NonNullable<typeof worker.fetch>>[0],
-      {
-        ...testEnv,
-        TOKEN_EXCHANGE_RATE_LIMIT: {
-          limit: async () => ({ success: false }),
-        },
-      },
-      {} as ExecutionContext,
-    );
-
-    expect(response?.status).toBe(429);
-    expect(response?.headers.get("cache-control")).toBe("no-store");
-    await expect(response?.json()).resolves.toEqual({
-      error: "temporarily_unavailable",
-    });
-    expect(fetchExternal).not.toHaveBeenCalled();
-  });
-
-  it("does not trust X-Forwarded-For as a Token Endpoint rate-limit key", async () => {
-    const rateLimitKeys: string[] = [];
+  it("sanitizes a changed audience after configuration is cached", async () => {
     const worker = createTokenExchangeWorker(
       testTokenExchangeComposition,
       testTokenExchangeWorkerRuntimeDependencies,
     );
-    const response = await worker.fetch?.(
-      new Request("https://example.test/token", {
-        headers: { "x-forwarded-for": "198.51.100.12, 198.51.100.13" },
-        method: "POST",
-      }) as Parameters<NonNullable<typeof worker.fetch>>[0],
-      {
-        ...testEnv,
-        TOKEN_EXCHANGE_RATE_LIMIT: {
-          limit: async ({ key }) => {
-            rateLimitKeys.push(key);
-            return { success: true };
-          },
-        },
-      },
-      {} as ExecutionContext,
-    );
 
-    expect(response?.status).toBe(400);
-    expect(rateLimitKeys).toEqual(["unknown"]);
+    expect((await invokeWorker(worker, new Request("https://example.test/not-token"))).status).toBe(
+      404,
+    );
+    const response = await invokeWorker(worker, new Request("https://example.test/not-token"), {
+      ...testEnv,
+      TOKEN_BROKER_AUDIENCE: "https://different-broker.example",
+    });
+
+    await expectSanitizedServerError(response);
   });
 
-  it("uses CF-Connecting-IP as the Token Endpoint rate-limit key", async () => {
-    const rateLimitKeys: string[] = [];
-    const worker = createTokenExchangeWorker(
-      testTokenExchangeComposition,
-      testTokenExchangeWorkerRuntimeDependencies,
-    );
-    const response = await worker.fetch?.(
-      new Request("https://example.test/token", {
-        headers: {
-          "cf-connecting-ip": "203.0.113.21",
-          "x-forwarded-for": "198.51.100.12",
-        },
-        method: "POST",
-      }) as Parameters<NonNullable<typeof worker.fetch>>[0],
-      {
-        ...testEnv,
-        TOKEN_EXCHANGE_RATE_LIMIT: {
-          limit: async ({ key }) => {
-            rateLimitKeys.push(key);
-            return { success: true };
-          },
-        },
-      },
-      {} as ExecutionContext,
-    );
-
-    expect(response?.status).toBe(400);
-    expect(rateLimitKeys).toEqual(["203.0.113.21"]);
-  });
-
-  it("maps a rejected rate-limit binding call to a sanitized server error", async () => {
-    const bindingFailureDetail = "rate limit binding leaked detail";
+  it("sanitizes a rejected rate-limit binding call without leaking its detail", async () => {
+    const failureDetail = "rate limit binding leaked detail";
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
       ...testTokenExchangeWorkerRuntimeDependencies,
@@ -1092,37 +357,21 @@ describe("github-app-token-broker-token-exchange", () => {
     });
 
     try {
-      const response = await worker.fetch?.(
-        new Request("https://example.test/token", {
-          body: await tokenExchangeRequestBody(),
-          headers: { "content-type": "application/x-www-form-urlencoded" },
-          method: "POST",
-        }) as Parameters<NonNullable<typeof worker.fetch>>[0],
-        {
-          ...testEnv,
-          TOKEN_EXCHANGE_RATE_LIMIT: {
-            limit: async () => Promise.reject(new Error(bindingFailureDetail)),
-          },
+      const response = await invokeWorker(worker, await tokenRequest(), {
+        ...testEnv,
+        TOKEN_EXCHANGE_RATE_LIMIT: {
+          limit: async () => Promise.reject(new Error(failureDetail)),
         },
-        {} as ExecutionContext,
-      );
-
-      expect(response?.status).toBe(500);
-      expect(response?.headers.get("cache-control")).toBe("no-store");
-      expect(response?.headers.get("pragma")).toBe("no-cache");
-      expect(response?.headers.get("www-authenticate")).toBeNull();
-      await expect(response?.json()).resolves.toEqual({ error: "server_error" });
-      expect(consoleError).toHaveBeenCalledWith({
-        error: { name: "Error" },
-        event: "token_exchange_request_failed",
       });
-      expect(JSON.stringify(consoleError.mock.calls)).not.toContain(bindingFailureDetail);
+
+      await expectSanitizedServerError(response);
+      expectSanitizedLog(consoleError, failureDetail);
     } finally {
       consoleError.mockRestore();
     }
   });
 
-  it("sanitizes a Subject-Token Audience configuration failure at the Worker boundary", async () => {
+  it("sanitizes invalid audience configuration without leaking its detail", async () => {
     const failureDetail = "private invalid audience detail";
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const worker = createTokenExchangeWorker(
@@ -1131,35 +380,19 @@ describe("github-app-token-broker-token-exchange", () => {
     );
 
     try {
-      const response = await worker.fetch?.(
-        new Request("https://example.test/token", {
-          body: await tokenExchangeRequestBody(),
-          headers: { "content-type": "application/x-www-form-urlencoded" },
-          method: "POST",
-        }) as Parameters<NonNullable<typeof worker.fetch>>[0],
-        {
-          ...testEnv,
-          TOKEN_BROKER_AUDIENCE: `invalid\n${failureDetail}`,
-        },
-        {} as ExecutionContext,
-      );
-
-      expect(response?.status).toBe(500);
-      expect(response?.headers.get("cache-control")).toBe("no-store");
-      expect(response?.headers.get("pragma")).toBe("no-cache");
-      expect(response?.headers.get("www-authenticate")).toBeNull();
-      await expect(response?.json()).resolves.toEqual({ error: "server_error" });
-      expect(consoleError).toHaveBeenCalledWith({
-        error: { name: "Error" },
-        event: "token_exchange_request_failed",
+      const response = await invokeWorker(worker, await tokenRequest(), {
+        ...testEnv,
+        TOKEN_BROKER_AUDIENCE: `invalid\n${failureDetail}`,
       });
-      expect(JSON.stringify(consoleError.mock.calls)).not.toContain(failureDetail);
+
+      await expectSanitizedServerError(response);
+      expectSanitizedLog(consoleError, failureDetail);
     } finally {
       consoleError.mockRestore();
     }
   });
 
-  it("sanitizes a URL routing failure at the Worker boundary", async () => {
+  it("sanitizes URL routing failures at the Worker boundary", async () => {
     const failureDetail = "private URL routing failure";
     const request = new Request("https://example.test/token", { method: "GET" });
     Object.defineProperty(request, "url", {
@@ -1174,30 +407,17 @@ describe("github-app-token-broker-token-exchange", () => {
     );
 
     try {
-      const response = await worker.fetch?.(
-        request as Parameters<NonNullable<typeof worker.fetch>>[0],
-        testEnv,
-        {} as ExecutionContext,
-      );
+      const response = await invokeWorker(worker, request);
 
-      expect(response?.status).toBe(500);
-      expect(response?.headers.get("cache-control")).toBe("no-store");
-      expect(response?.headers.get("pragma")).toBe("no-cache");
-      expect(response?.headers.get("www-authenticate")).toBeNull();
-      await expect(response?.json()).resolves.toEqual({ error: "server_error" });
-      expect(consoleError).toHaveBeenCalledWith({
-        error: { name: "Error" },
-        event: "token_exchange_request_failed",
-      });
-      expect(JSON.stringify(consoleError.mock.calls)).not.toContain(failureDetail);
+      await expectSanitizedServerError(response);
+      expectSanitizedLog(consoleError, failureDetail);
     } finally {
       consoleError.mockRestore();
     }
   });
 
-  it("sanitizes non-POST response-construction failure at the Worker boundary", async () => {
+  it("sanitizes response-construction failure before the protocol handler", async () => {
     const failureDetail = "private non-POST response failure";
-    const request = new Request("https://example.test/token", { method: "GET" });
     const PlatformResponse = Response;
     let constructionCount = 0;
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -1221,31 +441,22 @@ describe("github-app-token-broker-token-exchange", () => {
     );
 
     try {
-      const response = await worker.fetch?.(
-        request as Parameters<NonNullable<typeof worker.fetch>>[0],
-        testEnv,
-        {} as ExecutionContext,
+      const response = await invokeWorker(
+        worker,
+        new Request("https://example.test/token", { method: "GET" }),
       );
 
-      expect(response?.status).toBe(500);
-      expect(response?.headers.get("cache-control")).toBe("no-store");
-      expect(response?.headers.get("pragma")).toBe("no-cache");
-      expect(response?.headers.get("www-authenticate")).toBeNull();
-      await expect(response?.json()).resolves.toEqual({ error: "server_error" });
-      expect(consoleError).toHaveBeenCalledWith({
-        error: { name: "Error" },
-        event: "token_exchange_request_failed",
-      });
-      expect(JSON.stringify(consoleError.mock.calls)).not.toContain(failureDetail);
+      await expectSanitizedServerError(response);
+      expectSanitizedLog(consoleError, failureDetail);
     } finally {
       vi.unstubAllGlobals();
       consoleError.mockRestore();
     }
   });
 
-  it("sanitizes a final rejected Token Endpoint promise at the Worker boundary", async () => {
+  it("sanitizes a final rejected protocol-handler promise", async () => {
     const failureDetail = "private final Token Endpoint rejection";
-    const request = new Request("https://example.test/token", { method: "POST" });
+    const request = await tokenRequest();
     const PlatformResponse = Response;
     let constructionCount = 0;
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -1269,479 +480,55 @@ describe("github-app-token-broker-token-exchange", () => {
     );
 
     try {
-      const response = await worker.fetch?.(
-        request as Parameters<NonNullable<typeof worker.fetch>>[0],
-        testEnv,
-        {} as ExecutionContext,
-      );
+      const response = await invokeWorker(worker, request);
 
-      expect(response?.status).toBe(500);
-      expect(response?.headers.get("cache-control")).toBe("no-store");
-      expect(response?.headers.get("pragma")).toBe("no-cache");
-      expect(response?.headers.get("www-authenticate")).toBeNull();
-      await expect(response?.json()).resolves.toEqual({ error: "server_error" });
+      await expectSanitizedServerError(response);
       expect(consoleError).toHaveBeenCalledTimes(2);
-      expect(consoleError).toHaveBeenNthCalledWith(1, {
-        error: { name: "Error" },
-        event: "token_exchange_request_failed",
-      });
-      expect(consoleError).toHaveBeenNthCalledWith(2, {
-        error: { name: "Error" },
-        event: "token_exchange_request_failed",
-      });
-      expect(JSON.stringify(consoleError.mock.calls)).not.toContain(failureDetail);
+      expectSanitizedLog(consoleError, failureDetail);
     } finally {
       vi.unstubAllGlobals();
       consoleError.mockRestore();
     }
-  });
-
-  it("maps a failing request body stream to a sanitized server error", async () => {
-    const bodyFailureDetail = "subject_token=secret-body-stream-detail";
-    const body = new ReadableStream<Uint8Array>({
-      pull(controller) {
-        controller.error(new Error(bodyFailureDetail));
-      },
-    });
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-
-    try {
-      const response = await fetchTokenExchange(
-        new Request("https://example.test/token", {
-          body,
-          headers: { "content-type": "application/x-www-form-urlencoded" },
-          method: "POST",
-        }),
-      );
-
-      expect(response.status).toBe(500);
-      expect(response.headers.get("cache-control")).toBe("no-store");
-      expect(response.headers.get("pragma")).toBe("no-cache");
-      expect(response.headers.get("www-authenticate")).toBeNull();
-      await expect(response.json()).resolves.toEqual({ error: "server_error" });
-      expect(consoleError).toHaveBeenCalledWith({
-        error: { name: "Error" },
-        event: "token_exchange_request_failed",
-      });
-      expect(JSON.stringify(consoleError.mock.calls)).not.toContain(bodyFailureDetail);
-    } finally {
-      consoleError.mockRestore();
-    }
-  });
-
-  it("maps an unexpected exchange rejection to a sanitized server error", async () => {
-    const exchangeFailureDetail = "subject token or upstream secret detail";
-    const exchangeFailureName = "SecretSubjectTokenError";
-    const exchangeFailure = new Error(exchangeFailureDetail);
-    exchangeFailure.name = exchangeFailureName;
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-
-    try {
-      const response = await handleTokenExchangeRequest(
-        new Request("https://example.test/token", {
-          body: await tokenExchangeRequestBody(),
-          headers: { "content-type": "application/x-www-form-urlencoded" },
-          method: "POST",
-        }),
-        {
-          exchange: async () => Promise.reject(exchangeFailure),
-          now: () => testNow,
-          rateLimit: async () => true,
-        },
-      );
-
-      expect(response.status).toBe(500);
-      expect(response.headers.get("cache-control")).toBe("no-store");
-      expect(response.headers.get("pragma")).toBe("no-cache");
-      expect(response.headers.get("www-authenticate")).toBeNull();
-      await expect(response.json()).resolves.toEqual({ error: "server_error" });
-      expect(consoleError).toHaveBeenCalledWith({
-        error: { name: "Error" },
-        event: "token_exchange_request_failed",
-      });
-      expect(JSON.stringify(consoleError.mock.calls)).not.toMatch(
-        new RegExp(`${exchangeFailureDetail}|${exchangeFailureName}`, "u"),
-      );
-    } finally {
-      consoleError.mockRestore();
-    }
-  });
-
-  it("maps an unexpected response construction failure to a sanitized server error", async () => {
-    const responseFailureDetail = "response construction secret detail";
-    const issuedToken = "ghs_response_construction_secret";
-    const request = new Request("https://example.test/token", {
-      body: await tokenExchangeRequestBody(),
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      method: "POST",
-    });
-    const PlatformResponse = Response;
-    let constructionCount = 0;
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    vi.stubGlobal(
-      "Response",
-      class extends PlatformResponse {
-        constructor(body?: BodyInit | null, init?: ResponseInit) {
-          constructionCount += 1;
-
-          if (constructionCount === 1) {
-            throw new Error(responseFailureDetail);
-          }
-
-          super(body, init);
-        }
-      },
-    );
-
-    try {
-      const response = await handleTokenExchangeRequest(request, {
-        exchange: async () => ({
-          expiresAt: "2030-01-01T00:00:00Z",
-          ok: true,
-          token: issuedToken,
-        }),
-        now: () => testNow,
-        rateLimit: async () => true,
-      });
-
-      expect(response.status).toBe(500);
-      expect(response.headers.get("cache-control")).toBe("no-store");
-      expect(response.headers.get("pragma")).toBe("no-cache");
-      expect(response.headers.get("www-authenticate")).toBeNull();
-      await expect(response.json()).resolves.toEqual({ error: "server_error" });
-      expect(consoleError).toHaveBeenCalledWith({
-        error: { name: "Error" },
-        event: "token_exchange_request_failed",
-      });
-      expect(JSON.stringify(consoleError.mock.calls)).not.toMatch(
-        new RegExp(`${responseFailureDetail}|${issuedToken}`, "u"),
-      );
-    } finally {
-      vi.unstubAllGlobals();
-      consoleError.mockRestore();
-    }
-  });
-
-  it("rejects oversized token exchange request bodies", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: `grant_type=x&subject_token=${"x".repeat(64 * 1024)}`,
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(413);
-    expect(response.headers.get("cache-control")).toBe("no-store");
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_request",
-    });
-  });
-
-  it("maps a policy-unacceptable subject token to invalid_request", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({
-        claims: {
-          event_name: "pull_request",
-          ref: "refs/pull/15/merge",
-          ref_type: "branch",
-          sub: "repo:fixture-owner/fixture-source-repository:pull_request",
-        },
-      }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_request",
-    });
-  });
-
-  it("rejects workflow_dispatch runs from unconfigured branch refs", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({
-        claims: {
-          ref: "refs/heads/fixture-unconfigured-branch",
-          sub: "repo:fixture-owner/fixture-source-repository:ref:refs/heads/fixture-unconfigured-branch",
-          workflow_ref:
-            "fixture-owner/fixture-source-repository/.github/workflows/fixture-token-request.yml@refs/heads/fixture-unconfigured-branch",
-        },
-      }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_request",
-    });
-  });
-
-  it("rejects workflow_dispatch runs from unconfigured workflow files", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({
-        claims: {
-          workflow_ref:
-            "fixture-owner/fixture-source-repository/.github/workflows/fixture-release.yml@refs/heads/fixture-base-branch",
-        },
-      }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_request",
-    });
-  });
-
-  it.each([
-    ["missing event name", { event_name: undefined }],
-    ["non-string ref type", { ref_type: 123 }],
-    ["missing repository", { repository: undefined }],
-    ["null workflow ref", { workflow_ref: null }],
-  ])("maps a policy claim with %s to invalid_request", async (_name, claims) => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({ claims }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_request",
-    });
-  });
-
-  it("maps an empty Subject claim to invalid_request", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({ claims: { sub: "" } }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_request",
-    });
-  });
-
-  it("ignores policy-irrelevant GitHub metadata", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({ claims: { actor: 123 } }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      access_token: "ghs_test_token",
-      issued_token_type: accessTokenType,
-    });
-  });
-
-  it.each([
-    [
-      "repository",
-      "repo:fixture-owner%2Ffixture-source-repository:ref:refs/heads/fixture-base-branch",
-    ],
-    ["ref", "repo:fixture-owner/fixture-source-repository:ref:refs%2Fheads%2Ffixture-base-branch"],
-  ])("does not select the percent-encoded subject %s for policy", async (_component, sub) => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({
-        claims: { sub },
-      }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      access_token: "ghs_test_token",
-      issued_token_type: accessTokenType,
-    });
-  });
-
-  it.each([
-    ["absent", undefined],
-    ["null", null],
-    ["empty", ""],
-    ["non-string", 123],
-  ])("does not use a %s repository id for legacy subject authorization", async (_name, id) => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({ claims: { repository_id: id } }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      access_token: "ghs_test_token",
-      issued_token_type: accessTokenType,
-    });
-  });
-
-  it("exchanges tokens whose oidc subject uses GitHub's immutable repository format", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({
-        claims: {
-          sub: "repo:fixture-owner@555555/fixture-source-repository@123456789:ref:refs/heads/fixture-base-branch",
-        },
-      }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      access_token: "ghs_test_token",
-      issued_token_type: accessTokenType,
-      scope: "contents:write pull_requests:write",
-    });
-  });
-
-  it.each([undefined, null])(
-    "accepts immutable GitHub subjects when the optional owner id claim is %s",
-    async (repositoryOwnerId) => {
-      const response = await fetchTokenExchange("https://example.test/token", {
-        body: await tokenExchangeRequestBody({
-          claims: {
-            repository_owner_id: repositoryOwnerId,
-            sub: "repo:fixture-owner@555555/fixture-source-repository@123456789:ref:refs/heads/fixture-base-branch",
-          },
-        }),
-        headers: {
-          "content-type": "application/x-www-form-urlencoded",
-        },
-        method: "POST",
-      });
-
-      expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toMatchObject({
-        access_token: "ghs_test_token",
-        issued_token_type: accessTokenType,
-        scope: "contents:write pull_requests:write",
-      });
-    },
-  );
-
-  it.each([
-    ["mismatched string", "999999"],
-    ["empty string", ""],
-    ["non-string", 123],
-  ])("does not use a %s owner id for legacy subject authorization", async (_name, ownerId) => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({
-        claims: {
-          repository_owner_id: ownerId,
-        },
-      }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      access_token: "ghs_test_token",
-      issued_token_type: accessTokenType,
-      scope: "contents:write pull_requests:write",
-    });
-  });
-
-  it.each([
-    ["missing repository id", { repository_id: undefined }],
-    ["non-string repository id", { repository_id: 123 }],
-    ["non-string repository owner id", { repository_owner_id: 123 }],
-  ])("does not select a %s from an immutable GitHub subject", async (_name, claims) => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({
-        claims: {
-          ...claims,
-          sub: "repo:fixture-owner@555555/fixture-source-repository@123456789:ref:refs/heads/fixture-base-branch",
-        },
-      }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      access_token: "ghs_test_token",
-      issued_token_type: accessTokenType,
-    });
-  });
-
-  it.each([
-    [
-      "repository owner id",
-      {
-        repository_owner_id: "999999",
-        sub: "repo:fixture-owner@555555/fixture-source-repository@123456789:ref:refs/heads/fixture-base-branch",
-      },
-    ],
-    [
-      "repository id",
-      {
-        repository_id: "999999999",
-        sub: "repo:fixture-owner@555555/fixture-source-repository@123456789:ref:refs/heads/fixture-base-branch",
-      },
-    ],
-  ])("does not cross-check an immutable GitHub subject against %s", async (_name, claims) => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({ claims }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      access_token: "ghs_test_token",
-      issued_token_type: accessTokenType,
-    });
-  });
-
-  it("rejects push events on configured branch refs", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({
-        claims: {
-          event_name: "push",
-          ref: "refs/heads/fixture-base-branch",
-        },
-      }),
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "invalid_request",
-    });
   });
 });
+
+async function tokenRequest(): Promise<Request> {
+  return new Request("https://example.test/token", {
+    body: await tokenExchangeRequestBody(),
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    method: "POST",
+  });
+}
+
+async function invokeWorker(
+  worker: ExportedHandler<TokenExchangeWorkerEnv>,
+  request: Request,
+  env: TokenExchangeWorkerEnv = testEnv,
+): Promise<Response> {
+  const handler = worker.fetch;
+
+  if (handler === undefined) {
+    throw new Error("test Worker has no fetch handler");
+  }
+
+  return await handler(request as Parameters<typeof handler>[0], env, {} as ExecutionContext);
+}
+
+async function expectSanitizedServerError(response: Response): Promise<void> {
+  expect(response.status).toBe(500);
+  expect(response.headers.get("cache-control")).toBe("no-store");
+  expect(response.headers.get("pragma")).toBe("no-cache");
+  expect(response.headers.get("www-authenticate")).toBeNull();
+  await expect(response.json()).resolves.toEqual({ error: "server_error" });
+}
+
+function expectSanitizedLog(
+  consoleError: ReturnType<typeof vi.spyOn>,
+  privateDetail: string,
+): void {
+  expect(consoleError).toHaveBeenCalledWith({
+    error: { name: "Error" },
+    event: "token_exchange_request_failed",
+  });
+  expect(JSON.stringify(consoleError.mock.calls)).not.toContain(privateDetail);
+}

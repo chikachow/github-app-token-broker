@@ -7,6 +7,8 @@ import {
 import type { GitHubAppEnv } from "@github-app-token-broker/github/app";
 import type { InstallationAccessTokenExchange } from "./installation-access-token-exchange.ts";
 import { createInstallationAccessTokenExchange } from "./installation-access-token-exchange.ts";
+import { observeTokenExchangeWithConsole } from "./observability.ts";
+import type { ObserveTokenExchange } from "./observability.ts";
 import {
   handleTokenExchangeRequest,
   tokenExchangeMethodNotAllowedResponse,
@@ -29,6 +31,7 @@ export interface TokenExchangeComposition {
 export interface TokenExchangeWorkerRuntimeDependencies {
   readonly fetch: typeof fetch;
   readonly now: () => Date;
+  readonly observe?: ObserveTokenExchange;
 }
 
 export interface TokenExchangeWorkerEnv extends GitHubAppEnv {
@@ -53,6 +56,7 @@ export function createTokenExchangeWorker(
   const workerDependencies = Object.freeze({
     fetch: runtimeDependencies.fetch,
     now: runtimeDependencies.now,
+    observe: runtimeDependencies.observe ?? observeTokenExchangeWithConsole,
     oidcProviderRegistrations,
     tokenIssuancePolicy,
   });
@@ -79,9 +83,10 @@ export function createTokenExchangeWorker(
               {
                 fetch: (input, init) => workerDependencies.fetch(input, init),
                 now: () => workerDependencies.now(),
-                observe: (event) => console.warn(event),
+                observe: (event) => workerDependencies.observe({ fields: event, level: "warn" }),
               },
             ),
+            observe: workerDependencies.observe,
             tokenIssuancePolicy: workerDependencies.tokenIssuancePolicy,
           }),
         };
