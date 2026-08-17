@@ -6,7 +6,7 @@ import {
 } from "@github-app-token-broker/worker";
 import { compileTokenIssuancePolicy } from "@github-app-token-broker/token-issuance-policy";
 
-import { testNow } from "./support/constants.ts";
+import { testInstallationId, testNow, testRepository } from "./support/constants.ts";
 import { fetchGitHubTestDouble } from "./support/github-api.ts";
 import { fetchOidcRemoteDocumentResponseTestDouble } from "./support/oidc.ts";
 import { testTokenIssuancePolicy } from "./support/token-issuance-policy.ts";
@@ -154,28 +154,46 @@ describe("Token Exchange Worker boundary", () => {
     expect(githubRequests).toEqual([]);
   });
 
-  it("wires an issuance failure through the exchange-stage classifier", async () => {
-    const fetchExternal = vi.fn<typeof fetch>((input, init) => {
-      const request = new Request(input, init);
+  it.each([
+    {
+      expectedStatus: 502,
+      githubMethod: "GET",
+      githubPath: `/repos/${testRepository}/installation`,
+      githubStatus: 404,
+      scenario: "installation resolution",
+    },
+    {
+      expectedStatus: 500,
+      githubMethod: "POST",
+      githubPath: `/app/installations/${testInstallationId}/access_tokens`,
+      githubStatus: 422,
+      scenario: "access-token minting",
+    },
+  ])(
+    "wires a GitHub $scenario failure through the exchange-stage classifier",
+    async ({ expectedStatus, githubMethod, githubPath, githubStatus }) => {
+      const fetchExternal = vi.fn<typeof fetch>((input, init) => {
+        const request = new Request(input, init);
 
-      if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
-        return fetchOidcRemoteDocumentResponseTestDouble(request);
-      }
+        if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
+          return fetchOidcRemoteDocumentResponseTestDouble(request);
+        }
 
-      return request.method === "GET"
-        ? Promise.resolve(new Response("GitHub failure detail", { status: 404 }))
-        : fetchGitHubTestDouble(input, init);
-    });
-    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
-      fetch: fetchExternal,
-      now: () => testNow,
-      observe: () => undefined,
-    });
-    const response = await invokeWorker(worker, await tokenRequest());
+        return request.method === githubMethod && new URL(request.url).pathname === githubPath
+          ? Promise.resolve(new Response("GitHub failure detail", { status: githubStatus }))
+          : fetchGitHubTestDouble(input, init);
+      });
+      const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
+        fetch: fetchExternal,
+        now: () => testNow,
+        observe: () => undefined,
+      });
+      const response = await invokeWorker(worker, await tokenRequest());
 
-    expect(response.status).toBe(502);
-    await expect(response.json()).resolves.toEqual({ error: "server_error" });
-  });
+      expect(response.status).toBe(expectedStatus);
+      await expect(response.json()).resolves.toEqual({ error: "server_error" });
+    },
+  );
 
   it("sanitizes a real OIDC internal failure and records safe request context", async () => {
     const failureDetail = "private OIDC clock failure with credential detail";
