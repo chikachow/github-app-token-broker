@@ -29,8 +29,19 @@ export default defineConfig({
         test: {
           allowOnly: false,
           detectAsyncLeaks: true,
-          exclude: [...configDefaults.exclude, "test/worker-integration/**"],
+          exclude: [
+            ...configDefaults.exclude,
+            "test/properties/**/*.property.test.ts",
+            "test/worker-integration/**",
+          ],
           name: "unit",
+        },
+      },
+      {
+        test: {
+          allowOnly: false,
+          include: ["test/properties/**/*.property.test.ts"],
+          name: "property",
         },
       },
       {

@@ -117,6 +117,7 @@ describe("InstallationAccessTokenRequest normalization", () => {
     "https://user@api.github.com/repos/fixture-target-owner/fixture-target-repository",
     "https://api.github.com/repos/fixture-target-owner%2Ffixture-other-target/fixture-target-repository",
     "https://api.github.com/repos/fixture-target-owner/../fixture-target-repository",
+    "https://api.github.com/repos/fixture-target-owner/extra/../fixture-target-repository",
     "https://api.github.com/repos/fixture-target-owner/fixture-target-repository/actions/workflows/x.yml",
   ])("rejects non-canonical resource %s", (resource) => {
     expect(
