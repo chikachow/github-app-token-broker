@@ -1,24 +1,63 @@
+const bodySource = "packages/http/src/body.ts";
+const requestBoundaryPropertyTest = "test/properties/request-boundaries.property.test.ts";
+const bodyPropertyTest = requestBoundaryPropertyTest;
 const githubSource = "packages/github/src/installation-access-token-request.ts";
-const githubPropertyTest = "test/properties/installation-access-token-request.property.test.ts";
+const githubPropertyTest = requestBoundaryPropertyTest;
 const policySource = "packages/token-issuance-policy/src/token-issuance-policy.ts";
 const policyPropertyTest = "test/properties/token-issuance-policy.property.test.ts";
+const tokenExchangeSource = "workers/github-app-token-broker/src/token-exchange.ts";
+const tokenExchangePropertyTest = requestBoundaryPropertyTest;
 const fullTestSuite = lane([], []);
 const ordinaryTestSuite = lane([], ["unit", "worker-integration"]);
 
-const githubTests = Object.freeze({
-  full: fullTestSuite,
-  ordinary: ordinaryTestSuite,
-  property: lane([githubPropertyTest], ["property"]),
-  suite: "github",
-});
-const policyTests = Object.freeze({
-  full: fullTestSuite,
-  ordinary: ordinaryTestSuite,
-  property: lane([policyPropertyTest], ["property"]),
-  suite: "policy",
-});
+const bodyTests = propertyTestLanes(
+  bodyPropertyTest,
+  "body",
+  "is invariant to byte partitioning and stops at the configured limit",
+);
+const githubPermissionTests = propertyTestLanes(
+  githubPropertyTest,
+  "github-permissions",
+  "canonicalizes permissions independently of insertion order without retaining mutable input",
+);
+const githubScopeTests = propertyTestLanes(
+  githubPropertyTest,
+  "github-scope",
+  "normalizes valid scopes and rejects conflicting or whitespace-separated scopes",
+);
+const githubResourceTests = propertyTestLanes(
+  githubPropertyTest,
+  "github-resource",
+  "round-trips canonical resources and rejects each reviewed mutation",
+);
+const policyTests = propertyTestLanes(
+  policyPropertyTest,
+  "policy",
+  "matches an independent compiled policy-evaluation oracle",
+);
+const tokenExchangeTests = propertyTestLanes(
+  tokenExchangePropertyTest,
+  "token-exchange-form",
+  "preserves ordered-multimap semantics under entry permutation",
+);
 
 export const propertyMutations = Object.freeze([
+  mutation({
+    description: "overwrite the body reassembly offset with each chunk length",
+    file: bodySource,
+    id: "http-body-chunk-offset",
+    replacement: "offset = chunk.byteLength;",
+    search: "offset += chunk.byteLength;",
+    tests: bodyTests,
+  }),
+  mutation({
+    description: "advance the body reassembly offset for an empty chunk",
+    file: bodySource,
+    id: "http-body-empty-chunk-offset",
+    replacement: "offset += Math.max(1, chunk.byteLength);",
+    search: "offset += chunk.byteLength;",
+    tests: bodyTests,
+  }),
   mutation({
     description: "omit canonical permission sorting",
     file: githubSource,
@@ -26,7 +65,7 @@ export const propertyMutations = Object.freeze([
     replacement: `void comparePermissionEntry;
   return Object.freeze(Object.fromEntries(entries));`,
     search: "return Object.freeze(Object.fromEntries(entries.sort(comparePermissionEntry)));",
-    tests: githubTests,
+    tests: githubPermissionTests,
   }),
   mutation({
     description: "return the mutable permission source instead of a frozen copy",
@@ -35,7 +74,7 @@ export const propertyMutations = Object.freeze([
     replacement: `void comparePermissionEntry;
   return permissions;`,
     search: "return Object.freeze(Object.fromEntries(entries.sort(comparePermissionEntry)));",
-    tests: githubTests,
+    tests: githubPermissionTests,
   }),
   mutation({
     description: "reverse read and write permission ranks",
@@ -156,7 +195,7 @@ export const propertyMutations = Object.freeze([
     id: "github-scope-conflicting-duplicate",
     replacement: "if (permissions[name] !== undefined && permissions[name] === level) {",
     search: "if (permissions[name] !== undefined) {",
-    tests: githubTests,
+    tests: githubScopeTests,
   }),
   mutation({
     description: "split GitHub scopes on general whitespace",
@@ -164,7 +203,7 @@ export const propertyMutations = Object.freeze([
     id: "github-scope-general-whitespace",
     replacement: `const scopeTokens = value.split(/\\s+/u);`,
     search: `const scopeTokens = value.split(" ");`,
-    tests: githubTests,
+    tests: githubScopeTests,
   }),
   mutation({
     description: "accept a repository resource containing a query",
@@ -172,7 +211,7 @@ export const propertyMutations = Object.freeze([
     id: "github-resource-query",
     replacement: "",
     search: "resource.search.length !== 0 ||",
-    tests: githubTests,
+    tests: githubResourceTests,
   }),
   mutation({
     description: "accept an encoded separator in a repository resource segment",
@@ -180,7 +219,7 @@ export const propertyMutations = Object.freeze([
     id: "github-resource-encoded-separator",
     replacement: "/^[A-Za-z0-9_.%-]+$/u.test(value)",
     search: "/^[A-Za-z0-9_.-]+$/u.test(value)",
-    tests: githubTests,
+    tests: githubResourceTests,
   }),
   mutation({
     description: "let target-matching failed-subject statements contribute to permission",
@@ -189,6 +228,16 @@ export const propertyMutations = Object.freeze([
     replacement: "if (permissionsNotCoveredForResource.size === 0) {",
     search: "if (permissionsNotCoveredForMatchingSubject.size === 0) {",
     tests: policyTests,
+  }),
+  mutation({
+    description: "discard every form value when the first occurrence is empty",
+    file: tokenExchangeSource,
+    id: "token-exchange-leading-empty-value",
+    replacement: `const values = form.getAll(key);
+
+  return values[0]?.length === 0 ? [] : values.filter((value) => value.length > 0);`,
+    search: "return form.getAll(key).filter((value) => value.length > 0);",
+    tests: tokenExchangeTests,
   }),
 ]);
 
@@ -207,9 +256,19 @@ function mutation(definition) {
   });
 }
 
-function lane(files, projects) {
+function propertyTestLanes(file, suite, testNamePattern) {
+  return Object.freeze({
+    full: fullTestSuite,
+    ordinary: ordinaryTestSuite,
+    property: lane([file], ["property"], testNamePattern),
+    suite,
+  });
+}
+
+function lane(files, projects, testNamePattern) {
   return Object.freeze({
     files: Object.freeze(files),
     projects: Object.freeze(projects),
+    testNamePattern,
   });
 }

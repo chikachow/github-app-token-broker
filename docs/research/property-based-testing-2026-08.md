@@ -79,19 +79,18 @@ sources such as `fetch` may not be schedulable
 Runtime-boundary tests therefore need deliberate fakes or direct Workerd
 execution rather than an assumed universal scheduler.
 
-## Uncommitted candidates
+## Candidate disposition
 
-These are research leads, not roadmap commitments:
+Bounded body reading across byte-array partitions and Token Exchange
+form-multimap classification are implemented. Both retain public seams and
+independent or metamorphic expectations, and both demonstrate fault sensitivity
+beyond the ordinary tests.
 
-- bounded body reading across byte-array partitions and limits around the exact
-  body length;
-- Token Exchange form-multimap classification under entry permutation,
-  duplicate values, and empty extension noise; and
-- a small OIDC metadata/JWKS cache command model covering freshness, stale
-  eligibility, backoff, cooldown, and identity changes.
+A small OIDC metadata/JWKS cache command model covering freshness, stale
+eligibility, backoff, cooldown, and identity changes remains a research lead,
+not a roadmap commitment.
 
-Each candidate must independently satisfy the durable admission criteria before
-implementation. In particular, the OIDC model should not be built if it needs
-to duplicate the production freshness parser, error classifier, or refresh
-state machine. Closed algorithm lists and exact OAuth error mappings should
-remain finite example tables rather than randomized properties.
+The OIDC model should not be built if it needs to duplicate the production
+freshness parser, error classifier, or refresh state machine. Closed algorithm
+lists and exact OAuth error mappings should remain finite example tables rather
+than randomized properties.

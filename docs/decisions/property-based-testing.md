@@ -64,6 +64,13 @@ suite cover the runtime boundary, including canonical host spelling and a
 normalization-equivalent dot-segment path. These examples do not establish
 unrestricted parity between the Node and Workerd URL implementations.
 
+The bounded-body property compares the public reader with independently
+concatenated byte chunks and observes the transport boundary only to require
+that reading stops and cancellation is requested after the configured limit.
+The Token Exchange form property generates ordered multimaps from semantic
+families, then compares original and permuted entry sequences with a tagged
+expected outcome. It does not call the production form-classification helpers.
+
 ### Discovery and runtime ownership
 
 Node property modules are named `test/properties/**/*.property.test.ts` and are
