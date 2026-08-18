@@ -5,8 +5,8 @@
 - [Deployment](deployment.md): interface between this public source repository and an external deployment system.
 - [Release checklist](release.md): public-source and publish-readiness checks.
 - [Domain glossary](../CONTEXT.md): project terminology.
-- [OIDC authentication decision](decisions/oidc-id-token-authentication.md), [CEL-free policy decision](decisions/cel-free-token-issuance-policy.md), [GitHub failure-classification decision](decisions/github-api-failure-classification.md), and [GitHub App Information RPC decision](decisions/github-app-information-rpc.md): durable security and interface rationale.
-- [GitHub App Information research](research/github-app-information.md): source-backed endpoint and Cloudflare RPC findings.
+- [OIDC authentication decision](decisions/oidc-id-token-authentication.md), [CEL-free policy decision](decisions/cel-free-token-issuance-policy.md), [GitHub failure-classification decision](decisions/github-api-failure-classification.md), [GitHub App Information RPC decision](decisions/github-app-information-rpc.md), and [property-based testing decision](decisions/property-based-testing.md): durable security, interface, and testing rationale.
+- [GitHub App Information research](research/github-app-information.md) and [TypeScript property-based testing survey](research/property-based-testing-2026-08.md): dated source-backed findings.
 
 Decision records may describe source-supported capabilities. The service contract is authoritative for public behavior and security semantics. Each external deployment's reviewed TypeScript composition is authoritative for the OIDC Provider Registrations and Permit Statements compiled into its artifact.
 
