@@ -41,7 +41,7 @@ try {
   runChecked("git", ["clone", "--quiet", "--local", "--no-hardlinks", repository, clone]);
   runChecked("git", ["checkout", "--quiet", "--detach", head], clone);
   runPackageManager(["install", "--frozen-lockfile", "--ignore-scripts"], clone);
-  runPackageManager(["exec", "tsc", "--project", "tsconfig.packages.json", "--noEmit"], clone);
+  runPackageManager(["run", "typecheck"], clone);
 
   const controls = runControlLanes(clone);
   const results = [];
@@ -60,12 +60,9 @@ try {
 
       writeFileSync(sourcePath, mutated);
       try {
-        runPackageManager(
-          ["exec", "tsc", "--project", "tsconfig.packages.json", "--noEmit"],
-          clone,
-        );
+        runPackageManager(["run", "typecheck"], clone);
       } catch (error) {
-        throw new Error(`invalid-mutant ${mutation.id}: package typecheck failed`, {
+        throw new Error(`invalid-mutant ${mutation.id}: repository typecheck failed`, {
           cause: error,
         });
       }
@@ -164,6 +161,7 @@ function laneSummary(lane) {
 
 function runControlLanes(cwd) {
   const configurations = new Map();
+  const laneResults = new Map();
 
   for (const mutation of propertyMutations) {
     configurations.set(mutation.tests.suite, mutation.tests);
@@ -174,9 +172,9 @@ function runControlLanes(cwd) {
   for (const [suite, tests] of configurations) {
     progress(`[control] ${suite}`);
     const lanes = {
-      full: runVitest(cwd, tests.full),
-      ordinary: runVitest(cwd, tests.ordinary),
-      property: runVitest(cwd, tests.property),
+      full: runVitestOnce(cwd, tests.full, laneResults),
+      ordinary: runVitestOnce(cwd, tests.ordinary, laneResults),
+      property: runVitestOnce(cwd, tests.property, laneResults),
     };
 
     for (const [lane, result] of Object.entries(lanes)) {
@@ -193,6 +191,18 @@ function runControlLanes(cwd) {
   }
 
   return controls;
+}
+
+function runVitestOnce(cwd, lane, results) {
+  const key = JSON.stringify(lane);
+  let result = results.get(key);
+
+  if (result === undefined) {
+    result = runVitest(cwd, lane);
+    results.set(key, result);
+  }
+
+  return result;
 }
 
 function replaceExactlyOnce(source, search, replacement) {
@@ -246,12 +256,15 @@ function runPackageManager(arguments_, cwd) {
 
 function runVitest(cwd, lane) {
   const projectArguments = lane.projects.flatMap((project) => ["--project", project]);
+  const testNameArguments =
+    lane.testNamePattern === undefined ? [] : ["--testNamePattern", lane.testNamePattern];
   const arguments_ = [
     "exec",
     "vitest",
     "run",
     ...lane.files,
     ...projectArguments,
+    ...testNameArguments,
     "--reporter=dot",
   ];
   const invocation = packageManagerInvocation(arguments_);

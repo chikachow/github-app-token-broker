@@ -10,6 +10,18 @@ import {
   normalizeInstallationAccessTokenRequest,
   parseGitHubRepositoryResource,
 } from "@github-app-token-broker/github/installation-access-token-request";
+import {
+  bodyGeneratedRunBudget,
+  bodyReadExamples,
+  bodyReadScenarioArbitrary,
+  expectBodyReadScenario,
+} from "./support/http-body.ts";
+import {
+  expectFormScenario,
+  formGeneratedRunBudget,
+  formScenarioArbitrary,
+  formScenarioExamples,
+} from "./support/token-exchange-form.ts";
 
 const generatedRunBudget = 1_000;
 const repositoryResource = "https://api.github.com/repos/property-owner/property-repository";
@@ -414,4 +426,18 @@ describe("GitHub Repository Resource properties", () => {
   })("round-trips canonical resources and rejects each reviewed mutation", (scenario) => {
     expectRepositoryResourceScenario(scenario);
   });
+});
+
+describe("bounded HTTP body properties", () => {
+  test.prop([bodyReadScenarioArbitrary], {
+    examples: bodyReadExamples,
+    numRuns: bodyGeneratedRunBudget + bodyReadExamples.length,
+  })("is invariant to byte partitioning and stops at the configured limit", expectBodyReadScenario);
+});
+
+describe("Token Exchange form properties", () => {
+  test.prop([formScenarioArbitrary], {
+    examples: formScenarioExamples,
+    numRuns: formGeneratedRunBudget + formScenarioExamples.length,
+  })("preserves ordered-multimap semantics under entry permutation", expectFormScenario);
 });
