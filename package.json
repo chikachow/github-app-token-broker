@@ -29,6 +29,7 @@
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.21.2",
     "@cloudflare/workers-types": "5.20260812.1",
+    "@fast-check/vitest": "0.4.1",
     "@github-app-token-broker/github": "workspace:*",
     "@github-app-token-broker/http": "workspace:*",
     "@github-app-token-broker/oidc": "workspace:*",
@@ -38,6 +39,7 @@
     "@tsconfig/strictest": "2.0.8",
     "@types/node": "26.2.0",
     "@vitest/coverage-istanbul": "4.1.10",
+    "fast-check": "4.9.0",
     "knip": "6.32.2",
     "oxfmt": "0.63.0",
     "oxlint": "1.78.0",
