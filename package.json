@@ -18,6 +18,7 @@
     "runtime-types:generate": "pnpm --recursive --filter './workers/*' run runtime-types:generate",
     "test": "WRANGLER_LOG=none WRANGLER_LOG_PATH=.wrangler/logs WRANGLER_REGISTRY_PATH=.wrangler/registry vitest run",
     "test:coverage": "WRANGLER_LOG=none WRANGLER_LOG_PATH=.wrangler/logs WRANGLER_REGISTRY_PATH=.wrangler/registry vitest run --coverage",
+    "test:mutations:property": "node scripts/test-property-mutations.mjs",
     "typecheck": "node --run typecheck:packages && pnpm --recursive --filter './workers/*' run typecheck && node --run typecheck:test",
     "typecheck:packages": "tsc --project tsconfig.packages.json",
     "typecheck:test": "tsc --project tsconfig.json",
