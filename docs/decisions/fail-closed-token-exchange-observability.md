@@ -27,8 +27,9 @@ the first GitHub request for a policy-permitted exchange, it awaits a token-free
 `installation_access_token_issuance_succeeded` before returning that token to the Client.
 
 If the success acknowledgement rejects, the broker stops using that observer, awaits one
-best-effort `DELETE https://api.github.com/installation/token` request through the fixed-origin,
-redirect-rejecting, 10-second-bounded GitHub HTTP adapter, and always returns sanitized
+best-effort invocation of the issued token's GitHub-owned revocation capability. That capability
+performs `DELETE https://api.github.com/installation/token` through the fixed-origin,
+redirect-rejecting, 10-second-bounded GitHub HTTP adapter. The broker always returns sanitized
 `500 {"error":"server_error"}` without the token. Revocation failure neither permits the token to
 escape nor causes a recursive observation. Fallback logging receives only a new sanitized error,
 not the observer failure, revocation failure, or token.

@@ -339,6 +339,7 @@ describe("GitHub App Token Exchange public interface", () => {
   it.each([
     { error: "server_error", headers: undefined, responseStatus: 500, upstreamStatus: 400 },
     { error: "server_error", headers: undefined, responseStatus: 500, upstreamStatus: 401 },
+    { error: "server_error", headers: undefined, responseStatus: 500, upstreamStatus: 418 },
     { error: "server_error", headers: undefined, responseStatus: 500, upstreamStatus: 422 },
     { error: "server_error", headers: undefined, responseStatus: 502, upstreamStatus: 403 },
     { error: "server_error", headers: undefined, responseStatus: 502, upstreamStatus: 404 },

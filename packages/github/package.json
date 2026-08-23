@@ -6,7 +6,6 @@
   "exports": {
     "./app": "./src/app.ts",
     "./app-information": "./src/app-information.ts",
-    "./http": "./src/http.ts",
     "./installation-access-token-request": "./src/installation-access-token-request.ts",
     "./secrets": "./src/secrets.ts"
   },

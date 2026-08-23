@@ -2,10 +2,10 @@ import { decodeJwt } from "jose";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  issueInstallationAccessTokenForRepository,
+  issueInstallationAccessToken,
   type GitHubAppConfiguration,
 } from "../packages/github/src/app.ts";
-import { createGitHubRepositoryResource } from "@github-app-token-broker/github/installation-access-token-request";
+import { createInstallationAccessTokenRequest } from "@github-app-token-broker/github/installation-access-token-request";
 import { testInstallationId, testRepository } from "./support/constants.ts";
 import { githubInstallationResponse } from "./support/github-api.ts";
 import { testPrivateKeyPem } from "./support/rsa-test-key-pair.ts";
@@ -57,18 +57,20 @@ describe("GitHub App authentication", () => {
 
     try {
       await expect(
-        issueInstallationAccessTokenForRepository(
+        issueInstallationAccessToken(
           githubApp,
-          createGitHubRepositoryResource({
+          createInstallationAccessTokenRequest({
             owner: "fixture-owner",
+            permissions: { contents: "read" },
             repository: "fixture-repository",
           }),
-          { contents: "read" },
         ),
       ).resolves.toEqual({
         expiresAt: "2030-01-01T00:00:00Z",
         installationId: 12345,
+        ok: true,
         permissions: { contents: "read" },
+        revoke: expect.any(Function),
         token: "ghs_default_dependencies_token",
       });
       expect(fetchGitHub).toHaveBeenCalledTimes(2);
@@ -85,16 +87,16 @@ describe("GitHub App authentication", () => {
       get: vi.fn(async () => testPrivateKeyPem),
     };
 
-    const installationAccessToken = await issueInstallationAccessTokenForRepository(
+    const issuance = await issueInstallationAccessToken(
       {
         appId: "2419473",
         privateKey: secretStoreBinding,
       },
-      createGitHubRepositoryResource({
+      createInstallationAccessTokenRequest({
         owner: "fixture-owner",
+        permissions: { contents: "read" },
         repository: "fixture-source-repository",
       }),
-      { contents: "read" },
       {
         fetch: async (input: Parameters<typeof fetch>[0], init: Parameters<typeof fetch>[1]) => {
           expect(input).toBeInstanceOf(URL);
@@ -146,10 +148,12 @@ describe("GitHub App authentication", () => {
       },
     );
 
-    expect(installationAccessToken).toEqual({
+    expect(issuance).toEqual({
       expiresAt: "2030-01-01T00:00:00Z",
       installationId: 12345,
+      ok: true,
       permissions: { contents: "read" },
+      revoke: expect.any(Function),
       token: "ghs_secret_store_token",
     });
     expect(secretStoreBinding.get).toHaveBeenCalledOnce();
@@ -160,29 +164,45 @@ describe("GitHub App authentication", () => {
       issueTestInstallationAccessToken(
         githubInstallationResponse("FIXTURE-OWNER", testInstallationId),
       ),
-    ).resolves.toMatchObject({ installationId: testInstallationId });
+    ).resolves.toMatchObject({
+      installationId: testInstallationId,
+      ok: true,
+    });
   });
 
-  it("rejects an installation account for a different owner", async () => {
+  it("returns an upstream failure for an installation account with a different owner", async () => {
     await expect(
       issueTestInstallationAccessToken(
         githubInstallationResponse("transferred-owner", testInstallationId),
       ),
-    ).rejects.toMatchObject({
-      message: invalidGitHubApiResponseMessage(`/repos/${testRepository}/installation`),
-      status: 502,
-      upstreamStatus: 200,
+    ).resolves.toEqual({
+      error: {
+        message: invalidGitHubApiResponseMessage(`/repos/${testRepository}/installation`),
+        name: "GitHubApiError",
+        status: 502,
+        upstreamStatus: 200,
+      },
+      installationId: undefined,
+      ok: false,
+      reason: "upstream_failure",
     });
   });
 
-  it("rejects a schema-invalid successful installation response", async () => {
+  it("returns an upstream failure for a schema-invalid successful installation response", async () => {
     await expect(
       issueTestInstallationAccessToken(
         Response.json({ account: { login: "fixture-owner" }, id: "12345" }),
       ),
-    ).rejects.toMatchObject({
-      message: invalidGitHubApiResponseMessage(`/repos/${testRepository}/installation`),
-      status: 502,
+    ).resolves.toEqual({
+      error: {
+        message: invalidGitHubApiResponseMessage(`/repos/${testRepository}/installation`),
+        name: "GitHubApiError",
+        status: 502,
+        upstreamStatus: 200,
+      },
+      installationId: undefined,
+      ok: false,
+      reason: "upstream_failure",
     });
   });
 
@@ -206,12 +226,14 @@ describe("GitHub App authentication", () => {
     ).resolves.toEqual({
       expiresAt: "2030-01-01T00:00:00Z",
       installationId: testInstallationId,
+      ok: true,
       permissions: { contents: "read" },
+      revoke: expect.any(Function),
       token,
     });
   });
 
-  it("rejects a schema-invalid successful access-token response", async () => {
+  it("returns an upstream failure for a schema-invalid successful access-token response", async () => {
     await expect(
       issueTestInstallationAccessToken(
         githubInstallationResponse("fixture-owner", testInstallationId),
@@ -220,14 +242,18 @@ describe("GitHub App authentication", () => {
           permissions: { contents: "read" },
         }),
       ),
-    ).rejects.toMatchObject({
-      cause: {
+    ).resolves.toEqual({
+      error: {
         message: invalidGitHubApiResponseMessage(
           `/app/installations/${testInstallationId}/access_tokens`,
         ),
+        name: "GitHubApiError",
         status: 502,
+        upstreamStatus: 200,
       },
       installationId: testInstallationId,
+      ok: false,
+      reason: "upstream_failure",
     });
   });
 });
@@ -243,16 +269,16 @@ function issueTestInstallationAccessToken(
     { status: 201 },
   ),
 ) {
-  return issueInstallationAccessTokenForRepository(
+  return issueInstallationAccessToken(
     {
       appId: "2419473",
       privateKey: testPrivateKeyPem,
     },
-    createGitHubRepositoryResource({
+    createInstallationAccessTokenRequest({
       owner: "fixture-owner",
+      permissions: { contents: "read" },
       repository: "fixture-source-repository",
     }),
-    { contents: "read" },
     {
       fetch: async (input, init) =>
         new Request(input, init).method === "GET" ? installationResponse : tokenResponse,
