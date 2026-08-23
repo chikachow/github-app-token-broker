@@ -206,6 +206,29 @@ complete observable mapping:
 | other GitHub `5xx`                                          | `502`       | `server_error`            |
 | otherwise unclassified issuance failure                     | `500`       | `server_error`            |
 
+High-level Token Exchange observations are mandatory. The broker awaits acknowledgement of
+authentication failures, authorization denials, issuance failures, a permitted issuance intent
+before any GitHub request, and issuance success before returning a token. A rejected
+acknowledgement replaces the otherwise applicable response with non-cacheable
+`500 {"error":"server_error"}`. The response and fallback log contain neither the observation
+failure detail nor a subject or access token.
+
+If acknowledgement of the success observation fails after GitHub has returned an Installation
+Access Token, the broker awaits one best-effort request to GitHub's
+[`DELETE /installation/token`](https://docs.github.com/en/rest/apps/installations#revoke-an-installation-access-token),
+authenticated by that token, before returning the sanitized `500`. Revocation uses the same fixed
+GitHub origin, manual redirect handling, and 10-second request deadline as other GitHub calls. A
+`204` confirms revocation. A non-`204` response, transport failure, or deadline does not permit the
+token to be returned and does not cause another call through the failed observer. Failed
+revocation can leave the unreturned token active until GitHub expires it. A token can also have
+been created when the minting request fails after GitHub accepts it but before the broker receives
+the response; without the returned token value, the broker cannot revoke that ambiguous issuance.
+
+Acknowledgement means the configured observation callback's promise fulfilled. It is not a claim
+that an observation was durably persisted. The default console adapter acknowledges after its
+console call completes. OIDC remote-document cache events are optional synchronous diagnostics,
+not mandatory Token Exchange observations, and their delivery cannot change endpoint behavior.
+
 The [GitHub API Failure Classification
 decision](decisions/github-api-failure-classification.md) records the rationale,
 rate-limit evidence, and sanitization boundary behind this normative mapping.

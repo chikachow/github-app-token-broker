@@ -28,6 +28,16 @@ OIDC Provider Registrations and Token Issuance Policy are not Worker bindings, r
 
 The deployment environment supplies one GitHub App credential pair, the rate-limit binding, and one non-secret identity binding. `TOKEN_BROKER_AUDIENCE` is the exact non-empty, non-whitespace, single-line Subject-Token Audience accepted in subject tokens. It may be URL-shaped or opaque. Public hostname and route ownership remain in deployment configuration rather than a Worker runtime binding. The GitHub API destination is fixed to `https://api.github.com`; it is not deployment configuration. The audience and App credentials can differ across deployments of the same artifact; provider trust and authorization policy cannot change without rebuilding it.
 
+The optional runtime `observe` adapter acknowledges mandatory high-level Token Exchange
+observations by returning `Promise<void>`. The broker does not return a token until the pre-mint
+intent and post-mint success observations are acknowledged. The default console adapter's
+fulfilled promise establishes only that its console call completed; it is not durable storage. A
+deployment that requires durable audit acknowledgement must inject an adapter whose promise
+fulfills only after its chosen sink confirms persistence. Sink choice, idempotency, retry, and
+timeout semantics are deployment concerns and are not supplied by this repository. Optional OIDC
+remote-document diagnostics use the separate synchronous `observeOidcDiagnostic` callback and
+must not be wired to the mandatory async adapter.
+
 ## External deployment contract
 
 The deployment system is maintained outside this repository. It must:
@@ -42,6 +52,7 @@ The deployment system is maintained outside this repository. It must:
 8. run a strict dry-run against the deployment-owned entrypoint
 9. smoke-test the routed `POST /token` contract without logging tokens
 10. exercise `GitHubAppInformationEntrypoint` through an explicitly configured trusted named service binding; each concrete consumer must test its exact production binding configuration and the absence of any public HTTP route to that entrypoint
+11. when durable observation is required, inject and test an acknowledgement adapter whose promise resolves only after the selected sink confirms persistence
 
 The deployment system owns the Worker audience and public route. It must bind `TOKEN_BROKER_AUDIENCE` to the exact value requested in Clients' subject tokens and independently verify that Clients send requests to the intended Token Exchange Endpoint. Neither identity nor location may be inferred from an incoming `Host` header.
 

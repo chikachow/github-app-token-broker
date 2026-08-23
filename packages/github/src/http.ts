@@ -63,6 +63,78 @@ export async function fetchGitHubApiJson<Schema extends z.ZodType>(
     responseSchema: Schema;
   },
 ): Promise<z.output<Schema>> {
+  return requestGitHubApi(dependencies, {
+    headers,
+    ...(init === undefined ? {} : { init }),
+    path,
+    readSuccessfulResponse: async (response, requestSignal) => {
+      const bodyRead = await readBodyUpTo(response.body, maxResponseBodyBytes, requestSignal);
+
+      if (!bodyRead.ok) {
+        throw invalidGitHubApiResponse(path, response.status);
+      }
+
+      const responseText = new TextDecoder().decode(bodyRead.bytes);
+
+      let responseBody: unknown;
+
+      try {
+        responseBody = JSON.parse(responseText);
+      } catch {
+        throw invalidGitHubApiResponse(path, response.status);
+      }
+
+      const parsed = responseSchema.safeParse(responseBody);
+
+      if (!parsed.success) {
+        throw invalidGitHubApiResponse(path, response.status);
+      }
+
+      return parsed.data;
+    },
+  });
+}
+
+export async function revokeGitHubInstallationAccessToken(
+  dependencies: GitHubApiDependencies,
+  token: string,
+): Promise<void> {
+  const path = "/installation/token";
+
+  await requestGitHubApi(dependencies, {
+    headers: {
+      accept: githubAcceptHeader,
+      authorization: `Bearer ${token}`,
+      "user-agent": "github-app-token-broker",
+      "x-github-api-version": githubApiVersion,
+    },
+    init: { method: "DELETE" },
+    path,
+    readSuccessfulResponse: (response) => {
+      if (response.status !== 204) {
+        throw invalidGitHubApiResponse(path, response.status);
+      }
+    },
+  });
+}
+
+async function requestGitHubApi<Value>(
+  dependencies: GitHubApiDependencies,
+  {
+    headers,
+    init,
+    path,
+    readSuccessfulResponse,
+  }: {
+    headers: HeadersInit;
+    init?: RequestInit;
+    path: string;
+    readonly readSuccessfulResponse: (
+      response: Response,
+      signal: AbortSignal,
+    ) => Value | Promise<Value>;
+  },
+): Promise<Value> {
   const requestHeaders = new Headers(headers);
 
   for (const [name, value] of new Headers(init?.headers)) {
@@ -95,29 +167,7 @@ export async function fetchGitHubApiJson<Schema extends z.ZodType>(
       throw new GitHubApiError(response.status, `GitHub API request failed: ${path}`, rateLimited);
     }
 
-    const bodyRead = await readBodyUpTo(response.body, maxResponseBodyBytes, requestSignal);
-
-    if (!bodyRead.ok) {
-      throw invalidGitHubApiResponse(path, response.status);
-    }
-
-    const responseText = new TextDecoder().decode(bodyRead.bytes);
-
-    let responseBody: unknown;
-
-    try {
-      responseBody = JSON.parse(responseText);
-    } catch {
-      throw invalidGitHubApiResponse(path, response.status);
-    }
-
-    const parsed = responseSchema.safeParse(responseBody);
-
-    if (!parsed.success) {
-      throw invalidGitHubApiResponse(path, response.status);
-    }
-
-    return parsed.data;
+    return await readSuccessfulResponse(response, requestSignal);
   } catch (error) {
     if (error instanceof GitHubApiError) {
       throw error;

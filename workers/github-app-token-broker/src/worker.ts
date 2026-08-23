@@ -7,8 +7,11 @@ import {
 import type { GitHubAppEnv } from "@github-app-token-broker/github/app";
 import type { InstallationAccessTokenExchange } from "./installation-access-token-exchange.ts";
 import { createInstallationAccessTokenExchange } from "./installation-access-token-exchange.ts";
-import { observeTokenExchangeWithConsole } from "./observability.ts";
-import type { ObserveTokenExchange } from "./observability.ts";
+import {
+  observeOidcDiagnosticWithConsole,
+  observeTokenExchangeWithConsole,
+} from "./observability.ts";
+import type { ObserveOidcDiagnostic, ObserveTokenExchange } from "./observability.ts";
 import {
   handleTokenExchangeRequest,
   tokenExchangeMethodNotAllowedResponse,
@@ -32,6 +35,7 @@ export interface TokenExchangeWorkerRuntimeDependencies {
   readonly fetch: typeof fetch;
   readonly now: () => Date;
   readonly observe?: ObserveTokenExchange;
+  readonly observeOidcDiagnostic?: ObserveOidcDiagnostic;
 }
 
 export interface TokenExchangeWorkerEnv extends GitHubAppEnv {
@@ -57,6 +61,8 @@ export function createTokenExchangeWorker(
     fetch: runtimeDependencies.fetch,
     now: runtimeDependencies.now,
     observe: runtimeDependencies.observe ?? observeTokenExchangeWithConsole,
+    observeOidcDiagnostic:
+      runtimeDependencies.observeOidcDiagnostic ?? observeOidcDiagnosticWithConsole,
     oidcProviderRegistrations,
     tokenIssuancePolicy,
   });
@@ -83,7 +89,13 @@ export function createTokenExchangeWorker(
               {
                 fetch: (input, init) => workerDependencies.fetch(input, init),
                 now: () => workerDependencies.now(),
-                observe: (event) => workerDependencies.observe({ fields: event, level: "warn" }),
+                observe: (event) => {
+                  try {
+                    workerDependencies.observeOidcDiagnostic({ fields: event, level: "warn" });
+                  } catch {
+                    // Optional diagnostics must not affect authentication or token issuance.
+                  }
+                },
               },
             ),
             observe: workerDependencies.observe,

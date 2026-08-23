@@ -1,7 +1,12 @@
 import * as z from "zod";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { fetchGitHubApiJson, GitHubApiError, GitHubApiTransportError } from "../src/http.ts";
+import {
+  fetchGitHubApiJson,
+  GitHubApiError,
+  GitHubApiTransportError,
+  revokeGitHubInstallationAccessToken,
+} from "../src/http.ts";
 
 const responseSchema = z.object({ value: z.string() });
 const requestPath = "/test/response";
@@ -11,6 +16,65 @@ afterEach(() => {
 });
 
 describe("GitHub API HTTP adapter", () => {
+  it("revokes an Installation Access Token at the fixed GitHub API endpoint", async () => {
+    const fetchGitHub = vi.fn<typeof fetch>(async (input, init) => {
+      expect(input).toEqual(new URL("https://api.github.com/installation/token"));
+      expect(init?.method).toBe("DELETE");
+      expect(init?.redirect).toBe("manual");
+      expect(init?.body).toBeUndefined();
+
+      const headers = new Headers(init?.headers);
+      expect(headers.get("accept")).toBe("application/vnd.github+json");
+      expect(headers.get("authorization")).toBe("Bearer ghs_token_to_revoke");
+      expect(headers.get("user-agent")).toBe("github-app-token-broker");
+      expect(headers.get("x-github-api-version")).toBe("2022-11-28");
+
+      return new Response(null, { status: 204 });
+    });
+
+    await expect(
+      revokeGitHubInstallationAccessToken({ fetch: fetchGitHub }, "ghs_token_to_revoke"),
+    ).resolves.toBeUndefined();
+    expect(fetchGitHub).toHaveBeenCalledOnce();
+  });
+
+  it.each([200, 302, 503])("rejects revocation response status %s", async (status) => {
+    const fetchGitHub = vi.fn<typeof fetch>(
+      async () =>
+        new Response("private revocation failure", {
+          ...(status === 302 ? { headers: { location: "https://attacker.example/token" } } : {}),
+          status,
+        }),
+    );
+
+    await expect(
+      revokeGitHubInstallationAccessToken({ fetch: fetchGitHub }, "ghs_token_to_revoke"),
+    ).rejects.toBeInstanceOf(GitHubApiError);
+    expect(fetchGitHub).toHaveBeenCalledOnce();
+  });
+
+  it("bounds Installation Access Token revocation with the fixed GitHub deadline", async () => {
+    const deadline = new AbortController();
+    const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(deadline.signal);
+    let requestSignal: AbortSignal | null | undefined;
+    const result = revokeGitHubInstallationAccessToken(
+      {
+        fetch: async (_input, init) => {
+          requestSignal = init?.signal;
+
+          return new Promise<Response>(() => undefined);
+        },
+      },
+      "ghs_token_to_revoke",
+    );
+
+    deadline.abort(new DOMException("private timeout detail", "TimeoutError"));
+
+    await expect(result).rejects.toBeInstanceOf(GitHubApiTransportError);
+    expect(timeout).toHaveBeenCalledWith(10_000);
+    expect(requestSignal?.aborted).toBe(true);
+  });
+
   it("uses the fixed GitHub API origin, merges headers, and parses a valid response", async () => {
     const fetchGitHub = vi.fn<typeof fetch>(async (input, init) => {
       expect(input).toEqual(new URL("https://api.github.com/test/response"));

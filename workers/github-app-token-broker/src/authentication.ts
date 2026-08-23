@@ -43,7 +43,7 @@ export async function authenticateOidcIdToken(
     const reason = authenticationFailureReason(failure);
     const diagnostics = authenticationFailureDiagnostics(failure);
 
-    observeAuthenticationFailure(observe, request, reason, diagnostics);
+    await observeAuthenticationFailure(observe, request, reason, diagnostics);
 
     return {
       ...diagnostics,
@@ -61,15 +61,15 @@ export async function authenticateOidcIdToken(
   };
 }
 
-function observeAuthenticationFailure(
+async function observeAuthenticationFailure(
   observe: ObserveTokenExchange,
   request: Request,
   reason: OidcAuthenticationFailureReason,
   diagnostics: Pick<AuthenticateRequestFailure, "diagnosticCode" | "providerHttpStatus">,
-): void {
+): Promise<void> {
   const url = new URL(request.url);
 
-  observe({
+  await observe({
     fields: {
       ...diagnostics,
       path: url.pathname,
