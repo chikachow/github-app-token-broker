@@ -437,6 +437,59 @@ describe("Token Exchange Worker boundary", () => {
     expect(observedIssuers).toEqual(["222", "222", "111", "111"]);
   });
 
+  it("keeps each overlapping request on its selected private-key binding", async () => {
+    const bindingReads: string[] = [];
+    const bindingA = {
+      get: vi.fn(async () => {
+        bindingReads.push("A");
+        return testEnv.GITHUB_APP_PRIVATE_KEY as string;
+      }),
+    };
+    const bindingB = {
+      get: vi.fn(async () => {
+        bindingReads.push("B");
+        return testEnv.GITHUB_APP_PRIVATE_KEY as string;
+      }),
+    };
+    let releaseAppA: () => void = () => undefined;
+    let markAppAWaiting: () => void = () => undefined;
+    const appARelease = new Promise<void>((resolve) => {
+      releaseAppA = resolve;
+    });
+    const appAWaiting = new Promise<void>((resolve) => {
+      markAppAWaiting = resolve;
+    });
+    const worker = createTokenExchangeWorker(
+      testTokenExchangeComposition,
+      testTokenExchangeWorkerRuntimeDependencies,
+    );
+    const appAEnv = {
+      ...testEnv,
+      GITHUB_APP_PRIVATE_KEY: bindingA,
+      TOKEN_EXCHANGE_RATE_LIMIT: {
+        limit: async () => {
+          markAppAWaiting();
+          await appARelease;
+
+          return { success: true };
+        },
+      },
+    };
+    const appBEnv = { ...testEnv, GITHUB_APP_PRIVATE_KEY: bindingB };
+
+    const appAResponsePromise = invokeWorker(worker, await tokenRequest(), appAEnv);
+    await appAWaiting;
+    const appBResponse = await invokeWorker(worker, await tokenRequest(), appBEnv);
+    releaseAppA();
+    const appAResponse = await appAResponsePromise;
+
+    expect(appAResponse.status).toBe(200);
+    expect(appBResponse.status).toBe(200);
+    expect(bindingA.get).toHaveBeenCalledOnce();
+    expect(bindingB.get).toHaveBeenCalledOnce();
+    expect(bindingReads).toEqual(["B", "A"]);
+  });
+
   it("sanitizes a changed audience after configuration is cached", async () => {
     const worker = createTokenExchangeWorker(
       testTokenExchangeComposition,
