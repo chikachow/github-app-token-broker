@@ -1,15 +1,9 @@
 import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-github-actions";
 import {
   createGitHubAppTokenExchange,
-  maxTokenExchangeBodyBytes,
-  tokenExchangeInvalidRequestResponse,
   type GitHubAppTokenExchangeConfiguration,
-  type ObserveOidcDiagnostic,
-  type ObserveTokenExchange,
-  type TokenExchangeComposition,
   type TokenExchangeHandler,
   type TokenExchangeObservation,
-  type TokenExchangeRequestContext,
   type TokenExchangeRuntimeDependencies,
 } from "@github-app-token-broker/token-exchange";
 import { decodeJwt } from "jose";
@@ -30,18 +24,12 @@ import {
 } from "./support/oidc.ts";
 import { testPrivateKeyPem } from "./support/rsa-test-key-pair.ts";
 import { testTokenIssuancePolicy } from "./support/token-issuance-policy.ts";
-
-const configuration = {
-  composition: {
-    oidcProviderRegistrations: [githubActionsOidcProviderRegistration],
-    tokenIssuancePolicy: testTokenIssuancePolicy,
-  } satisfies TokenExchangeComposition,
-  githubApp: {
-    appId: "2419473",
-    privateKey: testPrivateKeyPem,
-  },
-  subjectTokenAudience: "https://broker.example",
-} satisfies GitHubAppTokenExchangeConfiguration;
+import {
+  fetchTokenExchangeExternalTestDouble as fetchExternal,
+  testGitHubAppTokenExchangeConfiguration as configuration,
+  tokenExchangeRequest as tokenRequest,
+  tokenExchangeRequestContext as requestContext,
+} from "./support/github-app-token-exchange.ts";
 const defaultInstallationAccessTokenRequestLogFields = {
   permissions: { contents: "write", pull_requests: "write" },
   resource: `https://api.github.com/repos/${testRepository}`,
@@ -693,92 +681,6 @@ describe("GitHub App Token Exchange public interface", () => {
     }
   });
 
-  it("awaits successful revocation before failing closed on a post-mint observation failure", async () => {
-    const observerFailure = "private post-mint observer failure";
-    const githubRequests: Request[] = [];
-    const observedEvents: unknown[] = [];
-    let completeRevocation: (response: Response) => void = () => undefined;
-    let markRevocationStarted: () => void = () => undefined;
-    const revocation = new Promise<Response>((resolve) => {
-      completeRevocation = resolve;
-    });
-    const revocationStarted = new Promise<void>((resolve) => {
-      markRevocationStarted = resolve;
-    });
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: (input, init) => {
-        const request = new Request(input, init);
-
-        if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
-          return fetchOidcRemoteDocumentResponseTestDouble(request);
-        }
-
-        githubRequests.push(request);
-
-        if (
-          request.method === "DELETE" &&
-          new URL(request.url).pathname === "/installation/token"
-        ) {
-          markRevocationStarted();
-
-          return revocation;
-        }
-
-        return fetchGitHubTestDouble(request);
-      },
-      now: () => testNow,
-    });
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-
-    try {
-      let responseSettled = false;
-      const responsePromise = tokenExchange(await tokenRequest(), {
-        observe: async (observation) => {
-          const event = observation.fields["event"];
-          observedEvents.push(event);
-
-          if (event === "installation_access_token_issuance_succeeded") {
-            throw new Error(observerFailure);
-          }
-        },
-      }).then((response) => {
-        responseSettled = true;
-
-        return response;
-      });
-
-      await revocationStarted;
-      await Promise.resolve();
-      expect(responseSettled).toBe(false);
-      completeRevocation(new Response(null, { status: 204 }));
-      const response = await responsePromise;
-      const responseBody = await response.json();
-
-      expect(response.status).toBe(500);
-      expect(responseBody).toEqual({ error: "server_error" });
-      expect(JSON.stringify(responseBody)).not.toContain("ghs_test_token");
-      expect(observedEvents).toEqual([
-        "installation_access_token_issuance_started",
-        "installation_access_token_issuance_succeeded",
-      ]);
-      expect(
-        githubRequests.map((request) => ({
-          method: request.method,
-          path: new URL(request.url).pathname,
-        })),
-      ).toEqual([
-        { method: "GET", path: `/repos/${testRepository}/installation` },
-        { method: "POST", path: `/app/installations/${testInstallationId}/access_tokens` },
-        { method: "DELETE", path: "/installation/token" },
-      ]);
-      expect(githubRequests[2]?.headers.get("authorization")).toBe("Bearer ghs_test_token");
-      expect(JSON.stringify(consoleError.mock.calls)).not.toContain(observerFailure);
-      expect(JSON.stringify(consoleError.mock.calls)).not.toContain("ghs_test_token");
-    } finally {
-      consoleError.mockRestore();
-    }
-  });
-
   it("does not return or re-observe a token when GitHub rejects revocation", async () => {
     const observerFailure = "private post-mint observer failure";
     const githubRequests: Request[] = [];
@@ -846,7 +748,7 @@ describe("GitHub App Token Exchange public interface", () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     try {
-      const response = await tokenExchange(formRequest(), {
+      const response = await tokenExchange(invalidSubjectTokenRequest(), {
         observe: async () => {
           throw new Error("private authentication observation failure");
         },
@@ -944,294 +846,21 @@ describe("GitHub App Token Exchange public interface", () => {
       ]);
     },
   );
-
-  it("validates method and media type without external I/O", async () => {
-    const fetchExternal = vi.fn<typeof fetch>();
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: fetchExternal,
-      now: () => testNow,
-    });
-
-    const methodResponse = await tokenExchange(
-      new Request("https://broker.example/token", {
-        body: await tokenExchangeRequestBody(),
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        method: "PUT",
-      }),
-      requestContext(),
-    );
-    const mediaTypeResponse = await tokenExchange(
-      new Request("https://broker.example/token", { body: "ignored", method: "POST" }),
-      requestContext(),
-    );
-
-    expect(methodResponse.status).toBe(400);
-    await expect(methodResponse.json()).resolves.toEqual({ error: "invalid_request" });
-    expect(mediaTypeResponse.status).toBe(400);
-    await expect(mediaTypeResponse.json()).resolves.toEqual({ error: "invalid_request" });
-    expect(fetchExternal).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    ["Basic dW5zdXBwb3J0ZWQ=", 'Basic realm="github-app-token-broker"'],
-    ["Bearer subject-token", 'Bearer realm="github-app-token-broker"'],
-    ["1invalid credentials", 'Basic realm="github-app-token-broker"'],
-  ])("rejects client authentication using the %s challenge", async (authorization, challenge) => {
-    const fetchExternal = vi.fn<typeof fetch>();
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: fetchExternal,
-      now: () => testNow,
-    });
-    const request = formRequest();
-    request.headers.set("authorization", authorization);
-    const response = await tokenExchange(request, requestContext());
-
-    expect(response.status).toBe(401);
-    expect(response.headers.get("www-authenticate")).toBe(challenge);
-    await expect(response.json()).resolves.toEqual({ error: "invalid_client" });
-    expect(fetchExternal).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    [
-      "urn:chikachow:github-app-installation-access-token",
-      "urn:chikachow:github-app-installation-access-token",
-    ],
-    [
-      "urn:ietf:params:oauth:token-type:access_token",
-      "urn:ietf:params:oauth:token-type:access_token",
-    ],
-  ])("echoes the supported requested token type %s", async (requestedTokenType, expectedType) => {
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: fetchExternal,
-      now: () => testNow,
-    });
-    const response = await tokenExchange(
-      await tokenRequest({ requested_token_type: requestedTokenType }),
-      requestContext(),
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({ issued_token_type: expectedType });
-  });
-
-  it("canonicalizes reordered permission scope in the response", async () => {
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: fetchExternal,
-      now: () => testNow,
-    });
-    const response = await tokenExchange(
-      await tokenRequest({ scope: "pull_requests:write contents:write" }),
-      requestContext(),
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      scope: "contents:write pull_requests:write",
-    });
-  });
-
-  it.each([
-    ["missing grant type", { grant_type: null }, "invalid_request"],
-    ["unsupported grant type", { grant_type: "urn:example:unsupported" }, "unsupported_grant_type"],
-    ["missing subject token", { subject_token: null }, "invalid_request"],
-    ["empty subject token", { subject_token: "" }, "invalid_request"],
-    [
-      "generic JWT subject-token type",
-      { subject_token_type: "urn:ietf:params:oauth:token-type:jwt" },
-      "invalid_request",
-    ],
-    ["missing requested token type", { requested_token_type: null }, "invalid_request"],
-    [
-      "unsupported requested token type",
-      { requested_token_type: "urn:example:unknown" },
-      "invalid_request",
-    ],
-    ["non-empty audience", { audience: "https://broker.example" }, "invalid_target"],
-    ["missing scope", { scope: null }, "invalid_scope"],
-    ["empty scope", { scope: "" }, "invalid_scope"],
-    ["padded scope", { scope: " contents:write" }, "invalid_scope"],
-    [
-      "malformed resource",
-      { resource: "https://github.com/fixture-owner/fixture-source-repository" },
-      "invalid_target",
-    ],
-  ] as const)("rejects %s through the public handler", async (_scenario, overrides, error) => {
-    const fetchExternal = vi.fn<typeof fetch>();
-    const observe = vi.fn(async () => undefined);
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: fetchExternal,
-      now: () => testNow,
-    });
-    const response = await tokenExchange(formRequest(overrides), { observe });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error });
-    expect(observe).not.toHaveBeenCalled();
-    expect(fetchExternal).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    "actor_token",
-    "actor_token_type",
-    "authorization_details",
-    "client_assertion",
-    "client_assertion_type",
-    "client_id",
-    "client_secret",
-  ] as const)("rejects a non-empty unsupported %s", async (field) => {
-    const fetchExternal = vi.fn<typeof fetch>();
-    const observe = vi.fn(async () => undefined);
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: fetchExternal,
-      now: () => testNow,
-    });
-    const response = await tokenExchange(formRequest({ [field]: "unsupported" }), { observe });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error: "invalid_request" });
-    expect(observe).not.toHaveBeenCalled();
-    expect(fetchExternal).not.toHaveBeenCalled();
-  });
-
-  it("ignores empty unsupported parameters before authenticating the Subject Token", async () => {
-    const observe = vi.fn(async () => undefined);
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: vi.fn<typeof fetch>(),
-      now: () => testNow,
-    });
-    const form = validForm();
-
-    for (const field of [
-      "actor_token",
-      "actor_token_type",
-      "authorization_details",
-      "client_assertion",
-      "client_assertion_type",
-      "client_id",
-      "client_secret",
-    ]) {
-      form.append(field, "");
-    }
-
-    const response = await tokenExchange(formRequest({}, form), { observe });
-
-    expect(response.status).toBe(400);
-    expect(observe).toHaveBeenCalledWith({
-      fields: {
-        diagnosticCode: "ERR_JWT_INVALID",
-        path: "/token",
-        reason: "invalid_token",
-        userAgent: null,
-      },
-      level: "warn",
-      message: "OIDC authentication failed",
-    });
-  });
-
-  it("rejects duplicate non-empty singleton values and accepts surrounding empty values", async () => {
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: vi.fn<typeof fetch>(),
-      now: () => testNow,
-    });
-    const rejectedForm = validForm();
-    rejectedForm.append("scope", "contents:read");
-    const rejectedObserve = vi.fn(async () => undefined);
-    const rejected = await tokenExchange(formRequest({}, rejectedForm), {
-      observe: rejectedObserve,
-    });
-    const acceptedForm = validForm();
-    acceptedForm.append("scope", "");
-    acceptedForm.append("resource", "");
-    const acceptedObserve = vi.fn(async () => undefined);
-    const accepted = await tokenExchange(formRequest({}, acceptedForm), {
-      observe: acceptedObserve,
-    });
-
-    expect(rejected.status).toBe(400);
-    expect(rejectedObserve).not.toHaveBeenCalled();
-    expect(accepted.status).toBe(400);
-    expect(acceptedObserve).toHaveBeenCalled();
-  });
-
-  it("accepts an empty singleton occurrence before its non-empty value", async () => {
-    const observations: TokenExchangeObservation[] = [];
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: fetchExternal,
-      now: () => testNow,
-    });
-    const validBody = new URLSearchParams(await tokenExchangeRequestBody());
-    const form = new URLSearchParams([["grant_type", ""], ...validBody]);
-    const response = await tokenExchange(
-      new Request("https://broker.example/token", {
-        body: form,
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        method: "POST",
-      }),
-      {
-        observe: async (observation) => {
-          observations.push(observation);
-        },
-      },
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({ access_token: "ghs_test_token" });
-    expect(observations.map(({ fields }) => fields["event"])).toEqual([
-      "installation_access_token_issuance_started",
-      "installation_access_token_issuance_succeeded",
-    ]);
-  });
-
-  it("rejects an oversized body before authentication", async () => {
-    const observe = vi.fn(async () => undefined);
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: vi.fn<typeof fetch>(),
-      now: () => testNow,
-    });
-    const response = await tokenExchange(
-      new Request("https://broker.example/token", {
-        body: `grant_type=x&subject_token=${"x".repeat(64 * 1024)}`,
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        method: "POST",
-      }),
-      { observe },
-    );
-
-    expect(response.status).toBe(413);
-    await expect(response.json()).resolves.toEqual({ error: "invalid_request" });
-    expect(observe).not.toHaveBeenCalled();
-  });
-
-  it("does not expose a configurable GitHub API destination", () => {
-    const invalidConfiguration: GitHubAppTokenExchangeConfiguration = {
-      ...configuration,
-      githubApp: {
-        ...configuration.githubApp,
-        // @ts-expect-error The GitHub API destination is fixed by the GitHub module.
-        apiBaseUrl: "https://attacker.invalid",
-      },
-    };
-
-    expect(invalidConfiguration.githubApp.appId).toBe(configuration.githubApp.appId);
-  });
-
-  it("exposes only the HTTP adapter facts needed to enforce the request-body contract", async () => {
-    expect(maxTokenExchangeBodyBytes).toBe(64 * 1024);
-
-    const response = tokenExchangeInvalidRequestResponse(413);
-
-    expect(response.status).toBe(413);
-    expect(response.headers.get("cache-control")).toBe("no-store");
-    await expect(response.json()).resolves.toEqual({ error: "invalid_request" });
-  });
 });
 
-function requestContext(): TokenExchangeRequestContext {
-  const observe: ObserveTokenExchange = async () => undefined;
-  const observeOidcDiagnostic: ObserveOidcDiagnostic = () => undefined;
-
-  return { observe, observeOidcDiagnostic };
+function invalidSubjectTokenRequest(): Request {
+  return new Request("https://broker.example/token", {
+    body: new URLSearchParams({
+      grant_type: tokenExchangeGrantType,
+      requested_token_type: accessTokenType,
+      resource: "https://api.github.com/repos/fixture-owner/fixture-source-repository",
+      scope: "contents:write pull_requests:write",
+      subject_token: "not-a-jwt",
+      subject_token_type: oidcIdTokenType,
+    }),
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    method: "POST",
+  });
 }
 
 function expectedIssuanceObservationFields({
@@ -1257,22 +886,6 @@ function expectedIssuanceObservationFields({
   };
 }
 
-async function tokenRequest(form: Record<string, string> = {}): Promise<Request> {
-  return new Request("https://broker.example/token", {
-    body: await tokenExchangeRequestBody({ form }),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    method: "POST",
-  });
-}
-
-function fetchExternal(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  const request = new Request(input, init);
-
-  return new URL(request.url).hostname === "token.actions.githubusercontent.com"
-    ? fetchOidcRemoteDocumentResponseTestDouble(request)
-    : fetchGitHubTestDouble(request);
-}
-
 const runtimeDependencies = {
   fetch: fetchExternal,
   now: () => testNow,
@@ -1282,35 +895,3 @@ const publicHandler: TokenExchangeHandler = createGitHubAppTokenExchange(
   runtimeDependencies,
 );
 void publicHandler;
-
-function validForm(overrides: Record<string, string | null> = {}): URLSearchParams {
-  const form = new URLSearchParams({
-    grant_type: tokenExchangeGrantType,
-    requested_token_type: accessTokenType,
-    resource: "https://api.github.com/repos/fixture-owner/fixture-source-repository",
-    scope: "contents:write pull_requests:write",
-    subject_token: "not-a-jwt",
-    subject_token_type: oidcIdTokenType,
-  });
-
-  for (const [key, value] of Object.entries(overrides)) {
-    if (value === null) {
-      form.delete(key);
-    } else {
-      form.set(key, value);
-    }
-  }
-
-  return form;
-}
-
-function formRequest(
-  overrides: Record<string, string | null> = {},
-  form: URLSearchParams = validForm(overrides),
-): Request {
-  return new Request("https://broker.example/token", {
-    body: form,
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    method: "POST",
-  });
-}
