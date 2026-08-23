@@ -831,59 +831,12 @@ describe("OIDC ID Token Authenticator", () => {
   });
 
   it("publishes a coalesced JWK Set refresh failure once", async () => {
-    let now = new Date("2026-01-01T00:00:00Z");
-    let jwksRequests = 0;
-    const failedRefresh = Promise.withResolvers<Response>();
-    const refreshStarted = Promise.withResolvers<void>();
     const events: OidcIdTokenAuthenticationEvent[] = [];
-    const fetchOidcRemoteDocumentResponse = vi.fn<typeof fetch>((input) => {
-      const url = new Request(input).url;
+    const scenario = await beginCoalescedJwksRefreshFailure((event) => events.push(event));
 
-      if (url === `${issuer}/.well-known/openid-configuration`) {
-        return Promise.resolve(providerConfigurationResponse("max-age=300"));
-      }
-
-      if (url === jwksUri) {
-        jwksRequests += 1;
-
-        if (jwksRequests === 1) {
-          return Promise.resolve(
-            Response.json({ keys: [testPublicJwk] }, { headers: { "cache-control": "max-age=1" } }),
-          );
-        }
-
-        refreshStarted.resolve();
-        return failedRefresh.promise;
-      }
-
-      return Promise.resolve(new Response(null, { status: 404 }));
-    });
-    const authenticator = createOidcIdTokenAuthenticator(
-      {
-        providerRegistrations: [registration],
-        subjectTokenAudience,
-      },
-      {
-        fetch: fetchOidcRemoteDocumentResponse,
-        now: () => now,
-        observe: (event) => events.push(event),
-      },
-    );
-    const subjectToken = await signedIdToken();
-
-    await expect(authenticator.authenticateIdToken(subjectToken)).resolves.toMatchObject({
-      ok: true,
-    });
-    now = new Date(now.getTime() + 1_001);
-    const results = Promise.all([
-      authenticator.authenticateIdToken(subjectToken),
-      authenticator.authenticateIdToken(subjectToken),
-    ]);
-
-    await refreshStarted.promise;
-    expect(jwksRequests).toBe(2);
-    failedRefresh.resolve(new Response(null, { status: 503 }));
-    expect((await results).every((result) => result.ok)).toBe(true);
+    expect(scenario.jwksRequests()).toBe(2);
+    scenario.failedRefresh.resolve(new Response(null, { status: 503 }));
+    expect((await scenario.results).every((result) => result.ok)).toBe(true);
     expect(
       events.filter(
         (event) =>
@@ -905,10 +858,12 @@ describe("OIDC ID Token Authenticator", () => {
       ),
     ).toHaveLength(2);
 
-    await expect(authenticator.authenticateIdToken(subjectToken)).resolves.toMatchObject({
+    await expect(
+      scenario.authenticator.authenticateIdToken(scenario.subjectToken),
+    ).resolves.toMatchObject({
       ok: true,
     });
-    expect(jwksRequests).toBe(2);
+    expect(scenario.jwksRequests()).toBe(2);
     expect(
       events.filter(
         (event) =>
@@ -923,6 +878,41 @@ describe("OIDC ID Token Authenticator", () => {
           event.remoteDocumentKind === "jwk_set",
       ),
     ).toHaveLength(3);
+  });
+
+  it("fails every coalesced caller closed when the shared JWK Set refresh-failure observer throws", async () => {
+    const events: OidcIdTokenAuthenticationEvent[] = [];
+    const scenario = await beginCoalescedJwksRefreshFailure((event) => {
+      events.push(event);
+
+      if (
+        event.event === "oidc_remote_document_refresh_failed" &&
+        event.remoteDocumentKind === "jwk_set"
+      ) {
+        throw new Error("JWK Set refresh-failure observer unavailable");
+      }
+    });
+
+    expect(scenario.jwksRequests()).toBe(2);
+    scenario.failedRefresh.resolve(new Response(null, { status: 503 }));
+    await expect(scenario.results).resolves.toEqual([
+      expectedFailure("internal_failure"),
+      expectedFailure("internal_failure"),
+    ]);
+    expect(
+      events.filter(
+        (event) =>
+          event.event === "oidc_remote_document_refresh_failed" &&
+          event.remoteDocumentKind === "jwk_set",
+      ),
+    ).toHaveLength(1);
+    expect(
+      events.filter(
+        (event) =>
+          event.event === "oidc_remote_document_stale_used" &&
+          event.remoteDocumentKind === "jwk_set",
+      ),
+    ).toEqual([]);
   });
 
   it("does not reuse a cached JWK Set after metadata changes the accepted signing-algorithm intersection", async () => {
@@ -1928,6 +1918,67 @@ describe("OIDC ID Token Authenticator", () => {
     expect(invalidSubjectTokenRejection.failure.kind).toBe("subject_token_rejected");
   });
 });
+
+async function beginCoalescedJwksRefreshFailure(
+  observe: (event: OidcIdTokenAuthenticationEvent) => void,
+) {
+  let now = new Date("2026-01-01T00:00:00Z");
+  let jwksRequests = 0;
+  const failedRefresh = Promise.withResolvers<Response>();
+  const refreshStarted = Promise.withResolvers<void>();
+  const fetchOidcRemoteDocumentResponse = vi.fn<typeof fetch>((input) => {
+    const url = new Request(input).url;
+
+    if (url === `${issuer}/.well-known/openid-configuration`) {
+      return Promise.resolve(providerConfigurationResponse("max-age=300"));
+    }
+
+    if (url === jwksUri) {
+      jwksRequests += 1;
+
+      if (jwksRequests === 1) {
+        return Promise.resolve(
+          Response.json({ keys: [testPublicJwk] }, { headers: { "cache-control": "max-age=1" } }),
+        );
+      }
+
+      refreshStarted.resolve();
+      return failedRefresh.promise;
+    }
+
+    return Promise.resolve(new Response(null, { status: 404 }));
+  });
+  const authenticator = createOidcIdTokenAuthenticator(
+    {
+      providerRegistrations: [registration],
+      subjectTokenAudience,
+    },
+    {
+      fetch: fetchOidcRemoteDocumentResponse,
+      now: () => now,
+      observe,
+    },
+  );
+  const subjectToken = await signedIdToken();
+
+  await expect(authenticator.authenticateIdToken(subjectToken)).resolves.toMatchObject({
+    ok: true,
+  });
+  now = new Date(now.getTime() + 1_001);
+  const results = Promise.all([
+    authenticator.authenticateIdToken(subjectToken),
+    authenticator.authenticateIdToken(subjectToken),
+  ]);
+  await refreshStarted.promise;
+
+  return {
+    authenticator,
+    failedRefresh,
+    jwksRequests: () => jwksRequests,
+    results,
+    subjectToken,
+  };
+}
 
 function expectedFailure(
   kind: AuthenticationFailure["failure"]["kind"],
