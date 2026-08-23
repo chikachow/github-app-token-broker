@@ -21,7 +21,7 @@
     "@github-app-token-broker/http": "workspace:*",
     "@github-app-token-broker/oidc": "workspace:*",
     "@github-app-token-broker/token-issuance-policy": "workspace:*",
-    "jose": "6.2.8",
+    "jose": "6.2.9",
     "zod": "4.4.3"
   }
 }
