@@ -47,6 +47,7 @@ Important invariants:
 - installation lookup must return an installation whose `account.login` matches the requested owner, case-insensitively, before minting
 - the configured GitHub App installation remains the upper bound on repositories and permissions
 - GitHub requests use only `https://api.github.com` and have a broker-owned 10-second deadline covering response headers and the complete bounded body
+- no Installation Access Token is returned until mandatory pre-mint intent and post-mint success observations are acknowledged; failed post-mint acknowledgement triggers awaited best-effort fixed-origin revocation
 - every Token Endpoint success and error response is non-cacheable; an unexpected failure is sanitized to `500 {"error":"server_error"}`, and raw subject/access tokens are not logged
 
 See [the service contract](docs/service-contract.md) for complete request, response, error, provider, and policy behavior; [implementation](docs/implementation.md) for code boundaries; and [deployment](docs/deployment.md) for the public-source/external-deployment interface.

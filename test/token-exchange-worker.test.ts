@@ -75,6 +75,197 @@ describe("Token Exchange Worker boundary", () => {
     });
   });
 
+  it("keeps optional OIDC diagnostics separate from mandatory Token Exchange observations", async () => {
+    const observeOidcDiagnostic = vi.fn(() => {
+      throw new Error("optional OIDC diagnostic failure");
+    });
+    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
+      fetch: testTokenExchangeWorkerRuntimeDependencies.fetch,
+      now: () => testNow,
+      observe: async () => undefined,
+      observeOidcDiagnostic,
+    });
+    const response = await invokeWorker(worker, await tokenRequest());
+
+    expect(response.status).toBe(200);
+    expect(observeOidcDiagnostic).toHaveBeenCalled();
+  });
+
+  it("fails before GitHub I/O when the pre-mint observation is not acknowledged", async () => {
+    const observerFailure = "private pre-mint observer failure";
+    const githubRequests: Request[] = [];
+    const fetchExternal = vi.fn<typeof fetch>((input, init) => {
+      const request = new Request(input, init);
+
+      if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
+        return fetchOidcRemoteDocumentResponseTestDouble(request);
+      }
+
+      githubRequests.push(request);
+
+      return fetchGitHubTestDouble(request);
+    });
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
+      fetch: fetchExternal,
+      now: () => testNow,
+      observe: async (observation) => {
+        if (observation.fields["event"] === "installation_access_token_issuance_started") {
+          throw new Error(observerFailure);
+        }
+      },
+      observeOidcDiagnostic: () => undefined,
+    });
+
+    try {
+      const response = await invokeWorker(worker, await tokenRequest());
+
+      await expectSanitizedServerError(response);
+      expect(githubRequests).toEqual([]);
+      expectSanitizedLog(consoleError, observerFailure, "ghs_test_token");
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it("revokes a minted token before failing when the success observation is not acknowledged", async () => {
+    const observerFailure = "private post-mint observer failure";
+    const githubRequests: Request[] = [];
+    const observedEvents: unknown[] = [];
+    let completeRevocation: (response: Response) => void = () => undefined;
+    let markRevocationStarted: () => void = () => undefined;
+    const revocation = new Promise<Response>((resolve) => {
+      completeRevocation = resolve;
+    });
+    const revocationStarted = new Promise<void>((resolve) => {
+      markRevocationStarted = resolve;
+    });
+    const fetchExternal = vi.fn<typeof fetch>((input, init) => {
+      const request = new Request(input, init);
+
+      if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
+        return fetchOidcRemoteDocumentResponseTestDouble(request);
+      }
+
+      githubRequests.push(request);
+
+      if (request.method === "DELETE" && new URL(request.url).pathname === "/installation/token") {
+        markRevocationStarted();
+
+        return revocation;
+      }
+
+      return fetchGitHubTestDouble(request);
+    });
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
+      fetch: fetchExternal,
+      now: () => testNow,
+      observe: async (observation) => {
+        const event = observation.fields["event"];
+        observedEvents.push(event);
+
+        if (event === "installation_access_token_issuance_succeeded") {
+          throw new Error(observerFailure);
+        }
+      },
+      observeOidcDiagnostic: () => undefined,
+    });
+
+    try {
+      let responseSettled = false;
+      const responsePromise = invokeWorker(worker, await tokenRequest()).then((response) => {
+        responseSettled = true;
+
+        return response;
+      });
+
+      await revocationStarted;
+      await Promise.resolve();
+      expect(responseSettled).toBe(false);
+      completeRevocation(new Response(null, { status: 204 }));
+      const response = await responsePromise;
+
+      await expectSanitizedServerError(response);
+      expect(observedEvents).toEqual([
+        "installation_access_token_issuance_started",
+        "installation_access_token_issuance_succeeded",
+      ]);
+      expect(
+        githubRequests.map((request) => ({
+          method: request.method,
+          path: new URL(request.url).pathname,
+        })),
+      ).toEqual([
+        { method: "GET", path: `/repos/${testRepository}/installation` },
+        { method: "POST", path: `/app/installations/${testInstallationId}/access_tokens` },
+        { method: "DELETE", path: "/installation/token" },
+      ]);
+      const revocationRequest = githubRequests[2];
+      expect(revocationRequest?.headers.get("authorization")).toBe("Bearer ghs_test_token");
+      expectSanitizedLog(consoleError, observerFailure, "ghs_test_token");
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  it("does not return or re-observe a token when GitHub rejects revocation", async () => {
+    const observerFailure = "private post-mint observer failure";
+    const githubRequests: Request[] = [];
+    const observedEvents: unknown[] = [];
+    const fetchExternal = vi.fn<typeof fetch>((input, init) => {
+      const request = new Request(input, init);
+
+      if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
+        return fetchOidcRemoteDocumentResponseTestDouble(request);
+      }
+
+      githubRequests.push(request);
+
+      return request.method === "DELETE" && new URL(request.url).pathname === "/installation/token"
+        ? Promise.resolve(new Response("private revocation response", { status: 503 }))
+        : fetchGitHubTestDouble(request);
+    });
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
+      fetch: fetchExternal,
+      now: () => testNow,
+      observe: async (observation) => {
+        const event = observation.fields["event"];
+        observedEvents.push(event);
+
+        if (event === "installation_access_token_issuance_succeeded") {
+          throw new Error(observerFailure);
+        }
+      },
+      observeOidcDiagnostic: () => undefined,
+    });
+
+    try {
+      const response = await invokeWorker(worker, await tokenRequest());
+
+      await expectSanitizedServerError(response);
+      expect(observedEvents).toEqual([
+        "installation_access_token_issuance_started",
+        "installation_access_token_issuance_succeeded",
+      ]);
+      expect(
+        githubRequests.filter(
+          (request) =>
+            request.method === "DELETE" && new URL(request.url).pathname === "/installation/token",
+        ),
+      ).toHaveLength(1);
+      expectSanitizedLog(
+        consoleError,
+        observerFailure,
+        "private revocation response",
+        "ghs_test_token",
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   it("wires a policy rejection to the public Token Endpoint contract", async () => {
     const response = await fetchTokenExchange("https://example.test/token", {
       body: await tokenExchangeRequestBody({
@@ -145,7 +336,7 @@ describe("Token Exchange Worker boundary", () => {
     const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
       fetch: fetchExternal,
       now: () => testNow,
-      observe: () => undefined,
+      observe: async () => undefined,
     });
     const response = await invokeWorker(worker, await tokenRequest());
 
@@ -186,7 +377,7 @@ describe("Token Exchange Worker boundary", () => {
       const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
         fetch: fetchExternal,
         now: () => testNow,
-        observe: () => undefined,
+        observe: async () => undefined,
       });
       const response = await invokeWorker(worker, await tokenRequest());
 
@@ -204,7 +395,9 @@ describe("Token Exchange Worker boundary", () => {
       now: () => {
         throw new Error(failureDetail);
       },
-      observe: (observation) => observations.push(observation),
+      observe: async (observation) => {
+        observations.push(observation);
+      },
     });
     const body = await tokenExchangeRequestBody();
     const subjectToken = new URLSearchParams(body).get("subject_token");
@@ -277,7 +470,7 @@ describe("Token Exchange Worker boundary", () => {
     const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
       fetch: sharedFetch,
       now: () => testNow,
-      observe: () => undefined,
+      observe: async () => undefined,
     });
 
     expect((await invokeWorker(worker, await tokenRequest())).status).toBe(200);
@@ -542,11 +735,13 @@ async function expectSanitizedServerError(response: Response): Promise<void> {
 
 function expectSanitizedLog(
   consoleError: ReturnType<typeof vi.spyOn>,
-  privateDetail: string,
+  ...privateDetails: readonly string[]
 ): void {
   expect(consoleError).toHaveBeenCalledWith({
     error: { name: "Error" },
     event: "token_exchange_request_failed",
   });
-  expect(JSON.stringify(consoleError.mock.calls)).not.toContain(privateDetail);
+  for (const privateDetail of privateDetails) {
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(privateDetail);
+  }
 }

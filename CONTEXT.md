@@ -98,6 +98,18 @@ _Avoid_: First matching statement, whole-map equality, GitHub installation permi
 The github-app-token-broker Token Endpoint that accepts an ID Token as the RFC 8693 subject token and returns an **Installation Access Token**.
 _Avoid_: Installation collection endpoint, raw GitHub passthrough
 
+**Mandatory Token Exchange Observation**:
+A high-level authentication, authorization, or issuance fact whose **Acknowledgement** is required before github-app-token-broker completes the corresponding Token Exchange outcome. An **Installation Access Token** is never returned before acknowledgement of its pre-mint intent and post-mint success observations.
+_Avoid_: Optional diagnostic, best-effort log, durable audit record
+
+**Acknowledgement**:
+Fulfilment of the promise returned for a **Mandatory Token Exchange Observation**. It confirms completion according to the selected observation adapter; it does not by itself establish durable persistence.
+_Avoid_: Callback invocation, guaranteed durability, successful token issuance
+
+**Optional OIDC Diagnostic**:
+Best-effort operational information about OIDC remote-document refresh and cache behaviour. Its delivery does not control authentication, authorization, or **Installation Access Token Issuance**.
+_Avoid_: Mandatory Token Exchange Observation, audit acknowledgement, authorization decision
+
 **Subject-Token Audience**:
 The deployment-owned exact non-empty single-line scalar that identifies the logical recipient of incoming ID Tokens. A deployment may choose a URL-shaped or opaque value. It is distinct from the hosted **Token Exchange Endpoint** location and is never derived from request-controlled data or from that endpoint.
 _Avoid_: request host, inferred endpoint identity, client-selected audience

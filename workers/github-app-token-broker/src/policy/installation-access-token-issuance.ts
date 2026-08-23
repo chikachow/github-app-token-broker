@@ -3,7 +3,11 @@ import {
   GitHubInstallationAccessTokenIssuanceError,
   issueInstallationAccessTokenForRepository,
 } from "@github-app-token-broker/github/app";
-import { GitHubApiError, GitHubApiTransportError } from "@github-app-token-broker/github/http";
+import {
+  GitHubApiError,
+  GitHubApiTransportError,
+  revokeGitHubInstallationAccessToken,
+} from "@github-app-token-broker/github/http";
 import type { GitHubAppDependencies, GitHubAppEnv } from "@github-app-token-broker/github/app";
 import type { AuthenticatedContext } from "../authentication.ts";
 import type { InstallationAccessTokenRequest } from "@github-app-token-broker/github/installation-access-token-request";
@@ -51,7 +55,7 @@ export async function issueInstallationAccessTokenForContext(
   );
 
   if (policyEvaluation.outcome !== "permitted") {
-    observe({
+    await observe({
       fields: {
         error: {
           message: "Token Issuance Policy did not permit Installation Access Token Issuance",
@@ -79,48 +83,43 @@ export async function issueInstallationAccessTokenForContext(
     };
   }
 
+  const requestedResourceName = `${installationAccessTokenRequest.resource.owner}/${installationAccessTokenRequest.resource.repository}`;
+
+  await observe({
+    fields: {
+      event: "installation_access_token_issuance_started",
+      installation_access_token_request: installationAccessTokenRequestLogFields(
+        installationAccessTokenRequest,
+      ),
+      subject_token: subjectTokenLogFields(authenticationContext),
+      target_installation: {
+        id: undefined,
+        repository: requestedResourceName,
+      },
+      token_issuance_policy: {
+        outcome: policyEvaluation.outcome,
+      },
+    },
+    level: "info",
+  });
+
+  let installationAccessToken: Awaited<
+    ReturnType<typeof issueInstallationAccessTokenForRepository>
+  >;
+
   try {
-    const requestedResourceName = `${installationAccessTokenRequest.resource.owner}/${installationAccessTokenRequest.resource.repository}`;
-    const installationAccessToken = await issueInstallationAccessTokenForRepository(
+    installationAccessToken = await issueInstallationAccessTokenForRepository(
       githubApp,
       installationAccessTokenRequest.resource,
       installationAccessTokenRequest.permissions,
       dependencies,
     );
-
-    observe({
-      fields: {
-        event: "installation_access_token_issuance_succeeded",
-        expires_at: installationAccessToken.expiresAt,
-        installation_access_token_request: installationAccessTokenRequestLogFields(
-          installationAccessTokenRequest,
-        ),
-        subject_token: subjectTokenLogFields(authenticationContext),
-        target_installation: {
-          id: installationAccessToken.installationId,
-          repository: requestedResourceName,
-        },
-        installation_access_token: {
-          permissions: installationAccessToken.permissions,
-        },
-        token_issuance_policy: {
-          outcome: policyEvaluation.outcome,
-        },
-      },
-      level: "info",
-    });
-
-    return {
-      expiresAt: installationAccessToken.expiresAt,
-      ok: true,
-      token: installationAccessToken.token,
-    };
   } catch (error) {
     const classifiedError =
       error instanceof GitHubInstallationAccessTokenIssuanceError ? error.cause : error;
     const reason = reasonForInstallationAccessTokenIssuanceError(classifiedError);
 
-    observe({
+    await observe({
       fields: {
         error: {
           message: logMessageForInstallationAccessTokenIssuanceError(classifiedError),
@@ -149,6 +148,44 @@ export async function issueInstallationAccessTokenForContext(
 
     return { ok: false, reason };
   }
+
+  try {
+    await observe({
+      fields: {
+        event: "installation_access_token_issuance_succeeded",
+        expires_at: installationAccessToken.expiresAt,
+        installation_access_token_request: installationAccessTokenRequestLogFields(
+          installationAccessTokenRequest,
+        ),
+        subject_token: subjectTokenLogFields(authenticationContext),
+        target_installation: {
+          id: installationAccessToken.installationId,
+          repository: requestedResourceName,
+        },
+        installation_access_token: {
+          permissions: installationAccessToken.permissions,
+        },
+        token_issuance_policy: {
+          outcome: policyEvaluation.outcome,
+        },
+      },
+      level: "info",
+    });
+  } catch {
+    try {
+      await revokeGitHubInstallationAccessToken(dependencies, installationAccessToken.token);
+    } catch {
+      // Revocation is best effort; the minted token must never be returned either way.
+    }
+
+    throw new Error("mandatory Token Exchange observation was not acknowledged");
+  }
+
+  return {
+    expiresAt: installationAccessToken.expiresAt,
+    ok: true,
+    token: installationAccessToken.token,
+  };
 }
 
 function reasonForInstallationAccessTokenIssuanceError(

@@ -33,6 +33,58 @@ const verifiedSubjectToken: VerifiedSubjectToken = createVerifiedSubjectToken({
 const verificationEvidence = { resolvedKeyId: "test-key-1" };
 
 describe("Installation Access Token Issuance", () => {
+  it("awaits and propagates a rejected authorization-denial observation before GitHub I/O", async () => {
+    const observerFailure = new Error("authorization observation failed");
+    const fetchGitHub = vi.fn(fetchGitHubTestDouble);
+
+    await expect(
+      issueInstallationAccessTokenForContext({
+        authenticationContext: { verifiedSubjectToken, verificationEvidence },
+        dependencies: { fetch: fetchGitHub, now: () => testNow },
+        githubApp: testEnv,
+        installationAccessTokenRequest: createInstallationAccessTokenRequest({
+          owner: "other-owner",
+          permissions: tokenRequest.permissions,
+          repository: tokenRequest.resource.repository,
+        }),
+        observe: async () => {
+          throw observerFailure;
+        },
+        tokenIssuancePolicy: testTokenIssuancePolicy,
+      }),
+    ).rejects.toBe(observerFailure);
+    expect(fetchGitHub).not.toHaveBeenCalled();
+  });
+
+  it("awaits and propagates a rejected GitHub-issuance-failure observation", async () => {
+    const observerFailure = new Error("issuance observation failed");
+    const observedEvents: unknown[] = [];
+    const fetchGitHub = vi.fn(async () => new Response(null, { status: 404 }));
+
+    await expect(
+      issueInstallationAccessTokenForContext({
+        authenticationContext: { verifiedSubjectToken, verificationEvidence },
+        dependencies: { fetch: fetchGitHub, now: () => testNow },
+        githubApp: testEnv,
+        installationAccessTokenRequest: tokenRequest,
+        observe: async (observation) => {
+          const event = observation.fields["event"];
+          observedEvents.push(event);
+
+          if (event === "installation_access_token_issuance_failed") {
+            throw observerFailure;
+          }
+        },
+        tokenIssuancePolicy: testTokenIssuancePolicy,
+      }),
+    ).rejects.toBe(observerFailure);
+    expect(fetchGitHub).toHaveBeenCalledOnce();
+    expect(observedEvents).toEqual([
+      "installation_access_token_issuance_started",
+      "installation_access_token_issuance_failed",
+    ]);
+  });
+
   it("does not fetch source repository metadata before minting", async () => {
     const requestedPaths: string[] = [];
 
@@ -127,7 +179,7 @@ describe("Installation Access Token Issuance", () => {
           permissions: requestedPermissions,
           repository: tokenRequest.resource.repository,
         }),
-        observe: () => undefined,
+        observe: async () => undefined,
         tokenIssuancePolicy: policy,
       }),
     ).resolves.toMatchObject({ ok: true, token: "ghs_arbitrary_permissions" });
@@ -165,6 +217,25 @@ describe("Installation Access Token Issuance", () => {
     ).resolves.toMatchObject({ ok: true, token: "ghs_test_token" });
 
     expect(observations).toEqual([
+      {
+        fields: {
+          event: "installation_access_token_issuance_started",
+          installation_access_token_request: {
+            permissions: tokenRequest.permissions,
+            resource: tokenRequest.resource.href,
+            scope: tokenRequest.scope,
+          },
+          subject_token: {
+            issuer: verifiedSubjectToken.issuer,
+            resolved_key_id: verificationEvidence.resolvedKeyId,
+            sub: verifiedSubjectToken.claims.sub,
+            subject_token_kind: "id_token",
+          },
+          target_installation: { id: undefined, repository: testRepository },
+          token_issuance_policy: { outcome: "permitted" },
+        },
+        level: "info",
+      },
       {
         fields: {
           event: "installation_access_token_issuance_succeeded",
@@ -255,7 +326,9 @@ describe("Installation Access Token Issuance", () => {
         dependencies: { fetch: fetchGitHub, now: () => testNow },
         githubApp: { ...testEnv, GITHUB_APP_PRIVATE_KEY: privateKey },
         installationAccessTokenRequest: tokenRequest,
-        observe: observations.push.bind(observations),
+        observe: async (observation) => {
+          observations.push(observation);
+        },
         tokenIssuancePolicy: testTokenIssuancePolicy,
       }),
     ).resolves.toEqual({ ok: false, reason: "internal_failure" });
@@ -347,7 +420,9 @@ describe("Installation Access Token Issuance", () => {
           },
         },
         installationAccessTokenRequest: tokenRequest,
-        observe: observations.push.bind(observations),
+        observe: async (observation) => {
+          observations.push(observation);
+        },
         tokenIssuancePolicy: testTokenIssuancePolicy,
       }),
     ).resolves.toEqual({ ok: false, reason: "internal_failure" });
@@ -401,7 +476,9 @@ describe("Installation Access Token Issuance", () => {
           dependencies: { fetch: fetchGitHub, now: () => testNow },
           githubApp: testEnv,
           installationAccessTokenRequest: request,
-          observe: observations.push.bind(observations),
+          observe: async (observation) => {
+            observations.push(observation);
+          },
           tokenIssuancePolicy: testTokenIssuancePolicy,
         }),
       ).resolves.toEqual({ ok: false, reason });
@@ -425,7 +502,9 @@ function issueInstallationAccessToken(
     dependencies: { ...dependencies, now: () => testNow },
     githubApp: testEnv,
     installationAccessTokenRequest: tokenRequest,
-    observe: observations.push.bind(observations),
+    observe: async (observation) => {
+      observations.push(observation);
+    },
     tokenIssuancePolicy: testTokenIssuancePolicy,
   });
 }

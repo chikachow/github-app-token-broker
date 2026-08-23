@@ -25,7 +25,7 @@ export const testTokenExchangeComposition = {
 export const testTokenExchangeWorkerRuntimeDependencies = {
   fetch: fetchTokenExchangeExternalTestDouble,
   now: () => testNow,
-  observe: () => undefined,
+  observe: async () => undefined,
 } satisfies TokenExchangeWorkerRuntimeDependencies;
 
 const tokenExchangeApp = createTokenExchangeWorker(

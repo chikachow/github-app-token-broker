@@ -10,6 +10,30 @@ import type { TokenExchangeObservation } from "../workers/github-app-token-broke
 type AuthenticationFailure = Extract<OidcIdTokenAuthenticationResult, { ok: false }>;
 
 describe("OIDC authentication HTTP boundary", () => {
+  it("awaits and propagates a rejected authentication-failure observation", async () => {
+    const observerFailure = new Error("authentication observation failed");
+    const authenticator: OidcIdTokenAuthenticator = {
+      authenticateIdToken: async () => ({
+        failure: {
+          diagnostics: { diagnosticCode: "ERR_JWT_INVALID" },
+          kind: "subject_token_rejected",
+        },
+        ok: false,
+      }),
+    };
+
+    await expect(
+      authenticateOidcIdToken(
+        "token",
+        new Request("https://github-app-token-broker.example/token"),
+        authenticator,
+        async () => {
+          throw observerFailure;
+        },
+      ),
+    ).rejects.toBe(observerFailure);
+  });
+
   it.each<[string, AuthenticationFailure, string]>([
     [
       "provider unavailability",
@@ -55,9 +79,9 @@ describe("OIDC authentication HTTP boundary", () => {
     const observations: TokenExchangeObservation[] = [];
 
     await expect(
-      authenticateOidcIdToken("token", request, authenticator, (observation) =>
-        observations.push(observation),
-      ),
+      authenticateOidcIdToken("token", request, authenticator, async (observation) => {
+        observations.push(observation);
+      }),
     ).resolves.toMatchObject({
       ...failure.failure.diagnostics,
       ok: false,
