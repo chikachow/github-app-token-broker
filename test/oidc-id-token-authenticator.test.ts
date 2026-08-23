@@ -290,6 +290,57 @@ describe("OIDC ID Token Authenticator", () => {
     expect(defaultEvents).toEqual([]);
   });
 
+  it("fails closed without recording a Provider Configuration observer failure as provider backoff", async () => {
+    let observerFailureEnabled = true;
+    const events: OidcIdTokenAuthenticationEvent[] = [];
+    const fetchOidcRemoteDocumentResponse = vi.fn(providerFetch({ cacheControl: "no-store" }));
+    const authenticator = createOidcIdTokenAuthenticator(
+      {
+        providerRegistrations: [registration],
+        subjectTokenAudience,
+      },
+      {
+        fetch: fetchOidcRemoteDocumentResponse,
+        now: () => authenticationTestNow,
+        observe: (event) => {
+          events.push(event);
+
+          if (observerFailureEnabled && event.event === "oidc_provider_configuration_refreshed") {
+            throw new Error("Provider Configuration observer unavailable");
+          }
+        },
+      },
+    );
+    const subjectToken = await signedIdToken();
+
+    await expect(authenticator.authenticateIdToken(subjectToken)).resolves.toEqual(
+      expectedFailure("internal_failure"),
+    );
+    expect(
+      fetchOidcRemoteDocumentResponse.mock.calls.filter(
+        ([input]) => new Request(input).url === `${issuer}/.well-known/openid-configuration`,
+      ),
+    ).toHaveLength(1);
+    expect(
+      fetchOidcRemoteDocumentResponse.mock.calls.filter(
+        ([input]) => new Request(input).url === jwksUri,
+      ),
+    ).toHaveLength(0);
+    expect(events.filter((event) => event.event === "oidc_remote_document_refresh_failed")).toEqual(
+      [],
+    );
+
+    observerFailureEnabled = false;
+    await expect(authenticator.authenticateIdToken(subjectToken)).resolves.toMatchObject({
+      ok: true,
+    });
+    expect(
+      fetchOidcRemoteDocumentResponse.mock.calls.filter(
+        ([input]) => new Request(input).url === `${issuer}/.well-known/openid-configuration`,
+      ),
+    ).toHaveLength(2);
+  });
+
   it("does no provider I/O for an unregistered or malformed token issuer", async () => {
     const fetchOidcRemoteDocumentResponse = vi.fn(successfulProviderFetch);
     const authenticator = testAuthenticator(fetchOidcRemoteDocumentResponse);
@@ -775,6 +826,101 @@ describe("OIDC ID Token Authenticator", () => {
         (event) =>
           event.event === "oidc_remote_document_stale_used" &&
           event.remoteDocumentKind === "provider_configuration",
+      ),
+    ).toHaveLength(3);
+  });
+
+  it("publishes a coalesced JWK Set refresh failure once", async () => {
+    let now = new Date("2026-01-01T00:00:00Z");
+    let jwksRequests = 0;
+    const failedRefresh = Promise.withResolvers<Response>();
+    const refreshStarted = Promise.withResolvers<void>();
+    const events: OidcIdTokenAuthenticationEvent[] = [];
+    const fetchOidcRemoteDocumentResponse = vi.fn<typeof fetch>((input) => {
+      const url = new Request(input).url;
+
+      if (url === `${issuer}/.well-known/openid-configuration`) {
+        return Promise.resolve(providerConfigurationResponse("max-age=300"));
+      }
+
+      if (url === jwksUri) {
+        jwksRequests += 1;
+
+        if (jwksRequests === 1) {
+          return Promise.resolve(
+            Response.json({ keys: [testPublicJwk] }, { headers: { "cache-control": "max-age=1" } }),
+          );
+        }
+
+        refreshStarted.resolve();
+        return failedRefresh.promise;
+      }
+
+      return Promise.resolve(new Response(null, { status: 404 }));
+    });
+    const authenticator = createOidcIdTokenAuthenticator(
+      {
+        providerRegistrations: [registration],
+        subjectTokenAudience,
+      },
+      {
+        fetch: fetchOidcRemoteDocumentResponse,
+        now: () => now,
+        observe: (event) => events.push(event),
+      },
+    );
+    const subjectToken = await signedIdToken();
+
+    await expect(authenticator.authenticateIdToken(subjectToken)).resolves.toMatchObject({
+      ok: true,
+    });
+    now = new Date(now.getTime() + 1_001);
+    const results = Promise.all([
+      authenticator.authenticateIdToken(subjectToken),
+      authenticator.authenticateIdToken(subjectToken),
+    ]);
+
+    await refreshStarted.promise;
+    expect(jwksRequests).toBe(2);
+    failedRefresh.resolve(new Response(null, { status: 503 }));
+    expect((await results).every((result) => result.ok)).toBe(true);
+    expect(
+      events.filter(
+        (event) =>
+          event.event === "oidc_remote_document_refresh_failed" &&
+          event.remoteDocumentKind === "jwk_set",
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        diagnosticCode: "ERR_OIDC_JWKS_HTTP_STATUS",
+        metadataGeneration: 1,
+        providerHttpStatus: 503,
+      }),
+    ]);
+    expect(
+      events.filter(
+        (event) =>
+          event.event === "oidc_remote_document_stale_used" &&
+          event.remoteDocumentKind === "jwk_set",
+      ),
+    ).toHaveLength(2);
+
+    await expect(authenticator.authenticateIdToken(subjectToken)).resolves.toMatchObject({
+      ok: true,
+    });
+    expect(jwksRequests).toBe(2);
+    expect(
+      events.filter(
+        (event) =>
+          event.event === "oidc_remote_document_refresh_failed" &&
+          event.remoteDocumentKind === "jwk_set",
+      ),
+    ).toHaveLength(1);
+    expect(
+      events.filter(
+        (event) =>
+          event.event === "oidc_remote_document_stale_used" &&
+          event.remoteDocumentKind === "jwk_set",
       ),
     ).toHaveLength(3);
   });
@@ -1557,7 +1703,7 @@ describe("OIDC ID Token Authenticator", () => {
     expect(fetchOidcRemoteDocumentResponse).toHaveBeenCalledTimes(4);
   });
 
-  it("does not use stale Provider Configuration or JWKS responses marked must-revalidate", async () => {
+  it("does not use stale Provider Configuration marked must-revalidate", async () => {
     let available = true;
     const fetchOidcRemoteDocumentResponse = vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
       available
@@ -1572,6 +1718,57 @@ describe("OIDC ID Token Authenticator", () => {
     await expect(authenticator.authenticateIdToken(subjectToken)).resolves.toEqual(
       expectedFailure("provider_unavailable", "ERR_OIDC_PROVIDER_CONFIGURATION_HTTP_STATUS", 503),
     );
+  });
+
+  it("does not use stale JWKS marked must-revalidate", async () => {
+    let jwksAvailable = true;
+    const events: OidcIdTokenAuthenticationEvent[] = [];
+    const fetchOidcRemoteDocumentResponse = vi.fn(
+      providerFetch({
+        jwksResponse: () =>
+          jwksAvailable
+            ? Response.json(
+                { keys: [testPublicJwk] },
+                { headers: { "cache-control": "max-age=0, must-revalidate" } },
+              )
+            : new Response(null, { status: 503 }),
+      }),
+    );
+    const authenticator = createOidcIdTokenAuthenticator(
+      {
+        providerRegistrations: [registration],
+        subjectTokenAudience,
+      },
+      {
+        fetch: fetchOidcRemoteDocumentResponse,
+        now: () => authenticationTestNow,
+        observe: (event) => events.push(event),
+      },
+    );
+    const subjectToken = await signedIdToken();
+
+    expect((await authenticator.authenticateIdToken(subjectToken)).ok).toBe(true);
+    jwksAvailable = false;
+    await expect(authenticator.authenticateIdToken(subjectToken)).resolves.toEqual(
+      expectedFailure("provider_unavailable", "ERR_OIDC_JWKS_HTTP_STATUS", 503),
+    );
+    expect(
+      fetchOidcRemoteDocumentResponse.mock.calls.filter(
+        ([input]) => new Request(input).url === `${issuer}/.well-known/openid-configuration`,
+      ),
+    ).toHaveLength(1);
+    expect(
+      fetchOidcRemoteDocumentResponse.mock.calls.filter(
+        ([input]) => new Request(input).url === jwksUri,
+      ),
+    ).toHaveLength(2);
+    expect(
+      events.filter(
+        (event) =>
+          event.event === "oidc_remote_document_stale_used" &&
+          event.remoteDocumentKind === "jwk_set",
+      ),
+    ).toEqual([]);
   });
 
   it("uses bounded last-known-good Provider Metadata and JWKS only for provider unavailability", async () => {
