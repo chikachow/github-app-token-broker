@@ -165,6 +165,9 @@ async function observeTokenExchangeForm(
 
   expect(responseBody).toMatchObject({ access_token: expectedObservation.accessToken, scope });
   expect(observations).toHaveLength(2);
+  expect(observations.map(({ fields }) => fields["event"])).toEqual(
+    expectedObservation.issuanceEvents,
+  );
   expect(observations[1]).toMatchObject({
     fields: {
       installation_access_token_request: { resource, scope },
@@ -172,15 +175,7 @@ async function observeTokenExchangeForm(
     },
   });
 
-  return {
-    accessToken: expectedObservation.accessToken,
-    issuanceEvents: observations.map(({ fields }) => fields["event"]),
-    kind: "success",
-    resource,
-    scope,
-    status: response.status,
-    subjectTokenKind: expectedObservation.subjectTokenKind,
-  };
+  return expectedObservation;
 }
 
 function requiredFormValue(form: URLSearchParams, name: string): string {
