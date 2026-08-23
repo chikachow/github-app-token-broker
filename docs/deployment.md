@@ -103,4 +103,11 @@ Source maintenance workflows pin an immutable external action release and use it
 
 ## Public source boundary
 
+Source CI runs nine granular validation lanes in parallel. Dedicated `artifact:check` and
+`node-deploy:check` lanes independently validate the source-owned built Token Exchange artifact
+and production-pruned Fastify consumer contracts, while the Worker dry-run lane validates the
+public-safe template. Successful source CI does not validate a deployment-owned composition,
+credentials, routes, or post-deployment smoke tests; the external deployment system retains those
+responsibilities.
+
 Never commit Cloudflare account IDs or tokens, GitHub App IDs or private keys, `.dev.vars`, `.env`, `.wrangler/`, `.local-secrets/`, private deployment overlays, or production route details. Build from tracked files or an explicit archive, not an ambient working directory.

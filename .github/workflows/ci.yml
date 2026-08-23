@@ -31,6 +31,12 @@ jobs:
       id-token: write
     uses: ./.github/workflows/ci-test.yml
 
+  artifact-check:
+    uses: ./.github/workflows/ci-artifact-check.yml
+
+  node-deploy-check:
+    uses: ./.github/workflows/ci-node-deploy-check.yml
+
   deploy-dry-run:
     uses: ./.github/workflows/ci-deploy-dry-run.yml
 
@@ -44,6 +50,8 @@ jobs:
       - typecheck
       - knip
       - test
+      - artifact-check
+      - node-deploy-check
       - deploy-dry-run
     if: ${{ always() }}
     steps:

@@ -120,6 +120,14 @@ fnm exec --using=24 corepack pnpm run test:coverage
 fnm exec --using=24 corepack pnpm run test:mutations:property
 ```
 
+Continuous integration runs nine reusable validation lanes in parallel: formatting, lint,
+generated environment types, typechecking, Knip, test coverage, the built Token Exchange artifact
+contract, the production-pruned Node deployment contract, and the Worker deployment dry run. Each
+lane installs the frozen dependency tree and invokes the corresponding standalone command so it
+builds its own prerequisites. The test lane alone receives `id-token: write` for its Codecov OIDC
+upload. The required `ci` result aggregates all nine lanes and fails when any lane fails, is
+cancelled, or is skipped.
+
 The `node` Vitest project exclusively owns `test/node/**/*.test.ts`; the Workerd `unit` project excludes that directory, making the selected runtime explicit for those behavioral tests.
 
 The aggregate check builds once, then reuses that artifact for the artifact, typecheck, test, Node production-consumer, and deployment lanes. Standalone `artifact:check`, `typecheck`, `test`, `node-deploy:check`, and `deploy:dry-run` commands build their prerequisites first. Workspace builds synchronize injected package copies, so those standalone commands also work after a frozen clean install with no pre-existing `dist`. The artifact check imports the built Token Exchange ESM directly under Node and typechecks a self-importing consumer through the package's exports and bundled declarations; no source alias participates. The Node deployment check production-deploys a Fastify host fixture, imports the deployed package roots, typechecks the public adapter options, and exercises a real loopback listener. The root Wrangler file is a unit-test harness. It intentionally repeats the package Worker's compatibility flags and binding shapes so Workerd unit tests execute under the production runtime constraints; `env-types:check`, the GitHub App Information Workerd integration project, and the package dry-run validate the deployable config. The package Wrangler file is a public-safe dry-run template; deployment-owned identifiers and routes are supplied by the external deployment system.

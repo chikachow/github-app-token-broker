@@ -10,6 +10,9 @@ Run this checklist before making the repository public or tagging a release.
 - No local `.dev.vars`, `.env`, `.wrangler/`, `.local-secrets/`, private keys, generated state, or dependency directories are included in release artifacts.
 - `git ls-files` contains no private keys, tokens, local absolute paths, Cloudflare account IDs, API tokens, or secret values.
 - `node --run check` passes.
+- `node --run artifact:check` independently validates the built Token Exchange artifact contract.
+- `node --run node-deploy:check` independently validates the production-pruned Fastify consumer contract.
+- `node --run test:coverage` passes its configured thresholds.
 
 ## Documentation
 
@@ -44,7 +47,7 @@ Enable these settings after publication:
 - GitHub secret scanning
 - secret scanning push protection
 - Dependabot security updates
-- required `ci` check on protected branches
+- required `ci` check on protected branches, aggregating all nine granular validation lanes
 - private vulnerability reporting, if available
 
 ## Operational Secrets
