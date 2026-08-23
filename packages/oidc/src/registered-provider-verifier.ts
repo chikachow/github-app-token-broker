@@ -867,16 +867,8 @@ function classifyAuthenticationError(error: unknown): OidcIdTokenAuthenticationF
     return subjectTokenRejected(error.code);
   }
 
-  if (error instanceof errors.JOSEError) {
-    if (subjectTokenJoseErrorCodes.has(error.code)) {
-      return subjectTokenRejected(error.code);
-    }
-
-    if (providerJoseErrorCodes.has(error.code)) {
-      return providerUnavailable(error.code);
-    }
-
-    return internalFailure(error.code);
+  if (error instanceof errors.JOSEError && subjectTokenJoseErrorCodes.has(error.code)) {
+    return subjectTokenRejected(error.code);
   }
 
   if (error instanceof OidcProviderMetadataValidationError) {
@@ -888,19 +880,13 @@ function classifyAuthenticationError(error: unknown): OidcIdTokenAuthenticationF
 
 const subjectTokenJoseErrorCodes = new Set([
   "ERR_JOSE_ALG_NOT_ALLOWED",
+  "ERR_JOSE_NOT_SUPPORTED",
   "ERR_JWKS_NO_MATCHING_KEY",
   "ERR_JWS_INVALID",
   "ERR_JWS_SIGNATURE_VERIFICATION_FAILED",
   "ERR_JWT_CLAIM_VALIDATION_FAILED",
   "ERR_JWT_EXPIRED",
   "ERR_JWT_INVALID",
-]);
-
-const providerJoseErrorCodes = new Set([
-  "ERR_JOSE_NOT_SUPPORTED",
-  "ERR_JWK_INVALID",
-  "ERR_JWKS_INVALID",
-  "ERR_JWKS_MULTIPLE_MATCHING_KEYS",
 ]);
 
 function subjectTokenRejected(diagnosticCode: string): OidcIdTokenAuthenticationFailureResult {
