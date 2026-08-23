@@ -92,16 +92,9 @@ Detailed OpenID Provider Metadata and JWK Set cache limits, refresh behavior, st
 Use Node 24 and pinned pnpm:
 
 ```bash
-fnm exec --using=24 corepack pnpm run format:check
-fnm exec --using=24 corepack pnpm run lint
-fnm exec --using=24 corepack pnpm run build
-fnm exec --using=24 corepack pnpm run artifact:check
-fnm exec --using=24 corepack pnpm run typecheck
-fnm exec --using=24 corepack pnpm run knip
-fnm exec --using=24 corepack pnpm run test
+fnm exec --using=24 corepack pnpm run check
 fnm exec --using=24 corepack pnpm run test:coverage
-fnm exec --using=24 corepack pnpm run env-types:check
-fnm exec --using=24 corepack pnpm run deploy:dry-run
+fnm exec --using=24 corepack pnpm run test:mutations:property
 ```
 
-The artifact check imports the built Token Exchange ESM directly under Node and typechecks a self-importing consumer through the package's exports and bundled declarations; no source alias participates. The root Wrangler file is a unit-test harness. It intentionally repeats the package Worker's compatibility flags and binding shapes so Workerd unit tests execute under the production runtime constraints; `env-types:check`, the GitHub App Information Workerd integration project, and the package dry-run validate the deployable config. The package Wrangler file is a public-safe dry-run template; deployment-owned identifiers and routes are supplied by the external deployment system.
+The aggregate check builds once, then reuses that artifact for the artifact, typecheck, test, and deployment lanes. Standalone `artifact:check`, `typecheck`, `test`, and `deploy:dry-run` commands build their prerequisites first. The artifact check imports the built Token Exchange ESM directly under Node and typechecks a self-importing consumer through the package's exports and bundled declarations; no source alias participates. The root Wrangler file is a unit-test harness. It intentionally repeats the package Worker's compatibility flags and binding shapes so Workerd unit tests execute under the production runtime constraints; `env-types:check`, the GitHub App Information Workerd integration project, and the package dry-run validate the deployable config. The package Wrangler file is a public-safe dry-run template; deployment-owned identifiers and routes are supplied by the external deployment system.
