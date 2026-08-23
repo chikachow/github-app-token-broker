@@ -91,6 +91,7 @@ export function createTokenExchangeWorker(
             dependencies,
           );
         }
+        const tokenExchange = configuredRuntime.tokenExchange;
 
         const url = new URL(request.url);
 
@@ -99,7 +100,14 @@ export function createTokenExchangeWorker(
         }
 
         const context = {
-          observe: dependencies.observe,
+          observe: async (observation: Parameters<ObserveTokenExchange>[0]) =>
+            await dependencies.observe({
+              ...observation,
+              fields: {
+                ...observation.fields,
+                rayId: request.headers.get("cf-ray"),
+              },
+            }),
           observeOidcDiagnostic: dependencies.observeOidcDiagnostic,
         };
 
@@ -115,7 +123,7 @@ export function createTokenExchangeWorker(
           return workerOAuthErrorResponse(429, "temporarily_unavailable");
         }
 
-        return await configuredRuntime.tokenExchange(request, context);
+        return await tokenExchange(request, context);
       } catch (error) {
         return unexpectedTokenExchangeFailureResponse(error);
       }

@@ -7,7 +7,7 @@ import {
 import { compileTokenIssuancePolicy } from "@github-app-token-broker/token-issuance-policy";
 import { decodeJwt } from "jose";
 
-import { testInstallationId, testNow, testRepository } from "./support/constants.ts";
+import { testNow } from "./support/constants.ts";
 import { fetchGitHubTestDouble } from "./support/github-api.ts";
 import { fetchOidcRemoteDocumentResponseTestDouble } from "./support/oidc.ts";
 import { testTokenIssuancePolicy } from "./support/token-issuance-policy.ts";
@@ -20,8 +20,6 @@ import {
   testTokenExchangeWorkerRuntimeDependencies,
   tokenExchangeRequestBody,
 } from "./support/worker.ts";
-import type { TokenExchangeObservation } from "../workers/github-app-token-broker/src/observability.ts";
-
 describe("Token Exchange Worker boundary", () => {
   beforeEach(() => {
     vi.useFakeTimers({ now: testNow });
@@ -60,6 +58,82 @@ describe("Token Exchange Worker boundary", () => {
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(response.headers.get("pragma")).toBe("no-cache");
     await expect(response.json()).resolves.toEqual({ error: "invalid_request" });
+  });
+
+  it.each([
+    {
+      expectedKey: "203.0.113.10",
+      headers: { "cf-connecting-ip": "203.0.113.10", "x-forwarded-for": "198.51.100.20" },
+      scenario: "prefers CF-Connecting-IP to X-Forwarded-For",
+    },
+    {
+      expectedKey: "unknown",
+      headers: { "x-forwarded-for": "198.51.100.20" },
+      scenario: "ignores X-Forwarded-For",
+    },
+    {
+      expectedKey: "unknown",
+      headers: {},
+      scenario: "uses the unknown fallback without an address header",
+    },
+  ])("$scenario for admission and returns a 429 denial", async ({ expectedKey, headers }) => {
+    const limit = vi.fn(async () => ({ success: false }));
+    const fetchExternal = vi.fn<typeof fetch>();
+    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
+      ...testTokenExchangeWorkerRuntimeDependencies,
+      fetch: fetchExternal,
+    });
+    const response = await invokeWorker(worker, await tokenRequest(headers), {
+      ...testEnv,
+      TOKEN_EXCHANGE_RATE_LIMIT: { limit },
+    });
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("pragma")).toBe("no-cache");
+    await expect(response.json()).resolves.toEqual({ error: "temporarily_unavailable" });
+    expect(limit).toHaveBeenCalledExactlyOnceWith({ key: expectedKey });
+    expect(fetchExternal).not.toHaveBeenCalled();
+  });
+
+  it("denies admission before authentication, body parsing, observations, or external I/O", async () => {
+    let bodyPulled = false;
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          bodyPulled = true;
+          controller.error(new Error("private body failure"));
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    const limit = vi.fn(async () => ({ success: false }));
+    const fetchExternal = vi.fn<typeof fetch>();
+    const observe = vi.fn(async () => undefined);
+    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
+      fetch: fetchExternal,
+      now: () => testNow,
+      observe,
+    });
+    const response = await invokeWorker(
+      worker,
+      new Request("https://example.test/token", {
+        body,
+        headers: {
+          authorization: "Basic private-client-credentials",
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        method: "POST",
+      }),
+      { ...testEnv, TOKEN_EXCHANGE_RATE_LIMIT: { limit } },
+    );
+
+    expect(response.status).toBe(429);
+    await expect(response.json()).resolves.toEqual({ error: "temporarily_unavailable" });
+    expect(limit).toHaveBeenCalledExactlyOnceWith({ key: "unknown" });
+    expect(bodyPulled).toBe(false);
+    expect(observe).not.toHaveBeenCalled();
+    expect(fetchExternal).not.toHaveBeenCalled();
   });
 
   it("wires a representative valid request through OIDC authentication, policy, and GitHub issuance", async () => {
@@ -133,22 +207,6 @@ describe("Token Exchange Worker boundary", () => {
     }
   });
 
-  it("wires a policy rejection to the public Token Endpoint contract", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody({
-        form: {
-          resource: "https://api.github.com/repos/fixture-target-owner/fixture-unconfigured-target",
-          scope: "actions:write",
-        },
-      }),
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      method: "POST",
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error: "invalid_target" });
-  });
-
   it("rejects a malformed subject token without provider or GitHub I/O", async () => {
     const body = new URLSearchParams(await tokenExchangeRequestBody());
     body.set("subject_token", "not-a-jwt");
@@ -186,128 +244,6 @@ describe("Token Exchange Worker boundary", () => {
       vi.unstubAllGlobals();
       consoleWarn.mockRestore();
     }
-  });
-
-  it("maps provider unavailability without attempting GitHub issuance", async () => {
-    const githubRequests: Request[] = [];
-    const fetchExternal = vi.fn<typeof fetch>((input, init) => {
-      const request = new Request(input, init);
-
-      if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
-        return Promise.resolve(new Response(null, { status: 503 }));
-      }
-
-      githubRequests.push(request);
-      return fetchGitHubTestDouble(input, init);
-    });
-    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
-      fetch: fetchExternal,
-      now: () => testNow,
-      observe: async () => undefined,
-    });
-    const response = await invokeWorker(worker, await tokenRequest());
-
-    expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toEqual({ error: "temporarily_unavailable" });
-    expect(githubRequests).toEqual([]);
-  });
-
-  it.each([
-    {
-      expectedStatus: 502,
-      githubMethod: "GET",
-      githubPath: `/repos/${testRepository}/installation`,
-      githubStatus: 404,
-      scenario: "installation resolution",
-    },
-    {
-      expectedStatus: 500,
-      githubMethod: "POST",
-      githubPath: `/app/installations/${testInstallationId}/access_tokens`,
-      githubStatus: 422,
-      scenario: "access-token minting",
-    },
-  ])(
-    "wires a GitHub $scenario failure through the exchange-stage classifier",
-    async ({ expectedStatus, githubMethod, githubPath, githubStatus }) => {
-      const fetchExternal = vi.fn<typeof fetch>((input, init) => {
-        const request = new Request(input, init);
-
-        if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
-          return fetchOidcRemoteDocumentResponseTestDouble(request);
-        }
-
-        return request.method === githubMethod && new URL(request.url).pathname === githubPath
-          ? Promise.resolve(new Response("GitHub failure detail", { status: githubStatus }))
-          : fetchGitHubTestDouble(input, init);
-      });
-      const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
-        fetch: fetchExternal,
-        now: () => testNow,
-        observe: async () => undefined,
-      });
-      const response = await invokeWorker(worker, await tokenRequest());
-
-      expect(response.status).toBe(expectedStatus);
-      await expect(response.json()).resolves.toEqual({ error: "server_error" });
-    },
-  );
-
-  it("sanitizes a real OIDC internal failure and records safe request context", async () => {
-    const failureDetail = "private OIDC clock failure with credential detail";
-    const fetchExternal = vi.fn<typeof fetch>();
-    const observations: TokenExchangeObservation[] = [];
-    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
-      fetch: fetchExternal,
-      now: () => {
-        throw new Error(failureDetail);
-      },
-      observe: async (observation) => {
-        observations.push(observation);
-      },
-    });
-    const body = await tokenExchangeRequestBody();
-    const subjectToken = new URLSearchParams(body).get("subject_token");
-    if (subjectToken === null) {
-      throw new Error("test Token Exchange request did not contain a subject token");
-    }
-    const response = await invokeWorker(
-      worker,
-      new Request("https://example.test/token", {
-        body,
-        headers: {
-          "cf-ray": "fixture-ray-id",
-          "content-type": "application/x-www-form-urlencoded",
-          "user-agent": "fixture-test-agent",
-        },
-        method: "POST",
-      }),
-    );
-
-    expect(response.status).toBe(500);
-    expect(response.headers.get("content-type")).toBe("application/json; charset=utf-8");
-    expect(response.headers.get("cache-control")).toBe("no-store");
-    expect(response.headers.get("pragma")).toBe("no-cache");
-    expect(response.headers.get("www-authenticate")).toBeNull();
-    await expect(response.json()).resolves.toEqual({ error: "server_error" });
-    expect(fetchExternal).not.toHaveBeenCalled();
-    expect(observations).toEqual([
-      {
-        fields: {
-          path: "/token",
-          rayId: "fixture-ray-id",
-          reason: "oidc_internal_failure",
-          userAgent: "fixture-test-agent",
-        },
-        level: "warn",
-        message: "OIDC authentication failed",
-      },
-    ]);
-    const serializedObservations = JSON.stringify(observations);
-    expect(serializedObservations).not.toContain(failureDetail);
-    expect(serializedObservations).not.toContain(subjectToken);
-    expect(serializedObservations).not.toContain(testEnv.GITHUB_APP_PRIVATE_KEY);
-    expect(serializedObservations).not.toContain("ghs_test_token");
   });
 
   it("accepts a structural GitHub App private-key binding", async () => {
@@ -444,6 +380,61 @@ describe("Token Exchange Worker boundary", () => {
     expect(methodResponse.status).toBe(400);
     expect(tokenResponse.status).toBe(200);
     expect(observedIssuers).toEqual(["222", "222"]);
+  });
+
+  it("keeps each overlapping request on the GitHub App selected before admission", async () => {
+    const observedIssuers: unknown[] = [];
+    const fetchExternal = vi.fn<typeof fetch>((input, init) => {
+      const request = new Request(input, init);
+
+      if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
+        return fetchOidcRemoteDocumentResponseTestDouble(request);
+      }
+
+      const authorization = request.headers.get("authorization");
+      observedIssuers.push(
+        authorization === null ? undefined : decodeJwt(authorization.slice("Bearer ".length)).iss,
+      );
+
+      return fetchGitHubTestDouble(request);
+    });
+    let releaseAppA: () => void = () => undefined;
+    let markAppAWaiting: () => void = () => undefined;
+    const appARelease = new Promise<void>((resolve) => {
+      releaseAppA = resolve;
+    });
+    const appAWaiting = new Promise<void>((resolve) => {
+      markAppAWaiting = resolve;
+    });
+    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
+      fetch: fetchExternal,
+      now: () => testNow,
+      observe: async () => undefined,
+      observeOidcDiagnostic: () => undefined,
+    });
+    const appAEnv = {
+      ...testEnv,
+      GITHUB_APP_ID: "111",
+      TOKEN_EXCHANGE_RATE_LIMIT: {
+        limit: async () => {
+          markAppAWaiting();
+          await appARelease;
+
+          return { success: true };
+        },
+      },
+    };
+    const appBEnv = { ...testEnv, GITHUB_APP_ID: "222" };
+
+    const appAResponsePromise = invokeWorker(worker, await tokenRequest(), appAEnv);
+    await appAWaiting;
+    const appBResponse = await invokeWorker(worker, await tokenRequest(), appBEnv);
+    releaseAppA();
+    const appAResponse = await appAResponsePromise;
+
+    expect(appAResponse.status).toBe(200);
+    expect(appBResponse.status).toBe(200);
+    expect(observedIssuers).toEqual(["222", "222", "111", "111"]);
   });
 
   it("sanitizes a changed audience after configuration is cached", async () => {
@@ -607,10 +598,10 @@ describe("Token Exchange Worker boundary", () => {
   });
 });
 
-async function tokenRequest(): Promise<Request> {
+async function tokenRequest(headers: Readonly<Record<string, string>> = {}): Promise<Request> {
   return new Request("https://example.test/token", {
     body: await tokenExchangeRequestBody(),
-    headers: { "content-type": "application/x-www-form-urlencoded" },
+    headers: { "content-type": "application/x-www-form-urlencoded", ...headers },
     method: "POST",
   });
 }

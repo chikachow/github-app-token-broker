@@ -54,7 +54,7 @@ consumers discriminate owner-wide constraints with `repository === null`.
 
 An external deployment owns the TypeScript entrypoint that supplies those two values. The source package root has named exports only. `generic-worker.ts` is the public-safe Wrangler entrypoint and deliberately composes empty registrations with an empty, deny-all Token Issuance Policy. A built artifact cannot replace its composition through bindings or requests.
 
-The runtime-neutral handler accepts a request context with mandatory `observe` and separately named optional `observeOidcDiagnostic` callbacks. `observe` returns `Promise<void>` and is awaited; fulfillment acknowledges the observation but does not itself prove durable persistence. `observeOidcDiagnostic` is synchronous and returns exactly `undefined`. It is never wired to the mandatory observer, and diagnostic callback failures are contained. The Worker adapter supplies these callbacks from `TokenExchangeWorkerRuntimeDependencies`; its defaults write both event classes to the console. Fetch and time remain construction/test seams. These dependencies are not trust or authorization configuration surfaces, although mandatory observation availability deliberately controls whether the endpoint can return a token.
+The runtime-neutral handler accepts a request context with mandatory `observe` and separately named optional `observeOidcDiagnostic` callbacks. `observe` returns `Promise<void>` and is awaited; fulfillment acknowledges the observation but does not itself prove durable persistence. `observeOidcDiagnostic` is synchronous and returns exactly `undefined`. It is never wired to the mandatory observer, and diagnostic callback failures are contained. The Worker adapter supplies these callbacks from `TokenExchangeWorkerRuntimeDependencies`; its request-scoped mandatory-observer wrapper enriches fields with the Cloudflare Ray ID and returns the underlying observer promise so failures remain fail closed. The runtime-neutral module does not inspect Cloudflare headers. The default adapters write both event classes to the console. Fetch and time remain construction/test seams. These dependencies are not trust or authorization configuration surfaces, although mandatory observation availability deliberately controls whether the endpoint can return a token.
 
 The deployment supplies one non-secret `TOKEN_BROKER_AUDIENCE` Worker binding. Before routing any request, the OIDC package's single Subject-Token Audience parser validates it as an exact non-empty, non-whitespace, single-line domain value. `worker.ts` constructs and caches the exchange with that explicit audience and rejects an audience change within an isolate. It owns no public endpoint-location binding and does not derive the audience from the incoming request URL, headers, or source-owned `/token` route. The OIDC ID Token Authenticator accepts this composed domain value rather than embedding a project name, preserving reuse and exact scalar-audience validation.
 
@@ -94,6 +94,8 @@ Use Node 24 and pinned pnpm:
 ```bash
 fnm exec --using=24 corepack pnpm run format:check
 fnm exec --using=24 corepack pnpm run lint
+fnm exec --using=24 corepack pnpm run build
+fnm exec --using=24 corepack pnpm run artifact:check
 fnm exec --using=24 corepack pnpm run typecheck
 fnm exec --using=24 corepack pnpm run knip
 fnm exec --using=24 corepack pnpm run test
@@ -102,4 +104,4 @@ fnm exec --using=24 corepack pnpm run env-types:check
 fnm exec --using=24 corepack pnpm run deploy:dry-run
 ```
 
-The root Wrangler file is a unit-test harness. It intentionally repeats the package Worker's compatibility flags and binding shapes so Workerd unit tests execute under the production runtime constraints; `env-types:check`, the GitHub App Information Workerd integration project, and the package dry-run validate the deployable config. The package Wrangler file is a public-safe dry-run template; deployment-owned identifiers and routes are supplied by the external deployment system.
+The artifact check imports the built Token Exchange ESM directly under Node and typechecks a self-importing consumer through the package's exports and bundled declarations; no source alias participates. The root Wrangler file is a unit-test harness. It intentionally repeats the package Worker's compatibility flags and binding shapes so Workerd unit tests execute under the production runtime constraints; `env-types:check`, the GitHub App Information Workerd integration project, and the package dry-run validate the deployable config. The package Wrangler file is a public-safe dry-run template; deployment-owned identifiers and routes are supplied by the external deployment system.

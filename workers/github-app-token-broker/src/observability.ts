@@ -4,7 +4,7 @@ import type {
   TokenExchangeObservation,
 } from "@github-app-token-broker/token-exchange";
 
-export type { ObserveOidcDiagnostic, ObserveTokenExchange, TokenExchangeObservation };
+export type { ObserveOidcDiagnostic, ObserveTokenExchange };
 
 export const observeTokenExchangeWithConsole: ObserveTokenExchange = async (observation) => {
   writeTokenExchangeObservationToConsole(observation);
