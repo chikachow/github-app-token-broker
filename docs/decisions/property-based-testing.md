@@ -45,8 +45,10 @@ Classify its demonstrated value as:
 Mutation checks establish sensitivity to a curated fault, not an exhaustive
 mutation score or a defect probability. The optional
 `pnpm test:mutations:property` command applies its manifest only in a temporary
-clone of a clean committed revision. It typechecks every mutant before running
-all non-property tests, the responsible property, and the complete test suite.
+clone of a clean committed revision. It runs the complete unmutated suite once,
+then typechecks every mutant before running all non-property tests and the exact
+responsible property. A responsible property that does not kill its mutant is
+unsupported even when an ordinary regression kills the same mutant.
 
 ### Oracle boundary
 
@@ -65,11 +67,16 @@ normalization-equivalent dot-segment path. These examples do not establish
 unrestricted parity between the Node and Workerd URL implementations.
 
 The bounded-body property compares the public reader with independently
-concatenated byte chunks and observes the transport boundary only to require
-that reading stops and cancellation is requested after the configured limit.
-The Token Exchange form property generates ordered multimaps from semantic
-families, then compares original and permuted entry sequences with a tagged
-expected outcome. It does not call the production form-classification helpers.
+concatenated non-empty subarray-backed chunks separated by empty chunks. The
+generator constructs at least two non-empty chunks and uses only nonzero bytes,
+so every case can detect both offset overwrite and empty-chunk offset drift.
+Focused ordinary tests own limit rejection and transport cancellation.
+
+The Token Exchange form property selects one single-valued field and constructs
+both empty-before-non-empty and non-empty-before-empty orderings while varying
+the field, remaining entry order, and empty extension noise. Every case must
+reach the exchange with the same normalized request. Closed unsupported-field
+and OAuth error mappings remain finite ordinary test tables.
 
 ### Discovery and runtime ownership
 
@@ -88,6 +95,11 @@ in code. Fixed examples are added to fast-check's `numRuns` value so they do not
 consume the generated-case budget. Critical authorization categories use both
 constructive generated families and minimal fixed cases rather than statistical
 coverage thresholds.
+
+The bounded-body and Token Exchange form mutation lanes contain no fixed
+examples. Their minimized faults are named ordinary regressions, while the
+generated-only properties must independently kill the same mutants to qualify
+as defence in depth.
 
 ### Failure replay and maintenance
 

@@ -315,6 +315,27 @@ describe("Token Exchange protocol handler", () => {
     expect(runtime.exchange).toHaveBeenCalledOnce();
   });
 
+  it("treats a leading empty single-valued occurrence as omitted", async () => {
+    const runtime = testRuntime();
+    const form = new URLSearchParams([["grant_type", ""], ...validForm()]);
+    const response = await handleTokenExchangeRequest(formRequest(form), runtime);
+
+    expect(response.status).toBe(200);
+    expect(runtime.exchange).toHaveBeenCalledWith({
+      request: expect.any(Request),
+      subjectToken: "subject-token",
+      tokenRequest: {
+        permissions: { contents: "write", pull_requests: "write" },
+        resource: {
+          href: "https://api.github.com/repos/fixture-owner/fixture-source-repository",
+          owner: "fixture-owner",
+          repository: "fixture-source-repository",
+        },
+        scope: "contents:write pull_requests:write",
+      },
+    });
+  });
+
   it.each<readonly [string, ExchangeResult, number, string]>([
     [
       "invalid OIDC token",

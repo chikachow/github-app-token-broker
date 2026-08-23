@@ -69,19 +69,13 @@ try {
 
       const ordinary = runVitest(clone, mutation.tests.ordinary);
       const property = runVitest(clone, mutation.tests.property);
-      const full = runVitest(clone, mutation.tests.full);
-      const classification = !ordinary.passed
-        ? "baseline-killed"
-        : !property.passed
-          ? "property-unique"
-          : "surviving";
+      const classification = classifyMutation({ ordinary, property });
 
       results.push({
         classification,
         description: mutation.description,
         id: mutation.id,
         lanes: {
-          full: { exitCode: full.exitCode, killed: !full.passed },
           ordinary: { exitCode: ordinary.exitCode, killed: !ordinary.passed },
           property: { exitCode: property.exitCode, killed: !property.passed },
         },
@@ -105,9 +99,7 @@ try {
     printReadableReport(report);
   }
 
-  const failed = results.filter(
-    (result) => !result.lanes.property.killed || !result.lanes.full.killed,
-  );
+  const failed = results.filter((result) => !result.lanes.property.killed);
 
   if (failed.length > 0) {
     process.exitCode = 1;
@@ -136,7 +128,6 @@ function printReadableReport(report) {
       `typecheck=${result.mutantTypechecked ? "passed" : "failed"}`,
       `ordinary=${laneSummary(result.lanes.ordinary)}`,
       `property=${laneSummary(result.lanes.property)}`,
-      `full=${laneSummary(result.lanes.full)}`,
     ].join(" ");
 
     process.stdout.write(`${result.classification.padEnd(15)} ${result.id} ${checks}\n`);
@@ -145,8 +136,9 @@ function printReadableReport(report) {
   const counts = Object.groupBy(report.results, ({ classification }) => classification);
   process.stdout.write(
     `\nSummary: ${report.results.length} curated mutants; ` +
-      `${counts["baseline-killed"]?.length ?? 0} baseline-killed, ` +
+      `${counts["defence-in-depth"]?.length ?? 0} defence-in-depth, ` +
       `${counts["property-unique"]?.length ?? 0} property-unique, ` +
+      `${counts.unsupported?.length ?? 0} unsupported, ` +
       `${counts.surviving?.length ?? 0} surviving.\n`,
   );
 }
@@ -159,6 +151,14 @@ function laneSummary(lane) {
   return `${lane.killed ? "killed" : "survived"}(exit=${lane.exitCode})`;
 }
 
+function classifyMutation({ ordinary, property }) {
+  if (!property.passed) {
+    return ordinary.passed ? "property-unique" : "defence-in-depth";
+  }
+
+  return ordinary.passed ? "surviving" : "unsupported";
+}
+
 function runControlLanes(cwd) {
   const configurations = new Map();
   const laneResults = new Map();
@@ -167,12 +167,18 @@ function runControlLanes(cwd) {
     configurations.set(mutation.tests.suite, mutation.tests);
   }
 
-  const controls = {};
+  progress("[control] full");
+  const full = runVitest(cwd, { files: [], projects: [] });
+
+  if (!full.passed) {
+    throw new Error(`unmutated-control-failed full: exit code ${full.exitCode}\n${full.output}`);
+  }
+
+  const suites = {};
 
   for (const [suite, tests] of configurations) {
     progress(`[control] ${suite}`);
     const lanes = {
-      full: runVitestOnce(cwd, tests.full, laneResults),
       ordinary: runVitestOnce(cwd, tests.ordinary, laneResults),
       property: runVitestOnce(cwd, tests.property, laneResults),
     };
@@ -185,12 +191,12 @@ function runControlLanes(cwd) {
       }
     }
 
-    controls[suite] = Object.fromEntries(
+    suites[suite] = Object.fromEntries(
       Object.entries(lanes).map(([lane, result]) => [lane, { exitCode: result.exitCode }]),
     );
   }
 
-  return controls;
+  return { full: { exitCode: full.exitCode }, suites };
 }
 
 function runVitestOnce(cwd, lane, results) {

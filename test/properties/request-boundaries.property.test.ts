@@ -12,7 +12,6 @@ import {
 } from "@github-app-token-broker/github/installation-access-token-request";
 import {
   bodyGeneratedRunBudget,
-  bodyReadExamples,
   bodyReadScenarioArbitrary,
   expectBodyReadScenario,
 } from "./support/http-body.ts";
@@ -20,7 +19,6 @@ import {
   expectFormScenario,
   formGeneratedRunBudget,
   formScenarioArbitrary,
-  formScenarioExamples,
 } from "./support/token-exchange-form.ts";
 
 const generatedRunBudget = 1_000;
@@ -430,14 +428,15 @@ describe("GitHub Repository Resource properties", () => {
 
 describe("bounded HTTP body properties", () => {
   test.prop([bodyReadScenarioArbitrary], {
-    examples: bodyReadExamples,
-    numRuns: bodyGeneratedRunBudget + bodyReadExamples.length,
-  })("is invariant to byte partitioning and stops at the configured limit", expectBodyReadScenario);
+    numRuns: bodyGeneratedRunBudget,
+  })(
+    "reassembles non-empty subarray views across empty chunks without offset drift",
+    expectBodyReadScenario,
+  );
 });
 
 describe("Token Exchange form properties", () => {
   test.prop([formScenarioArbitrary], {
-    examples: formScenarioExamples,
-    numRuns: formGeneratedRunBudget + formScenarioExamples.length,
-  })("preserves ordered-multimap semantics under entry permutation", expectFormScenario);
+    numRuns: formGeneratedRunBudget,
+  })("keeps one non-empty form value regardless of empty-value ordering", expectFormScenario);
 });

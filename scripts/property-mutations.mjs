@@ -7,13 +7,12 @@ const policySource = "packages/token-issuance-policy/src/token-issuance-policy.t
 const policyPropertyTest = "test/properties/token-issuance-policy.property.test.ts";
 const tokenExchangeSource = "workers/github-app-token-broker/src/token-exchange.ts";
 const tokenExchangePropertyTest = requestBoundaryPropertyTest;
-const fullTestSuite = lane([], []);
 const ordinaryTestSuite = lane([], ["unit", "worker-integration"]);
 
 const bodyTests = propertyTestLanes(
   bodyPropertyTest,
   "body",
-  "is invariant to byte partitioning and stops at the configured limit",
+  "reassembles non-empty subarray views across empty chunks without offset drift",
 );
 const githubPermissionTests = propertyTestLanes(
   githubPropertyTest,
@@ -38,7 +37,7 @@ const policyTests = propertyTestLanes(
 const tokenExchangeTests = propertyTestLanes(
   tokenExchangePropertyTest,
   "token-exchange-form",
-  "preserves ordered-multimap semantics under entry permutation",
+  "keeps one non-empty form value regardless of empty-value ordering",
 );
 
 export const propertyMutations = Object.freeze([
@@ -258,7 +257,6 @@ function mutation(definition) {
 
 function propertyTestLanes(file, suite, testNamePattern) {
   return Object.freeze({
-    full: fullTestSuite,
     ordinary: ordinaryTestSuite,
     property: lane([file], ["property"], testNamePattern),
     suite,

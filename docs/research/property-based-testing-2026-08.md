@@ -83,8 +83,9 @@ execution rather than an assumed universal scheduler.
 
 Bounded body reading across byte-array partitions and Token Exchange
 form-multimap classification are implemented. Both retain public seams and
-independent or metamorphic expectations, and both demonstrate fault sensitivity
-beyond the ordinary tests.
+independent or metamorphic expectations. Minimized empty-chunk and leading-empty
+form faults are ordinary regressions; constructive generated-only lanes
+independently kill the same faults as defence in depth.
 
 A small OIDC metadata/JWKS cache command model covering freshness, stale
 eligibility, backoff, cooldown, and identity changes remains a research lead,
