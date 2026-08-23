@@ -53,6 +53,15 @@ export async function issueInstallationAccessTokenForContext(
     verifiedSubjectToken,
     installationAccessTokenRequest,
   );
+  const issuanceObservationFields = () => ({
+    installation_access_token_request: installationAccessTokenRequestLogFields(
+      installationAccessTokenRequest,
+    ),
+    subject_token: subjectTokenLogFields(authenticationContext),
+    token_issuance_policy: {
+      outcome: policyEvaluation.outcome,
+    },
+  });
 
   if (policyEvaluation.outcome !== "permitted") {
     await observe({
@@ -63,15 +72,9 @@ export async function issueInstallationAccessTokenForContext(
           status: undefined,
         },
         event: "installation_access_token_issuance_failed",
-        installation_access_token_request: installationAccessTokenRequestLogFields(
-          installationAccessTokenRequest,
-        ),
-        subject_token: subjectTokenLogFields(authenticationContext),
+        ...issuanceObservationFields(),
         target_installation: {
           id: undefined,
-        },
-        token_issuance_policy: {
-          outcome: policyEvaluation.outcome,
         },
       },
       level: "error",
@@ -88,16 +91,10 @@ export async function issueInstallationAccessTokenForContext(
   await observe({
     fields: {
       event: "installation_access_token_issuance_started",
-      installation_access_token_request: installationAccessTokenRequestLogFields(
-        installationAccessTokenRequest,
-      ),
-      subject_token: subjectTokenLogFields(authenticationContext),
+      ...issuanceObservationFields(),
       target_installation: {
         id: undefined,
         repository: requestedResourceName,
-      },
-      token_issuance_policy: {
-        outcome: policyEvaluation.outcome,
       },
     },
     level: "info",
@@ -129,18 +126,12 @@ export async function issueInstallationAccessTokenForContext(
             classifiedError instanceof GitHubApiError ? classifiedError.upstreamStatus : undefined,
         },
         event: "installation_access_token_issuance_failed",
-        installation_access_token_request: installationAccessTokenRequestLogFields(
-          installationAccessTokenRequest,
-        ),
-        subject_token: subjectTokenLogFields(authenticationContext),
+        ...issuanceObservationFields(),
         target_installation: {
           id:
             error instanceof GitHubInstallationAccessTokenIssuanceError
               ? error.installationId
               : undefined,
-        },
-        token_issuance_policy: {
-          outcome: policyEvaluation.outcome,
         },
       },
       level: "error",
@@ -154,19 +145,13 @@ export async function issueInstallationAccessTokenForContext(
       fields: {
         event: "installation_access_token_issuance_succeeded",
         expires_at: installationAccessToken.expiresAt,
-        installation_access_token_request: installationAccessTokenRequestLogFields(
-          installationAccessTokenRequest,
-        ),
-        subject_token: subjectTokenLogFields(authenticationContext),
+        ...issuanceObservationFields(),
         target_installation: {
           id: installationAccessToken.installationId,
           repository: requestedResourceName,
         },
         installation_access_token: {
           permissions: installationAccessToken.permissions,
-        },
-        token_issuance_policy: {
-          outcome: policyEvaluation.outcome,
         },
       },
       level: "info",
