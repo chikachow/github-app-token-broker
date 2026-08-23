@@ -1,9 +1,11 @@
 packages:
   - "packages/*"
+  - "test/deployment/*"
   - "workers/*"
 
 autoInstallPeers: false
 engineStrict: true
+injectWorkspacePackages: true
 
 overrides:
   "esbuild@>=0.17.0 <0.28.1": "0.28.1"
