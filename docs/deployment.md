@@ -2,7 +2,7 @@
 
 This public repository owns the broker source, tests, documentation, public-safe Wrangler templates, and the source side of the release handoff. It does not own credentials, production routes, Cloudflare account identifiers, deployment overlays, or deployment execution.
 
-## One App per deployment
+## Cloudflare Worker: one App per deployment
 
 `@github-app-token-broker/worker` is the sole Worker package. Its only public
 HTTP route is `POST /token`; it also exports the internal

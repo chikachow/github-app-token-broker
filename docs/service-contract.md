@@ -255,7 +255,7 @@ Provider packages expose these reviewed registrations for deployment composition
 
 #### GitHub Actions
 
-GitHub Actions Clients present a [GitHub Actions OIDC token](https://docs.github.com/en/actions/concepts/security/openid-connect), which is an ID Token issued by `https://token.actions.githubusercontent.com`. An absent Authorized Party (`azp`) claim is accepted; when present, it must equal the exact deployment-owned `TOKEN_BROKER_AUDIENCE` value in `aud`. GitHub Actions Clients must provide an explicit repository `resource`; the signed `repository` Claim is verified context in the Subject Token Claims available to Token Issuance Policy and is not used to select the token target. Authentication produces a Verified Subject Token but does not create a Permit Statement.
+GitHub Actions Clients present a [GitHub Actions OIDC token](https://docs.github.com/en/actions/concepts/security/openid-connect), which is an ID Token issued by `https://token.actions.githubusercontent.com`. An absent Authorized Party (`azp`) claim is accepted; when present, it must equal the exact deployment-owned Subject-Token Audience value in `aud`. GitHub Actions Clients must provide an explicit repository `resource`; the signed `repository` Claim is verified context in the Subject Token Claims available to Token Issuance Policy and is not used to select the token target. Authentication produces a Verified Subject Token but does not create a Permit Statement.
 
 #### Google service account ID Tokens
 
@@ -267,9 +267,9 @@ Google Clients must provide an explicit repository `resource`; omission or `reso
 
 The source-supported Fly provider package constructs a reviewed registration for one exact issuer in the form `https://oidc.fly.io/{organization-slug}`. The constructor accepts a canonical lowercase organization slug, restricts ID Token signatures to RS256, and selects an explicit null OIDC ID Token Profile. Central ID Token validation therefore authenticates the signed Fly Machine Identity Claims without imposing provider-specific relationships among `org_name`, `app_name`, `machine_name`, and `sub`.
 
-A deployment composition may register that exact issuer and must independently add Permit Statements selecting every Fly Claim material to authorization. An already-compiled Worker cannot add the registration or policy at runtime. Fly documents both its [organization-specific OpenID Connect issuers and Machine identity Claims](https://fly.io/docs/security/openid-connect/) and [Machine token acquisition with a caller-selected audience](https://fly.io/docs/machines/api/tokens-resource/).
+A deployment composition may register that exact issuer and must independently add Permit Statements selecting every Fly Claim material to authorization. An already-built deployment artifact cannot add the registration or policy at runtime. Fly documents both its [organization-specific OpenID Connect issuers and Machine identity Claims](https://fly.io/docs/security/openid-connect/) and [Machine token acquisition with a caller-selected audience](https://fly.io/docs/machines/api/tokens-resource/).
 
-For a deployment whose `TOKEN_BROKER_AUDIENCE` is `https://broker.example`, a Fly workload requests its ID Token with that exact value in the Fly Tokens resource `aud` field; `/token` is not part of the audience:
+For a deployment whose Subject-Token Audience is `https://broker.example`, a Fly workload requests its ID Token with that exact value in the Fly Tokens resource `aud` field; `/token` is not part of the audience:
 
 ```http
 POST /v1/tokens/oidc
@@ -282,7 +282,7 @@ Fly returns the serialized ID Token as the response body. The workload sends tha
 
 ### Token Issuance Policy
 
-Installation Access Token Issuance is allowed only when the normalized request is covered by the closed, immutable set of Permit Statements compiled into the Worker artifact. Each independently complete statement contains an exact issuer, Claim Predicates over Subject Token Claims, one Repository Resource Constraint, and a non-empty permission map. A constraint selects either one exact repository or every repository owned by one owner. Missing or wrongly typed selected Claims make a statement non-applicable; evaluation never throws for verified Claim data.
+Installation Access Token Issuance is allowed only when the normalized request is covered by the closed, immutable set of Permit Statements compiled into the deployment artifact. Each independently complete statement contains an exact issuer, Claim Predicates over Subject Token Claims, one Repository Resource Constraint, and a non-empty permission map. A constraint selects either one exact repository or every repository owned by one owner. Missing or wrongly typed selected Claims make a statement non-applicable; evaluation never throws for verified Claim data.
 
 The `TokenIssuancePolicy` returned by `compileTokenIssuancePolicy` is a
 structural package Interface. Its compiled
@@ -300,7 +300,7 @@ Every policy issuer must resolve to an OIDC Provider Registration when the appli
 GitHub Actions authentication additionally requires:
 
 - the Client presents a [GitHub Actions OIDC token](https://docs.github.com/en/actions/concepts/security/openid-connect) from `https://token.actions.githubusercontent.com`
-- the signed Subject-Token Audience is the exact deployment `TOKEN_BROKER_AUDIENCE` value
+- the signed Subject-Token Audience is the exact deployment-owned Subject-Token Audience value
 - if the GitHub Actions OIDC token has an `azp` claim, that claim matches the same exact audience
 
 After authentication, a deployment may configure a GitHub Actions Permit
