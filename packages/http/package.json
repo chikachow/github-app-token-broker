@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./abort": "./src/abort.ts",
     "./body": "./src/body.ts",
     "./problem-details": "./src/problem-details.ts",
     "./request-body": "./src/request-body.ts"

@@ -1,3 +1,4 @@
+import { awaitWithAbortSignal } from "@github-app-token-broker/http/abort";
 import { readBodyUpTo } from "@github-app-token-broker/http/body";
 import {
   createLocalJWKSet,
@@ -698,12 +699,15 @@ async function fetchAndParseOidcRemoteDocument(
   const requestSignal = AbortSignal.timeout(providerRequestTimeoutMilliseconds);
 
   try {
-    response = await fetchImplementation(url, {
-      headers: { accept: "application/json" },
-      // Workerd exposes redirects only in manual mode; the exact-200 check below rejects them.
-      redirect: "manual",
-      signal: requestSignal,
-    });
+    response = await awaitWithAbortSignal(
+      fetchImplementation(url, {
+        headers: { accept: "application/json" },
+        // Workerd exposes redirects only in manual mode; the exact-200 check below rejects them.
+        redirect: "manual",
+        signal: requestSignal,
+      }),
+      requestSignal,
+    );
   } catch (error) {
     throw oidcRemoteDocumentTransportError(error, requestSignal, documentKind);
   }

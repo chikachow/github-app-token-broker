@@ -1,3 +1,4 @@
+import { awaitWithAbortSignal } from "@github-app-token-broker/http/abort";
 import { readBodyUpTo } from "@github-app-token-broker/http/body";
 import * as z from "zod";
 
@@ -149,7 +150,7 @@ async function requestGitHubApi<Value>(
       : AbortSignal.any([deadlineSignal, init.signal]);
 
   try {
-    const response = await awaitWithSignal(
+    const response = await awaitWithAbortSignal(
       dependencies.fetch(requestUrl, {
         ...init,
         headers: requestHeaders,
@@ -229,33 +230,6 @@ function invalidGitHubApiResponse(path: string, upstreamStatus: number): GitHubA
     false,
     upstreamStatus,
   );
-}
-
-function awaitWithSignal<Value>(operation: Promise<Value>, signal: AbortSignal): Promise<Value> {
-  if (signal.aborted) {
-    return Promise.reject(signal.reason);
-  }
-
-  return new Promise((resolve, reject) => {
-    const rejectForAbort = () => {
-      reject(signal.reason);
-    };
-    const removeAbortListener = () => {
-      signal.removeEventListener("abort", rejectForAbort);
-    };
-
-    signal.addEventListener("abort", rejectForAbort, { once: true });
-    void operation.then(
-      (value) => {
-        removeAbortListener();
-        resolve(value);
-      },
-      (error: unknown) => {
-        removeAbortListener();
-        reject(error);
-      },
-    );
-  });
 }
 
 function throwIfAborted(signal: AbortSignal): void {

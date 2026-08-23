@@ -116,6 +116,49 @@ describe("OIDC ID Token Authenticator", () => {
     ).toEqual([`${issuer}/.well-known/openid-configuration`, jwksUri]);
   });
 
+  it("enforces the provider deadline while waiting for response headers", async () => {
+    const deadline = new AbortController();
+    let watchdog: ReturnType<typeof setTimeout> | undefined;
+    const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(deadline.signal);
+
+    try {
+      const fetchStarted = Promise.withResolvers<void>();
+      let requestSignal: AbortSignal | null | undefined;
+      const authenticator = testAuthenticator(async (_input, init) => {
+        requestSignal = init?.signal;
+        fetchStarted.resolve();
+
+        return new Promise<Response>(() => undefined);
+      });
+      const authentication = authenticator.authenticateIdToken(await signedIdToken());
+
+      await fetchStarted.promise;
+      expect(timeout).toHaveBeenCalledWith(5_000);
+      expect(requestSignal).toBe(deadline.signal);
+
+      const didNotSettleAfterAbort = new Promise<never>((_resolve, reject) => {
+        deadline.signal.addEventListener(
+          "abort",
+          () => {
+            watchdog = setTimeout(() => {
+              reject(new Error("OIDC authentication did not settle after the provider deadline"));
+            }, 0);
+          },
+          { once: true },
+        );
+      });
+
+      deadline.abort(new DOMException("private provider timeout detail", "TimeoutError"));
+
+      await expect(Promise.race([authentication, didNotSettleAfterAbort])).resolves.toEqual(
+        expectedFailure("provider_unavailable", "ERR_OIDC_PROVIDER_CONFIGURATION_TIMEOUT"),
+      );
+    } finally {
+      clearTimeout(watchdog);
+      timeout.mockRestore();
+    }
+  });
+
   it("resolves per-call and default diagnostic observers at the public seam", async () => {
     const defaultEvents: OidcIdTokenAuthenticationEvent[] = [];
     const requestEvents: OidcIdTokenAuthenticationEvent[] = [];
