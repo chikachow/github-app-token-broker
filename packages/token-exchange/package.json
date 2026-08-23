@@ -13,6 +13,7 @@
     }
   },
   "scripts": {
+    "artifact:check": "node artifact/runtime-smoke.mjs && tsc --project artifact/tsconfig.json",
     "build": "tsdown --config tsdown.config.ts"
   },
   "dependencies": {

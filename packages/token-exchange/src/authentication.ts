@@ -80,7 +80,6 @@ async function observeAuthenticationFailure(
     fields: {
       ...diagnostics,
       path: url.pathname,
-      rayId: request.headers.get("cf-ray"),
       reason,
       userAgent: request.headers.get("user-agent"),
     },

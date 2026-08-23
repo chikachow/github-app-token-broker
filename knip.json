@@ -1,5 +1,10 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "ignoreDependencies": ["cloudflare", "jose", "zod"],
-  "includeEntryExports": true
+  "includeEntryExports": true,
+  "workspaces": {
+    "packages/token-exchange": {
+      "entry": ["artifact/consumer.ts"]
+    }
+  }
 }

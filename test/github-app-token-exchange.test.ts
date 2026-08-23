@@ -334,9 +334,215 @@ describe("GitHub App Token Exchange public interface", () => {
     });
 
     expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("pragma")).toBe("no-cache");
     await expect(response.json()).resolves.toEqual({ error: "temporarily_unavailable" });
     expect(JSON.stringify(observations)).not.toContain(failureDetail);
   });
+
+  it("maps OIDC provider unavailability without attempting GitHub I/O", async () => {
+    const githubRequests: Request[] = [];
+    const observations: TokenExchangeObservation[] = [];
+    const tokenExchange = createGitHubAppTokenExchange(configuration, {
+      fetch: async (input, init) => {
+        const request = new Request(input, init);
+
+        if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
+          return new Response(null, { status: 503 });
+        }
+
+        githubRequests.push(request);
+        return fetchGitHubTestDouble(request);
+      },
+      now: () => testNow,
+    });
+    const response = await tokenExchange(await tokenRequest(), {
+      observe: async (observation) => {
+        observations.push(observation);
+      },
+    });
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("pragma")).toBe("no-cache");
+    await expect(response.json()).resolves.toEqual({ error: "temporarily_unavailable" });
+    expect(githubRequests).toEqual([]);
+    expect(observations).toHaveLength(1);
+    expect(observations[0]).toMatchObject({
+      fields: { path: "/token", reason: "oidc_provider_failure" },
+      level: "warn",
+      message: "OIDC authentication failed",
+    });
+    expect(observations[0]?.fields).not.toHaveProperty("rayId");
+  });
+
+  it("sanitizes a real OIDC internal failure with runtime-neutral request context", async () => {
+    const failureDetail = "private OIDC clock failure with credential detail";
+    const fetchExternal = vi.fn<typeof fetch>();
+    const observations: TokenExchangeObservation[] = [];
+    const tokenExchange = createGitHubAppTokenExchange(configuration, {
+      fetch: fetchExternal,
+      now: () => {
+        throw new Error(failureDetail);
+      },
+    });
+    const body = await tokenExchangeRequestBody();
+    const subjectToken = new URLSearchParams(body).get("subject_token");
+    if (subjectToken === null) {
+      throw new Error("test Token Exchange request did not contain a subject token");
+    }
+    const response = await tokenExchange(
+      new Request("https://broker.example/token", {
+        body,
+        headers: {
+          "cf-ray": "must-not-enter-neutral-observation",
+          "content-type": "application/x-www-form-urlencoded",
+          "user-agent": "fixture-test-agent",
+        },
+        method: "POST",
+      }),
+      {
+        observe: async (observation) => {
+          observations.push(observation);
+        },
+      },
+    );
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("pragma")).toBe("no-cache");
+    expect(response.headers.get("www-authenticate")).toBeNull();
+    await expect(response.json()).resolves.toEqual({ error: "server_error" });
+    expect(fetchExternal).not.toHaveBeenCalled();
+    expect(observations).toEqual([
+      {
+        fields: {
+          path: "/token",
+          reason: "oidc_internal_failure",
+          userAgent: "fixture-test-agent",
+        },
+        level: "warn",
+        message: "OIDC authentication failed",
+      },
+    ]);
+    const serializedObservations = JSON.stringify(observations);
+    expect(serializedObservations).not.toContain("cf-ray");
+    expect(serializedObservations).not.toContain("must-not-enter-neutral-observation");
+    expect(serializedObservations).not.toContain(failureDetail);
+    expect(serializedObservations).not.toContain(subjectToken);
+    expect(serializedObservations).not.toContain(configuration.githubApp.privateKey);
+    expect(serializedObservations).not.toContain("ghs_test_token");
+  });
+
+  it.each([
+    {
+      appId: "not-an-app-id",
+      expectedError: {
+        message: "invalid GitHub App configuration",
+        name: "GitHubAppConfigurationError",
+      },
+      privateDetails: ["not-an-app-id"],
+      privateKey: configuration.githubApp.privateKey,
+      scenario: "an invalid App ID",
+    },
+    {
+      appId: configuration.githubApp.appId,
+      expectedError: {
+        message: "invalid GitHub App configuration",
+        name: "GitHubAppConfigurationError",
+      },
+      privateDetails: [],
+      privateKey: "",
+      scenario: "an empty private key",
+    },
+    {
+      appId: configuration.githubApp.appId,
+      expectedError: {
+        message: "invalid GitHub App configuration",
+        name: "GitHubAppConfigurationError",
+      },
+      privateDetails: ["not a private key"],
+      privateKey: "not a private key",
+      scenario: "an invalid private key",
+    },
+    {
+      appId: configuration.githubApp.appId,
+      expectedError: {
+        message: "unexpected Installation Access Token Issuance error",
+        name: "Error",
+      },
+      privateDetails: ["private secret binding rejection", "PrivateSecretBindingError"],
+      privateKey: {
+        get: async () => {
+          const error = new Error("private secret binding rejection");
+          error.name = "PrivateSecretBindingError";
+          throw error;
+        },
+      },
+      scenario: "a rejected structural secret binding",
+    },
+  ] as const)(
+    "sanitizes $scenario before GitHub I/O",
+    async ({ appId, expectedError, privateDetails, privateKey }) => {
+      const githubRequests: Request[] = [];
+      const observations: TokenExchangeObservation[] = [];
+      const tokenExchange = createGitHubAppTokenExchange(
+        {
+          ...configuration,
+          githubApp: { appId, privateKey },
+        },
+        {
+          fetch: async (input, init) => {
+            const request = new Request(input, init);
+
+            if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
+              return fetchOidcRemoteDocumentResponseTestDouble(request);
+            }
+
+            githubRequests.push(request);
+            return fetchGitHubTestDouble(request);
+          },
+          now: () => testNow,
+        },
+      );
+      const body = await tokenExchangeRequestBody();
+      const subjectToken = new URLSearchParams(body).get("subject_token");
+      if (subjectToken === null) {
+        throw new Error("test Token Exchange request did not contain a subject token");
+      }
+      const response = await tokenExchange(
+        new Request("https://broker.example/token", {
+          body,
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          method: "POST",
+        }),
+        {
+          observe: async (observation) => {
+            observations.push(observation);
+          },
+        },
+      );
+
+      expect(response.status).toBe(500);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(response.headers.get("pragma")).toBe("no-cache");
+      expect(response.headers.get("www-authenticate")).toBeNull();
+      const responseBody = await response.json();
+      expect(responseBody).toEqual({ error: "server_error" });
+      expect(githubRequests).toEqual([]);
+      expect(observations.map(({ fields }) => fields["event"])).toEqual([
+        "installation_access_token_issuance_started",
+        "installation_access_token_issuance_failed",
+      ]);
+      expect(observations[1]).toMatchObject({ fields: { error: expectedError } });
+      const serializedBoundary = JSON.stringify({ observations, responseBody });
+      for (const privateDetail of privateDetails) {
+        expect(serializedBoundary).not.toContain(privateDetail);
+      }
+      expect(serializedBoundary).not.toContain(subjectToken);
+      expect(serializedBoundary).not.toContain("ghs_test_token");
+    },
+  );
 
   it("sanitizes a failing request body stream", async () => {
     const failureDetail = "subject_token=private-stream-detail";
@@ -798,7 +1004,6 @@ describe("GitHub App Token Exchange public interface", () => {
       fields: {
         diagnosticCode: "ERR_JWT_INVALID",
         path: "/token",
-        rayId: null,
         reason: "invalid_token",
         userAgent: null,
       },
