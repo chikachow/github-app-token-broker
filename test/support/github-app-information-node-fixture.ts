@@ -1,5 +1,5 @@
 import { testPrivateKeyPem } from "./rsa-test-key-pair.ts";
-import { testGitHubAppResponse } from "./github-app-information.ts";
+import { testGitHubInstallationResponse } from "./github-app-information.ts";
 import type { TestOutboundRequest } from "./outbound-request.ts";
 
 export const githubAppInformationNodeFixture = Object.freeze({
@@ -15,11 +15,7 @@ function githubAppInformationResponse(request: TestOutboundRequest): Response | 
     return null;
   }
 
-  if (
-    url.pathname !== "/app" &&
-    url.pathname !== "/app/installations/40101" &&
-    url.pathname !== "/app/installations/99999"
-  ) {
+  if (url.pathname !== "/app/installations/12345") {
     return null;
   }
 
@@ -31,13 +27,5 @@ function githubAppInformationResponse(request: TestOutboundRequest): Response | 
     throw new Error("invalid GitHub App Information request headers");
   }
 
-  if (url.pathname === "/app/installations/99999") {
-    return new Response("private upstream failure", { status: 500 });
-  }
-
-  if (url.pathname === "/app/installations/40101") {
-    return new Response("private credential failure", { status: 401 });
-  }
-
-  return Response.json(testGitHubAppResponse);
+  return Response.json(testGitHubInstallationResponse);
 }
