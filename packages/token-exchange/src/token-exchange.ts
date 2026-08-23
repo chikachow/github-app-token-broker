@@ -41,16 +41,16 @@ interface TokenExchangeEndpointRuntime {
   now(): Date;
 }
 
-export async function handleTokenExchangeRequest(
-  request: Request,
+export function createTokenExchangeEndpoint(
   runtime: TokenExchangeEndpointRuntime,
-  context: TokenExchangeRequestContext,
-): Promise<Response> {
-  try {
-    return await handleTokenExchangeRequestCore(request, runtime, context);
-  } catch (error) {
-    return unexpectedTokenExchangeFailureResponse(error);
-  }
+): (request: Request, context: TokenExchangeRequestContext) => Promise<Response> {
+  return async (request, context) => {
+    try {
+      return await handleTokenExchangeRequestCore(request, runtime, context);
+    } catch (error) {
+      return unexpectedTokenExchangeFailureResponse(error);
+    }
+  };
 }
 
 function unexpectedTokenExchangeFailureResponse(error: unknown): Response {

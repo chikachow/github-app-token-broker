@@ -42,6 +42,11 @@ const configuration = {
   },
   subjectTokenAudience: "https://broker.example",
 } satisfies GitHubAppTokenExchangeConfiguration;
+const defaultInstallationAccessTokenRequestLogFields = {
+  permissions: { contents: "write", pull_requests: "write" },
+  resource: `https://api.github.com/repos/${testRepository}`,
+  scope: "contents:write pull_requests:write",
+} as const;
 
 describe("GitHub App Token Exchange public interface", () => {
   it("uses the platform fetch and clock when runtime dependencies are omitted", async () => {
@@ -130,8 +135,25 @@ describe("GitHub App Token Exchange public interface", () => {
     }
   });
 
-  it("snapshots configuration when the public handler is constructed", async () => {
+  it("snapshots configuration and runtime dependencies when the public handler is constructed", async () => {
     const observedIssuers: unknown[] = [];
+    const initialFetch = vi.fn<typeof fetch>(async (input, init) => {
+      const request = new Request(input, init);
+
+      if (new URL(request.url).hostname === "api.github.com") {
+        const authorization = request.headers.get("authorization");
+        observedIssuers.push(
+          authorization === null
+            ? undefined
+            : (await import("jose")).decodeJwt(authorization.slice("Bearer ".length)).iss,
+        );
+      }
+
+      return fetchExternal(request);
+    });
+    const initialNow = vi.fn(() => testNow);
+    const replacementFetch = vi.fn<typeof fetch>();
+    const replacementNow = vi.fn(() => new Date("2030-01-01T00:00:00.000Z"));
     const mutableConfiguration = {
       composition: {
         oidcProviderRegistrations: [githubActionsOidcProviderRegistration],
@@ -143,33 +165,27 @@ describe("GitHub App Token Exchange public interface", () => {
       },
       subjectTokenAudience: "https://broker.example",
     };
-    const tokenExchange = createGitHubAppTokenExchange(mutableConfiguration, {
-      fetch: async (input, init) => {
-        const request = new Request(input, init);
-
-        if (new URL(request.url).hostname === "api.github.com") {
-          const authorization = request.headers.get("authorization");
-          observedIssuers.push(
-            authorization === null
-              ? undefined
-              : (await import("jose")).decodeJwt(authorization.slice("Bearer ".length)).iss,
-          );
-        }
-
-        return fetchExternal(request);
-      },
-      now: () => testNow,
-    });
+    const mutableRuntimeDependencies = { fetch: initialFetch, now: initialNow };
+    const tokenExchange = createGitHubAppTokenExchange(
+      mutableConfiguration,
+      mutableRuntimeDependencies,
+    );
 
     mutableConfiguration.composition.oidcProviderRegistrations.length = 0;
     mutableConfiguration.githubApp.appId = "mutated";
     mutableConfiguration.githubApp.privateKey = "mutated";
     mutableConfiguration.subjectTokenAudience = "mutated";
+    mutableRuntimeDependencies.fetch = replacementFetch;
+    mutableRuntimeDependencies.now = replacementNow;
 
     const response = await tokenExchange(await tokenRequest(), requestContext());
 
     expect(response.status).toBe(200);
     expect(observedIssuers).toEqual(["2419473", "2419473"]);
+    expect(initialFetch).toHaveBeenCalled();
+    expect(initialNow).toHaveBeenCalled();
+    expect(replacementFetch).not.toHaveBeenCalled();
+    expect(replacementNow).not.toHaveBeenCalled();
   });
 
   it("enforces the GitHub deadline through the public handler", async () => {
@@ -265,15 +281,35 @@ describe("GitHub App Token Exchange public interface", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(observations).toContainEqual(
-      expect.objectContaining({
-        fields: expect.objectContaining({
+    const commonFields = expectedIssuanceObservationFields({ outcome: "permitted" });
+    expect(observations).toEqual([
+      {
+        fields: {
+          event: "installation_access_token_issuance_started",
+          ...commonFields,
+          target_installation: {
+            id: undefined,
+            repository: testRepository,
+          },
+        },
+        level: "info",
+      },
+      {
+        fields: {
+          event: "installation_access_token_issuance_succeeded",
+          expires_at: "2030-01-01T00:00:00Z",
+          ...commonFields,
+          target_installation: {
+            id: testInstallationId,
+            repository: testRepository,
+          },
           installation_access_token: {
             permissions: { contents: "write", metadata: "read", pull_requests: "write" },
           },
-        }),
-      }),
-    );
+        },
+        level: "info",
+      },
+    ]);
   });
 
   it("retains the resolved installation in an observed mint failure", async () => {
@@ -302,10 +338,12 @@ describe("GitHub App Token Exchange public interface", () => {
     expect(response.status).toBe(502);
     expect(observations).toContainEqual(
       expect.objectContaining({
-        fields: expect.objectContaining({
+        fields: {
+          error: expect.any(Object),
           event: "installation_access_token_issuance_failed",
+          ...expectedIssuanceObservationFields({ outcome: "permitted" }),
           target_installation: { id: 67890 },
-        }),
+        },
       }),
     );
   });
@@ -825,11 +863,17 @@ describe("GitHub App Token Exchange public interface", () => {
   it.each([
     {
       error: "invalid_scope",
+      installationAccessTokenRequest: {
+        permissions: { issues: "read" },
+        resource: `https://api.github.com/repos/${testRepository}`,
+        scope: "issues:read",
+      },
       options: { form: { scope: "issues:read" } },
       outcome: "requested_permissions_unsupported",
     },
     {
       error: "invalid_request",
+      installationAccessTokenRequest: defaultInstallationAccessTokenRequestLogFields,
       options: { claims: { event_name: "push" } },
       outcome: "subject_token_unacceptable",
     },
@@ -840,12 +884,17 @@ describe("GitHub App Token Exchange public interface", () => {
           resource: "https://api.github.com/repos/fixture-target-owner/fixture-unconfigured-target",
         },
       },
+      installationAccessTokenRequest: {
+        ...defaultInstallationAccessTokenRequestLogFields,
+        resource: "https://api.github.com/repos/fixture-target-owner/fixture-unconfigured-target",
+      },
       outcome: "target_unsupported",
     },
   ] as const)(
     "maps policy outcome $outcome through the public handler",
-    async ({ error, options }) => {
+    async ({ error, installationAccessTokenRequest, options, outcome }) => {
       const githubRequests: Request[] = [];
+      const observations: TokenExchangeObservation[] = [];
       const tokenExchange = createGitHubAppTokenExchange(configuration, {
         fetch: async (input, init) => {
           const request = new Request(input, init);
@@ -865,12 +914,34 @@ describe("GitHub App Token Exchange public interface", () => {
           headers: { "content-type": "application/x-www-form-urlencoded" },
           method: "POST",
         }),
-        requestContext(),
+        {
+          observe: async (observation) => {
+            observations.push(observation);
+          },
+        },
       );
 
       expect(response.status).toBe(400);
       await expect(response.json()).resolves.toEqual({ error });
       expect(githubRequests).toEqual([]);
+      expect(observations).toEqual([
+        {
+          fields: {
+            error: {
+              message: "Token Issuance Policy did not permit Installation Access Token Issuance",
+              name: "Error",
+              status: undefined,
+            },
+            event: "installation_access_token_issuance_failed",
+            ...expectedIssuanceObservationFields({
+              installationAccessTokenRequest,
+              outcome,
+            }),
+            target_installation: { id: undefined },
+          },
+          level: "error",
+        },
+      ]);
     },
   );
 
@@ -1161,6 +1232,29 @@ function requestContext(): TokenExchangeRequestContext {
   const observeOidcDiagnostic: ObserveOidcDiagnostic = () => undefined;
 
   return { observe, observeOidcDiagnostic };
+}
+
+function expectedIssuanceObservationFields({
+  installationAccessTokenRequest = defaultInstallationAccessTokenRequestLogFields,
+  outcome,
+}: {
+  installationAccessTokenRequest?: {
+    readonly permissions: Readonly<Record<string, string>>;
+    readonly resource: string;
+    readonly scope: string;
+  };
+  outcome: string;
+}): Record<string, unknown> {
+  return {
+    installation_access_token_request: installationAccessTokenRequest,
+    subject_token: {
+      issuer: "https://token.actions.githubusercontent.com",
+      resolved_key_id: "test-key-1",
+      sub: "repo:fixture-owner/fixture-source-repository:ref:refs/heads/fixture-base-branch",
+      subject_token_kind: "id_token",
+    },
+    token_issuance_policy: { outcome },
+  };
 }
 
 async function tokenRequest(form: Record<string, string> = {}): Promise<Request> {

@@ -11,7 +11,7 @@ import {
 } from "@github-app-token-broker/token-issuance-policy";
 
 import { createInstallationAccessTokenExchange } from "./installation-access-token-exchange.ts";
-import { handleTokenExchangeRequest } from "./token-exchange.ts";
+import { createTokenExchangeEndpoint } from "./token-exchange.ts";
 
 export type {
   ObserveOidcDiagnostic,
@@ -80,14 +80,13 @@ export function createGitHubAppTokenExchange(
     oidcIdTokenAuthenticator,
     tokenIssuancePolicy,
   });
+  const endpointRuntime = {
+    exchange: (
+      input: Parameters<typeof tokenExchange.exchange>[0],
+      context: TokenExchangeRequestContext,
+    ) => tokenExchange.exchange(input, context),
+    now: dependencies.now,
+  };
 
-  return (request, context) =>
-    handleTokenExchangeRequest(
-      request,
-      {
-        exchange: (input, requestContext) => tokenExchange.exchange(input, requestContext),
-        now: dependencies.now,
-      },
-      context,
-    );
+  return createTokenExchangeEndpoint(endpointRuntime);
 }
