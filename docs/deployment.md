@@ -22,6 +22,8 @@ The deployment calls `createTokenExchangeWorker` with:
 - the accepted OIDC Provider Registrations
 - the compiled Token Issuance Policy
 
+The Worker adapter constructs the runtime-neutral `createGitHubAppTokenExchange` handler from that reviewed composition and the deployment bindings. Its semantic GitHub App interface contains only `appId` and `privateKey`; the GitHub API destination is fixed inside the GitHub module and cannot be supplied by either factory.
+
 The deployment imports the required workspace packages from a pinned source revision, compiles both values into the Worker artifact, and points its Wrangler `main` at that entrypoint. `createTokenExchangeWorker` rejects duplicate registrations and Permit Statements that reference an unregistered issuer during construction. Empty registrations with an empty Token Issuance Policy are a valid deny-all composition. Construction performs no network I/O.
 
 OIDC Provider Registrations and Token Issuance Policy are not Worker bindings, request parameters, or remote configuration. Changing them requires changing reviewed TypeScript and building a new artifact. The source package root has named exports only; it does not provide a default production composition.

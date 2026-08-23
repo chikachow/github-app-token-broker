@@ -1,12 +1,10 @@
-export interface TokenExchangeObservation {
-  readonly fields: Readonly<Record<string, unknown>>;
-  readonly level: "error" | "info" | "warn";
-  readonly message?: string;
-}
+import type {
+  ObserveOidcDiagnostic,
+  ObserveTokenExchange,
+  TokenExchangeObservation,
+} from "@github-app-token-broker/token-exchange";
 
-export type ObserveTokenExchange = (observation: TokenExchangeObservation) => Promise<void>;
-
-export type ObserveOidcDiagnostic = (observation: TokenExchangeObservation) => undefined;
+export type { ObserveOidcDiagnostic, ObserveTokenExchange, TokenExchangeObservation };
 
 export const observeTokenExchangeWithConsole: ObserveTokenExchange = async (observation) => {
   writeTokenExchangeObservationToConsole(observation);

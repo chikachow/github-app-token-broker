@@ -4,10 +4,10 @@ import type { TokenIssuancePolicy } from "@github-app-token-broker/token-issuanc
 import {
   type InstallationAccessTokenIssuanceFailureReason,
   issueInstallationAccessTokenForContext,
-} from "./policy/installation-access-token-issuance.ts";
+} from "./installation-access-token-issuance.ts";
 import { authenticateOidcIdToken, type OidcAuthenticationFailureReason } from "./authentication.ts";
 import type { InstallationAccessTokenRequest } from "@github-app-token-broker/github/installation-access-token-request";
-import type { ObserveTokenExchange } from "./observability.ts";
+import type { TokenExchangeRequestContext } from "./events.ts";
 
 type TokenExchangeAuthorizationFailureReason = Extract<
   InstallationAccessTokenIssuanceFailureReason,
@@ -37,32 +37,35 @@ export type InstallationAccessTokenExchangeResult =
     };
 
 export interface InstallationAccessTokenExchange {
-  exchange(input: {
-    readonly githubApp: GitHubAppEnv;
-    readonly request: Request;
-    readonly subjectToken: string;
-    readonly tokenRequest: InstallationAccessTokenRequest;
-  }): Promise<InstallationAccessTokenExchangeResult>;
+  exchange(
+    input: {
+      readonly request: Request;
+      readonly subjectToken: string;
+      readonly tokenRequest: InstallationAccessTokenRequest;
+    },
+    context: TokenExchangeRequestContext,
+  ): Promise<InstallationAccessTokenExchangeResult>;
 }
 
 export function createInstallationAccessTokenExchange({
+  githubApp,
   githubAppDependencies,
   oidcIdTokenAuthenticator,
-  observe,
   tokenIssuancePolicy,
 }: {
+  githubApp: GitHubAppEnv;
   githubAppDependencies: GitHubAppDependencies;
   oidcIdTokenAuthenticator: OidcIdTokenAuthenticator;
-  observe: ObserveTokenExchange;
   tokenIssuancePolicy: TokenIssuancePolicy;
 }): InstallationAccessTokenExchange {
   return {
-    async exchange({ githubApp, request, subjectToken, tokenRequest }) {
+    async exchange({ request, subjectToken, tokenRequest }, context) {
       const authentication = await authenticateOidcIdToken(
         subjectToken,
         request,
         oidcIdTokenAuthenticator,
-        observe,
+        context.observe,
+        context.observeOidcDiagnostic,
       );
 
       if (!authentication.ok) {
@@ -78,7 +81,7 @@ export function createInstallationAccessTokenExchange({
         dependencies: githubAppDependencies,
         githubApp,
         installationAccessTokenRequest: tokenRequest,
-        observe,
+        observe: context.observe,
         tokenIssuancePolicy,
       });
 

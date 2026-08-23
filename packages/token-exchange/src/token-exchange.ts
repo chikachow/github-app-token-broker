@@ -3,15 +3,16 @@ import { readRequestBodyUpTo } from "@github-app-token-broker/http/request-body"
 import { normalizeInstallationAccessTokenRequest } from "@github-app-token-broker/github/installation-access-token-request";
 import type { InstallationAccessTokenExchangeResult } from "./installation-access-token-exchange.ts";
 import type { InstallationAccessTokenRequest } from "@github-app-token-broker/github/installation-access-token-request";
-import type { InstallationAccessTokenIssuanceFailureReason } from "./policy/installation-access-token-issuance.ts";
+import type { InstallationAccessTokenIssuanceFailureReason } from "./installation-access-token-issuance.ts";
+import type { TokenExchangeRequestContext } from "./events.ts";
 
-const maxTokenExchangeBodyBytes = 64 * 1024;
+/** @public */
+export const maxTokenExchangeBodyBytes = 64 * 1024;
 const tokenExchangeGrantType = "urn:ietf:params:oauth:grant-type:token-exchange";
 const accessTokenType = "urn:ietf:params:oauth:token-type:access_token";
 const legacyGithubInstallationAccessTokenType =
   "urn:chikachow:github-app-installation-access-token";
 const oidcIdTokenType = "urn:ietf:params:oauth:token-type:id_token";
-const unknownRateLimitKey = "unknown";
 const unsupportedInvalidTargetParameters = ["audience"];
 const unsupportedInvalidRequestParameters = [
   "actor_token",
@@ -23,32 +24,36 @@ const unsupportedInvalidRequestParameters = [
   "client_secret",
 ];
 
-export function tokenExchangeMethodNotAllowedResponse(): Response {
-  return oauthErrorResponse(400, "invalid_request");
+/** @public */
+export function tokenExchangeInvalidRequestResponse(status: 400 | 413): Response {
+  return oauthErrorResponse(status, "invalid_request");
 }
 
 interface TokenExchangeEndpointRuntime {
-  exchange(input: {
-    readonly request: Request;
-    readonly subjectToken: string;
-    readonly tokenRequest: InstallationAccessTokenRequest;
-  }): Promise<InstallationAccessTokenExchangeResult>;
+  exchange(
+    input: {
+      readonly request: Request;
+      readonly subjectToken: string;
+      readonly tokenRequest: InstallationAccessTokenRequest;
+    },
+    context: TokenExchangeRequestContext,
+  ): Promise<InstallationAccessTokenExchangeResult>;
   now(): Date;
-  rateLimit(key: string): Promise<boolean>;
 }
 
 export async function handleTokenExchangeRequest(
   request: Request,
   runtime: TokenExchangeEndpointRuntime,
+  context: TokenExchangeRequestContext,
 ): Promise<Response> {
   try {
-    return await handleTokenExchangeRequestCore(request, runtime);
+    return await handleTokenExchangeRequestCore(request, runtime, context);
   } catch (error) {
     return unexpectedTokenExchangeFailureResponse(error);
   }
 }
 
-export function unexpectedTokenExchangeFailureResponse(error: unknown): Response {
+function unexpectedTokenExchangeFailureResponse(error: unknown): Response {
   try {
     console.error({
       error: { name: error instanceof Error ? "Error" : typeof error },
@@ -64,11 +69,10 @@ export function unexpectedTokenExchangeFailureResponse(error: unknown): Response
 async function handleTokenExchangeRequestCore(
   request: Request,
   runtime: TokenExchangeEndpointRuntime,
+  context: TokenExchangeRequestContext,
 ): Promise<Response> {
-  const rateLimit = await runtime.rateLimit(tokenExchangeRateLimitKey(request));
-
-  if (!rateLimit) {
-    return oauthErrorResponse(429, "temporarily_unavailable");
+  if (request.method !== "POST") {
+    return tokenExchangeInvalidRequestResponse(400);
   }
 
   if (request.headers.has("authorization")) {
@@ -84,7 +88,7 @@ async function handleTokenExchangeRequestCore(
   const body = await readRequestBodyUpTo(request, maxTokenExchangeBodyBytes);
 
   if (!body.ok) {
-    return oauthErrorResponse(body.status, "invalid_request");
+    return tokenExchangeInvalidRequestResponse(body.status);
   }
 
   const form = new URLSearchParams(new TextDecoder().decode(body.bytes));
@@ -127,11 +131,14 @@ async function handleTokenExchangeRequestCore(
     return oauthErrorResponse(400, tokenRequest.error);
   }
 
-  const result = await runtime.exchange({
-    request,
-    subjectToken,
-    tokenRequest: tokenRequest.tokenRequest,
-  });
+  const result = await runtime.exchange(
+    {
+      request,
+      subjectToken,
+      tokenRequest: tokenRequest.tokenRequest,
+    },
+    context,
+  );
 
   if (!result.ok) {
     const failure = oauthErrorForTokenExchangeFailure(result);
@@ -347,8 +354,4 @@ function expiresInSeconds(expiresAt: string, now: Date): number {
   }
 
   return Math.max(0, Math.floor((expiresAtMs - now.getTime()) / 1000));
-}
-
-function tokenExchangeRateLimitKey(request: Request): string {
-  return request.headers.get("cf-connecting-ip") ?? unknownRateLimitKey;
 }

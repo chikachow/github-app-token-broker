@@ -3,10 +3,17 @@ import { configDefaults, defineConfig } from "vitest/config";
 
 import { githubAppInformationNodeFixture } from "./test/support/github-app-information-node-fixture.ts";
 
+const tokenExchangeSourceAlias = {
+  "@github-app-token-broker/token-exchange": new URL(
+    "./packages/token-exchange/src/index.ts",
+    import.meta.url,
+  ).pathname,
+};
+
 export default defineConfig({
   test: {
     coverage: {
-      exclude: ["**/*.test.ts", "test/**", "worker-configuration.d.ts"],
+      exclude: ["**/*.test.ts", "packages/*/dist/**", "test/**", "worker-configuration.d.ts"],
       provider: "istanbul",
       reporter: ["text", "lcov"],
     },
@@ -26,6 +33,7 @@ export default defineConfig({
             },
           }),
         ],
+        resolve: { alias: tokenExchangeSourceAlias },
         test: {
           allowOnly: false,
           detectAsyncLeaks: true,
@@ -38,6 +46,7 @@ export default defineConfig({
         },
       },
       {
+        resolve: { alias: tokenExchangeSourceAlias },
         test: {
           allowOnly: false,
           include: ["test/properties/**/*.property.test.ts"],
@@ -62,6 +71,7 @@ export default defineConfig({
             },
           }),
         ],
+        resolve: { alias: tokenExchangeSourceAlias },
         test: {
           allowOnly: false,
           detectAsyncLeaks: true,

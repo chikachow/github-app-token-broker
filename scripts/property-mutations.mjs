@@ -4,7 +4,7 @@ const githubSource = "packages/github/src/installation-access-token-request.ts";
 const githubPropertyTest = "test/properties/installation-access-token-request.property.test.ts";
 const policySource = "packages/token-issuance-policy/src/token-issuance-policy.ts";
 const policyPropertyTest = "test/properties/token-issuance-policy.property.test.ts";
-const tokenExchangeSource = "workers/github-app-token-broker/src/token-exchange.ts";
+const tokenExchangeSource = "packages/token-exchange/src/token-exchange.ts";
 const tokenExchangePropertyTest = "test/properties/token-exchange-form.property.test.ts";
 const ordinaryTestSuite = lane([], ["unit", "worker-integration"]);
 

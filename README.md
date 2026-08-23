@@ -9,10 +9,11 @@ The only public service route is `POST /token`. The service has no webhook recei
 - `workers/github-app-token-broker` is the sole deployable Cloudflare Worker package (`@github-app-token-broker/worker`).
 - `packages/oidc` owns the deep ID Token authenticator, OIDC Provider Registration validation, discovery/JWK Set validation, bounded caches, and fail-closed error classification.
 - `packages/github` owns Installation Access Token Request normalization, the Repository Resource-oriented issuance capability, GitHub App JWT authentication, owner binding, installation-token minting, and GitHub App Information queries.
+- `packages/token-exchange` owns the runtime-neutral Token Exchange handler that composes request validation, OIDC authentication, Token Issuance Policy, GitHub issuance, mandatory observations, and OAuth responses behind one Fetch-compatible interface.
 - `packages/token-issuance-policy` owns Permit Statement compilation and evaluation.
 - `packages/http` owns bounded request/response body helpers and problem responses.
 - Provider packages contain reviewed GitHub Actions and Google service-account registrations plus exact organization-scoped Fly OIDC Provider Registration construction.
-- `createTokenExchangeWorker` accepts OIDC Provider Registrations and a compiled Token Issuance Policy. An external deployment owns that TypeScript composition and compiles it into its Worker artifact. The source Wrangler template instead uses a generic deny-all entrypoint.
+- `createGitHubAppTokenExchange` accepts one semantic GitHub App configuration, an exact Subject-Token Audience, OIDC Provider Registrations, and a compiled Token Issuance Policy. `createTokenExchangeWorker` is the Cloudflare adapter that supplies bindings, admission control, and observation adapters. An external deployment owns the TypeScript composition and compiles it into its artifact. The source Wrangler template instead uses a generic deny-all entrypoint.
 
 The intended model is one GitHub App per deployment. OIDC Provider Registrations and Token Issuance Policy are build-time composition values, while App credentials, Subject-Token Audience, and rate limit are deployment bindings. Changing trust or policy requires a reviewed composition change and a newly built Worker artifact. The public API deliberately exposes no App selector or runtime policy loader.
 
