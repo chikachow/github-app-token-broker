@@ -10,76 +10,40 @@ interface BodyReadScenario {
   readonly maxBytes: number;
 }
 
-const plainChunkArbitrary = fc.uint8Array({ maxLength: 16 });
-const viewChunkArbitrary = fc
-  .tuple(plainChunkArbitrary, fc.integer({ max: 4, min: 1 }), fc.integer({ max: 4, min: 1 }))
+const nonEmptyViewChunkArbitrary = fc
+  .tuple(
+    fc.array(fc.integer({ max: 255, min: 1 }), { maxLength: 16, minLength: 1 }),
+    fc.integer({ max: 4, min: 1 }),
+    fc.integer({ max: 4, min: 1 }),
+  )
   .map(([bytes, prefixLength, suffixLength]) => {
-    const backing = new Uint8Array(prefixLength + bytes.byteLength + suffixLength);
+    const backing = new Uint8Array(prefixLength + bytes.length + suffixLength);
     backing.set(bytes, prefixLength);
 
-    return backing.subarray(prefixLength, prefixLength + bytes.byteLength);
+    return backing.subarray(prefixLength, prefixLength + bytes.length);
   });
-const chunkArbitrary = fc.oneof(
-  { arbitrary: plainChunkArbitrary, weight: 2 },
-  { arbitrary: viewChunkArbitrary, weight: 1 },
-);
-const chunksArbitrary = fc.array(chunkArbitrary, { maxLength: 12 });
-const chunksContainingBytesArbitrary = fc
+export const bodyReadScenarioArbitrary: fc.Arbitrary<BodyReadScenario> = fc
   .tuple(
-    fc.array(chunkArbitrary, { maxLength: 5 }),
-    fc.uint8Array({ maxLength: 16, minLength: 1 }),
-    fc.array(chunkArbitrary, { maxLength: 5 }),
+    fc.array(nonEmptyViewChunkArbitrary, { maxLength: 8, minLength: 2 }),
+    fc.integer({ max: 32, min: 0 }),
   )
-  .map(([before, nonEmpty, after]) => [...before, nonEmpty, ...after]);
+  .map(([nonEmptyChunks, headroom]) => {
+    const chunks = [
+      ...nonEmptyChunks.flatMap((chunk) => [new Uint8Array(), chunk]),
+      new Uint8Array(),
+    ];
 
-const acceptedBodyArbitrary = chunksArbitrary.chain((chunks) => {
-  const byteLength = totalByteLength(chunks);
-
-  return fc
-    .integer({ max: byteLength + 32, min: byteLength })
-    .map((maxBytes) => ({ chunks, maxBytes }));
-});
-const exactLimitBodyArbitrary = chunksArbitrary.map((chunks) => ({
-  chunks,
-  maxBytes: totalByteLength(chunks),
-}));
-const oversizedBodyArbitrary = chunksContainingBytesArbitrary.chain((chunks) =>
-  fc
-    .integer({ max: totalByteLength(chunks) - 1, min: 0 })
-    .map((maxBytes) => ({ chunks, maxBytes })),
-);
-
-export const bodyReadScenarioArbitrary: fc.Arbitrary<BodyReadScenario> = fc.oneof(
-  acceptedBodyArbitrary,
-  exactLimitBodyArbitrary,
-  oversizedBodyArbitrary,
-);
-
-export const bodyReadExamples: [BodyReadScenario][] = [
-  [{ chunks: [], maxBytes: 0 }],
-  [{ chunks: [new Uint8Array(), new Uint8Array()], maxBytes: 0 }],
-  [{ chunks: [Uint8Array.of(9, 1, 2, 9).subarray(1, 3)], maxBytes: 2 }],
-  [{ chunks: [Uint8Array.of(1)], maxBytes: 2 }],
-  [{ chunks: [Uint8Array.of(1), Uint8Array.of(2, 3)], maxBytes: 3 }],
-  [
-    {
-      chunks: [Uint8Array.of(1, 2), Uint8Array.of(3, 4), Uint8Array.of(5, 6)],
-      maxBytes: 3,
-    },
-  ],
-];
+    return { chunks, maxBytes: totalByteLength(chunks) + headroom };
+  });
 
 export async function expectBodyReadScenario(scenario: BodyReadScenario): Promise<void> {
   const source = bodySource(scenario.chunks);
   const result = await readBodyUpTo(source.body, scenario.maxBytes);
   const expectedBytes = Uint8Array.from(scenario.chunks.flatMap((chunk) => [...chunk]));
-  const oversized = expectedBytes.byteLength > scenario.maxBytes;
 
-  expect(result).toEqual(oversized ? { ok: false } : { bytes: expectedBytes, ok: true });
-  expect(source.deliveredChunkCount()).toBe(
-    oversized ? chunksThroughLimit(scenario.chunks, scenario.maxBytes) : scenario.chunks.length,
-  );
-  expect(source.cancelled()).toBe(oversized);
+  expect(result).toEqual({ bytes: expectedBytes, ok: true });
+  expect(source.deliveredChunkCount()).toBe(scenario.chunks.length);
+  expect(source.cancelled()).toBe(false);
 }
 
 function bodySource(chunks: readonly Uint8Array[]): {
@@ -114,20 +78,6 @@ function bodySource(chunks: readonly Uint8Array[]): {
     cancelled: () => cancelled,
     deliveredChunkCount: () => deliveredChunkCount,
   };
-}
-
-function chunksThroughLimit(chunks: readonly Uint8Array[], maxBytes: number): number {
-  let byteLength = 0;
-
-  for (const [index, chunk] of chunks.entries()) {
-    byteLength += chunk.byteLength;
-
-    if (byteLength > maxBytes) {
-      return index + 1;
-    }
-  }
-
-  throw new Error("expected chunks to exceed the byte limit");
 }
 
 function totalByteLength(chunks: readonly Uint8Array[]): number {

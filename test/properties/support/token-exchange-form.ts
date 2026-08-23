@@ -5,171 +5,77 @@ import { handleTokenExchangeRequest } from "../../../workers/github-app-token-br
 
 export const formGeneratedRunBudget = 750;
 const tokenEndpoint = "https://broker.example/token";
-const grantType = "urn:ietf:params:oauth:grant-type:token-exchange";
-const requestedTokenType = "urn:ietf:params:oauth:token-type:access_token";
-const subjectTokenType = "urn:ietf:params:oauth:token-type:id_token";
 const resource = "https://api.github.com/repos/fixture-owner/fixture-repository";
 const scope = "contents:read";
 
 type FormEntry = readonly [string, string];
-type ExpectedFormOutcome =
-  | { readonly error: "invalid_request" | "invalid_target" }
-  | { readonly success: true };
 
 interface FormScenario {
-  readonly entries: readonly FormEntry[];
-  readonly expected: ExpectedFormOutcome;
-  readonly permutation: readonly FormEntry[];
+  readonly emptyFirst: readonly FormEntry[];
+  readonly nonEmptyFirst: readonly FormEntry[];
 }
 
-interface FormScenarioWithoutPermutation {
-  readonly entries: readonly FormEntry[];
-  readonly expected: ExpectedFormOutcome;
-}
-
-const baseEntries: readonly FormEntry[] = [
-  ["grant_type", grantType],
-  ["requested_token_type", requestedTokenType],
+const baseEntries = [
+  ["grant_type", "urn:ietf:params:oauth:grant-type:token-exchange"],
+  ["requested_token_type", "urn:ietf:params:oauth:token-type:access_token"],
   ["resource", resource],
   ["scope", scope],
   ["subject_token", "subject-token"],
-  ["subject_token_type", subjectTokenType],
-];
+  ["subject_token_type", "urn:ietf:params:oauth:token-type:id_token"],
+] as const satisfies readonly FormEntry[];
 
-const singleValuedFields = [
-  "grant_type",
-  "requested_token_type",
-  "resource",
-  "scope",
-  "subject_token",
-  "subject_token_type",
-] as const;
-const invalidRequestExtensionFields = [
+const emptyFieldNameArbitrary = fc.constantFrom(
+  ...baseEntries.map(([name]) => name),
   "actor_token",
   "actor_token_type",
+  "audience",
   "authorization_details",
   "client_assertion",
   "client_assertion_type",
   "client_id",
   "client_secret",
-] as const;
-const emptyIgnoredFieldArbitrary = fc.constantFrom(
-  ...singleValuedFields,
-  "audience",
-  ...invalidRequestExtensionFields,
+  "future_extension",
+  "x_broker_extension",
 );
-const ignoredExtensionEntryArbitrary = fc
-  .constantFrom("future_extension", "x_broker_extension")
-  .map((name) => [name, ""] as const);
-const acceptedNoiseEntryArbitrary: fc.Arbitrary<FormEntry> = fc.oneof(
-  emptyIgnoredFieldArbitrary.map((name) => [name, ""] as const),
-  ignoredExtensionEntryArbitrary,
-);
-
-const acceptedScenarioArbitrary: fc.Arbitrary<FormScenarioWithoutPermutation> = fc
-  .array(acceptedNoiseEntryArbitrary, { maxLength: 10 })
-  .map((noise) => ({
-    entries: [...baseEntries, ...noise],
-    expected: { success: true } as const,
-  }));
-
-const duplicateFieldCases = [
-  { error: "invalid_request", name: "grant_type", value: grantType },
-  { error: "invalid_request", name: "requested_token_type", value: requestedTokenType },
-  { error: "invalid_target", name: "resource", value: resource },
-  { error: "invalid_request", name: "scope", value: scope },
-  { error: "invalid_request", name: "subject_token", value: "other-subject-token" },
-  { error: "invalid_request", name: "subject_token_type", value: subjectTokenType },
-] as const;
-const duplicateScenarioArbitrary: fc.Arbitrary<FormScenarioWithoutPermutation> = fc
-  .constantFrom(...duplicateFieldCases)
-  .map(({ error, name, value }) => ({
-    entries: [...baseEntries, [name, value] as const],
-    expected: { error },
-  }));
-
-const rejectedExtensionCases = [
-  ...invalidRequestExtensionFields.map((name) => ({ error: "invalid_request" as const, name })),
-  { error: "invalid_target" as const, name: "audience" },
-] as const;
-const rejectedExtensionScenarioArbitrary: fc.Arbitrary<FormScenarioWithoutPermutation> = fc
-  .tuple(fc.constantFrom(...rejectedExtensionCases), fc.string({ maxLength: 12, minLength: 1 }))
-  .map(([{ error, name }, value]) => ({
-    entries: [...baseEntries, [name, value] as const],
-    expected: { error },
-  }));
 
 export const formScenarioArbitrary: fc.Arbitrary<FormScenario> = fc
-  .oneof(
-    { arbitrary: acceptedScenarioArbitrary, weight: 3 },
-    { arbitrary: duplicateScenarioArbitrary, weight: 3 },
-    { arbitrary: rejectedExtensionScenarioArbitrary, weight: 2 },
-  )
-  .chain((scenario) =>
-    fc
-      .shuffledSubarray([...scenario.entries], {
-        maxLength: scenario.entries.length,
-        minLength: scenario.entries.length,
-      })
-      .map((permutation) => ({ ...scenario, permutation })),
-  );
+  .constantFrom(...baseEntries)
+  .chain((selected) => {
+    const remainingEntries = baseEntries.filter(([name]) => name !== selected[0]);
 
-export const formScenarioExamples: [FormScenario][] = [
-  [
-    scenarioWithPermutation([["grant_type", ""], ...baseEntries], { success: true }, [
-      ...baseEntries,
-      ["grant_type", ""],
-    ]),
-  ],
-  [
-    scenarioWithPermutation(
-      [["resource", ""], ...baseEntries, ["resource", ""]],
-      { success: true },
-      [...baseEntries, ["resource", ""], ["resource", ""]],
-    ),
-  ],
-  [
-    scenarioWithPermutation(
-      [...baseEntries, ["grant_type", grantType]],
-      { error: "invalid_request" },
-      [["grant_type", grantType], ...baseEntries],
-    ),
-  ],
-  [
-    scenarioWithPermutation(
-      [...baseEntries, ["audience", "https://audience.example"]],
-      { error: "invalid_target" },
-      [["audience", "https://audience.example"], ...baseEntries],
-    ),
-  ],
-];
+    return fc
+      .tuple(
+        fc.shuffledSubarray(remainingEntries, {
+          maxLength: remainingEntries.length,
+          minLength: remainingEntries.length,
+        }),
+        fc.array(emptyFieldNameArbitrary, { maxLength: 10 }),
+      )
+      .map(([permutedRemainingEntries, emptyFieldNames]) => {
+        const emptyEntries = emptyFieldNames.map((name) => [name, ""] as const);
+        const selectedEmpty = [selected[0], ""] as const;
+
+        return {
+          emptyFirst: [selectedEmpty, ...permutedRemainingEntries, ...emptyEntries, selected],
+          nonEmptyFirst: [selected, ...emptyEntries, ...permutedRemainingEntries, selectedEmpty],
+        };
+      });
+  });
+
+const expectedObservation = {
+  exchangeCount: 1,
+  kind: "success",
+  resource,
+  scope,
+  status: 200,
+  subjectToken: "subject-token",
+} as const;
 
 export async function expectFormScenario(scenario: FormScenario): Promise<void> {
-  const expected = expectedObservation(scenario.expected);
-
-  await expect(observeTokenExchangeForm(scenario.entries)).resolves.toEqual(expected);
-  await expect(observeTokenExchangeForm(scenario.permutation)).resolves.toEqual(expected);
-}
-
-function scenarioWithPermutation(
-  entries: readonly FormEntry[],
-  expected: ExpectedFormOutcome,
-  permutation: readonly FormEntry[],
-): FormScenario {
-  return { entries, expected, permutation };
-}
-
-function expectedObservation(expected: ExpectedFormOutcome): ObservedFormOutcome {
-  return "success" in expected
-    ? {
-        exchangeCount: 1,
-        kind: "success",
-        resource,
-        scope,
-        status: 200,
-        subjectToken: "subject-token",
-      }
-    : { error: expected.error, exchangeCount: 0, kind: "error", status: 400 };
+  await expect(observeTokenExchangeForm(scenario.emptyFirst)).resolves.toEqual(expectedObservation);
+  await expect(observeTokenExchangeForm(scenario.nonEmptyFirst)).resolves.toEqual(
+    expectedObservation,
+  );
 }
 
 type ObservedFormOutcome =

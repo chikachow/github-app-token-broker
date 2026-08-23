@@ -17,6 +17,25 @@ describe("bounded body reading", () => {
     });
   });
 
+  it("reassembles subarray-backed chunks without advancing for empty chunks", async () => {
+    const firstBacking = Uint8Array.of(9, 1, 2, 9);
+    const secondBacking = Uint8Array.of(9, 3, 9);
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array());
+        controller.enqueue(firstBacking.subarray(1, 3));
+        controller.enqueue(new Uint8Array());
+        controller.enqueue(secondBacking.subarray(1, 2));
+        controller.close();
+      },
+    });
+
+    await expect(readBodyUpTo(body, 3)).resolves.toEqual({
+      bytes: Uint8Array.of(1, 2, 3),
+      ok: true,
+    });
+  });
+
   it("stops reading and requests cancellation after the byte limit", async () => {
     const cancel = vi.fn();
     let pullCount = 0;
