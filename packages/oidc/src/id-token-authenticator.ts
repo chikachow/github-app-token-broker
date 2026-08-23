@@ -194,7 +194,7 @@ interface ProviderState {
 }
 
 interface JwksRefresh {
-  failureDiagnosticAttempted: boolean;
+  failureDiagnosticOutcome?: Promise<void> | undefined;
   readonly identity: JwksResolutionIdentity;
   readonly observe: ((event: OidcIdTokenAuthenticationEvent) => void) | undefined;
   readonly result: Promise<CacheEntry<CachedJwks>>;
@@ -589,7 +589,6 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
 
     if (refresh === undefined || !jwksResolutionIdentitiesEqual(refresh.identity, identity)) {
       refresh = {
-        failureDiagnosticAttempted: false,
         identity,
         observe,
         result: this.#fetchRemoteJwks(
@@ -626,17 +625,19 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
         };
       }
 
-      if (!refresh.failureDiagnosticAttempted) {
-        refresh.failureDiagnosticAttempted = true;
-        this.#observeRefreshFailure(
-          providerMetadata.issuer,
-          "jwk_set",
-          error,
-          current,
-          providerState.metadataGeneration,
-          refresh.observe,
+      if (refresh.failureDiagnosticOutcome === undefined) {
+        refresh.failureDiagnosticOutcome = Promise.resolve().then(() =>
+          this.#observeRefreshFailure(
+            providerMetadata.issuer,
+            "jwk_set",
+            error,
+            current,
+            providerState.metadataGeneration,
+            refresh.observe,
+          ),
         );
       }
+      await refresh.failureDiagnosticOutcome;
 
       if (
         !forceRefresh &&
