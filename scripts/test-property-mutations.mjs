@@ -42,7 +42,7 @@ try {
   runChecked("git", ["checkout", "--quiet", "--detach", head], clone);
   runPackageManager(["install", "--frozen-lockfile", "--ignore-scripts"], clone);
   runPackageManager(["run", "build"], clone);
-  runPackageManager(["run", "typecheck"], clone);
+  runPackageManager(["run", "typecheck:built"], clone);
 
   const controls = runControlLanes(clone);
   const results = [];
@@ -61,7 +61,7 @@ try {
 
       writeFileSync(sourcePath, mutated);
       try {
-        runPackageManager(["run", "typecheck"], clone);
+        runPackageManager(["run", "typecheck:built"], clone);
       } catch (error) {
         throw new Error(`invalid-mutant ${mutation.id}: repository typecheck failed`, {
           cause: error,
