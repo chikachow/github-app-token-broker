@@ -1,5 +1,6 @@
 import { createPrivateKey } from "node:crypto";
 
+import { base64url } from "jose";
 import { describe, expect, it, vi } from "vitest";
 
 import { type OidcIdTokenAuthenticationEvent } from "@github-app-token-broker/oidc/id-token-authenticator";
@@ -358,6 +359,38 @@ describe("Registered OIDC Provider Verifier", () => {
         await signedIdToken({ algorithm: "RS512" }),
       ),
     ).resolves.toEqual(expectedFailure("subject_token_rejected", "ERR_JOSE_ALG_NOT_ALLOWED"));
+  });
+
+  it("rejects an unsupported critical subject-token header as subject input", async () => {
+    const tokenParts = (await signedIdToken()).split(".");
+
+    if (tokenParts.length !== 3) {
+      throw new Error("expected a compact JWS");
+    }
+
+    const [encodedProtectedHeader, encodedPayload, encodedSignature] = tokenParts as [
+      string,
+      string,
+      string,
+    ];
+    const protectedHeader = JSON.parse(
+      new TextDecoder().decode(base64url.decode(encodedProtectedHeader)),
+    ) as Record<string, unknown>;
+    const subjectToken = [
+      base64url.encode(
+        JSON.stringify({
+          ...protectedHeader,
+          crit: ["unsupported"],
+          unsupported: true,
+        }),
+      ),
+      encodedPayload,
+      encodedSignature,
+    ].join(".");
+
+    await expect(
+      testVerifier(successfulProviderFetch).verifyIdToken(subjectToken),
+    ).resolves.toEqual(expectedFailure("subject_token_rejected", "ERR_JOSE_NOT_SUPPORTED"));
   });
 
   it("rate-limits JWKS refreshes triggered by attacker-controlled unknown kids", async () => {
