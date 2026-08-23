@@ -10,6 +10,11 @@ const tokenExchangeSourceAlias = {
   ).pathname,
 };
 
+const fastifySourceAlias = {
+  "@github-app-token-broker/fastify": new URL("./packages/fastify/src/index.ts", import.meta.url)
+    .pathname,
+};
+
 export default defineConfig({
   test: {
     coverage: {
@@ -39,10 +44,19 @@ export default defineConfig({
           detectAsyncLeaks: true,
           exclude: [
             ...configDefaults.exclude,
+            "test/fastify/**/*.test.ts",
             "test/properties/**/*.property.test.ts",
             "test/worker-integration/**",
           ],
           name: "unit",
+        },
+      },
+      {
+        resolve: { alias: { ...fastifySourceAlias, ...tokenExchangeSourceAlias } },
+        test: {
+          allowOnly: false,
+          include: ["test/fastify/**/*.test.ts"],
+          name: "fastify",
         },
       },
       {
