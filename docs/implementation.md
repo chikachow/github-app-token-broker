@@ -11,7 +11,8 @@
 - `packages/token-issuance-policy`: structural Permit Statement compilation, validation, and evaluation
 - `packages/http`: bounded body readers and HTTP/problem-response helpers
 - `packages/token-exchange`: the runtime-neutral deep module behind the Token Endpoint, including protocol validation, authentication orchestration, policy-controlled issuance, observations, and OAuth response mapping
-- `test`: behavioral unit tests for the Token Endpoint and domain packages, plus a real Workerd integration project for the GitHub App Information RPC entrypoint
+- `packages/fastify`: the Node 24/Fastify 5 adapter for mounting a prebuilt runtime-neutral handler
+- `test`: behavioral unit tests for the Token Endpoint, Fastify adapter, and domain packages; a production-deployed Fastify consumer fixture; and a real Workerd integration project for the GitHub App Information RPC entrypoint
 
 There is no webhook runtime, deployment endpoint, dynamic issuer registry, App selector, or multi-key service.
 
@@ -47,6 +48,23 @@ the implemented capability and security boundary.
 
 `createTokenExchangeWorker` is a Cloudflare adapter around that handler. It preserves construction-time composition validation, translates Worker credential and audience bindings to the semantic interface, owns path routing and rate limiting before the handler, and recreates the configured handler if App credentials change. Rate limiting is deliberately not a token-exchange configuration knob because admission policy and request identity belong to the hosting adapter.
 
+`githubAppTokenExchangePlugin` is an encapsulated Fastify adapter around an already-built handler.
+It registers the `/token` path for every method so the deep handler remains authoritative for the
+OAuth method response, removes inherited parsers only in its child scope, installs one raw Buffer
+form parser, and applies the public Token Exchange body limit at the route. The adapter converts
+documented Fastify parser failures to the exported OAuth `invalid_request` response and rethrows
+all other errors to the host. It reconstructs duplicate request headers from Node raw headers,
+copies Fetch response metadata and bytes into the Fastify reply, and preserves separate
+`Set-Cookie` fields.
+
+The Fastify request logger receives mandatory and optional observations at their declared levels.
+Mandatory logging is Promise-based and a synchronous logger failure propagates to the deep
+handler; optional diagnostic logger failures are contained. The plugin does not configure
+credentials, admission, listener lifecycle, or proxy trust. It does not emulate client-disconnect
+cancellation: early Fastify 5 versions have no uniform request signal, and the current deep
+handler's outbound operations use their own broker-owned deadlines rather than its input Request
+signal.
+
 The compiled policy snapshot is a public structural Interface. Its
 `permitStatements[].resource` is a Repository Resource Constraint with an
 `owner` and either a string `repository` or `repository: null`. Policy
@@ -62,7 +80,7 @@ Source GitHub Actions workflows use a pinned external action as their transport 
 
 App credentials remain Worker environment bindings. One Worker instance receives one App ID/private key pair. The request surface never selects an App.
 
-## Request flow
+## Cloudflare Worker request flow
 
 1. `worker.ts` rejects every path except `/token` and every method except `POST`; the Token Endpoint applies the deployment rate limit with `CF-Connecting-IP` as its only request-derived key and uses `unknown` when that header is absent.
 2. `token-exchange.ts` enforces OAuth media type, bounded body size, form multiplicity, unsupported fields, and RFC 8693 identifiers; `installation-access-token-request.ts` requires explicit resource and scope values and normalizes their canonical domain forms without permission defaults.
@@ -97,4 +115,4 @@ fnm exec --using=24 corepack pnpm run test:coverage
 fnm exec --using=24 corepack pnpm run test:mutations:property
 ```
 
-The aggregate check builds once, then reuses that artifact for the artifact, typecheck, test, and deployment lanes. Standalone `artifact:check`, `typecheck`, `test`, and `deploy:dry-run` commands build their prerequisites first. The artifact check imports the built Token Exchange ESM directly under Node and typechecks a self-importing consumer through the package's exports and bundled declarations; no source alias participates. The root Wrangler file is a unit-test harness. It intentionally repeats the package Worker's compatibility flags and binding shapes so Workerd unit tests execute under the production runtime constraints; `env-types:check`, the GitHub App Information Workerd integration project, and the package dry-run validate the deployable config. The package Wrangler file is a public-safe dry-run template; deployment-owned identifiers and routes are supplied by the external deployment system.
+The aggregate check builds once, then reuses that artifact for the artifact, typecheck, test, Node production-consumer, and deployment lanes. Standalone `artifact:check`, `typecheck`, `test`, `node-deploy:check`, and `deploy:dry-run` commands build their prerequisites first. The artifact check imports the built Token Exchange ESM directly under Node and typechecks a self-importing consumer through the package's exports and bundled declarations; no source alias participates. The Node deployment check production-deploys a Fastify host fixture, imports the deployed package roots, typechecks the public adapter options, and exercises a real loopback listener. The root Wrangler file is a unit-test harness. It intentionally repeats the package Worker's compatibility flags and binding shapes so Workerd unit tests execute under the production runtime constraints; `env-types:check`, the GitHub App Information Workerd integration project, and the package dry-run validate the deployable config. The package Wrangler file is a public-safe dry-run template; deployment-owned identifiers and routes are supplied by the external deployment system.

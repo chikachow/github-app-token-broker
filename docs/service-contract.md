@@ -91,7 +91,7 @@ Resource Server for the issued GitHub App installation access token. github-app-
 does not authenticate the Client. The ID Token in `subject_token` represents
 the token's Subject, which is not assumed to be the Client.
 
-Requests are rate limited by the `TOKEN_EXCHANGE_RATE_LIMIT` Cloudflare binding before the body is parsed. `CF-Connecting-IP` is the only request-derived rate-limit key; when it is absent, the broker uses the constant `unknown`. `X-Forwarded-For` does not supply rate-limit identity.
+The Cloudflare Worker adapter rate limits requests through the `TOKEN_EXCHANGE_RATE_LIMIT` binding before the body is parsed. `CF-Connecting-IP` is its only request-derived rate-limit key; when it is absent, the Worker uses the constant `unknown`. `X-Forwarded-For` does not supply rate-limit identity. Other hosting adapters must place their deployment-owned admission policy before body parsing; admission and request identity are not configuration surfaces of the runtime-neutral handler or Fastify plugin.
 
 `resource` must be exactly one canonical GitHub repository API URI:
 
