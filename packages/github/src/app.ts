@@ -4,14 +4,14 @@ import * as z from "zod";
 import {
   defaultGitHubApiDependencies,
   fetchGitHubApiJson,
+  GitHubApiError,
+  GitHubApiTransportError,
   githubAcceptHeader,
   githubApiVersion,
+  revokeGitHubInstallationAccessToken,
   type GitHubApiDependencies,
 } from "./http.ts";
-import type {
-  GitHubInstallationPermissions,
-  GitHubRepositoryResource,
-} from "./installation-access-token-request.ts";
+import type { InstallationAccessTokenRequest } from "./installation-access-token-request.ts";
 import { resolveSecretText, type SecretTextBinding } from "./secrets.ts";
 
 const githubJwtLifetimeSeconds = 9 * 60;
@@ -23,12 +23,35 @@ let cachedPrivateKey:
     }
   | undefined;
 
-export interface InstallationAccessToken {
-  expiresAt: string;
-  installationId: number;
-  permissions: Record<string, string>;
-  token: string;
-}
+export type GitHubInstallationAccessTokenIssuanceFailureReason =
+  | "internal_failure"
+  | "upstream_failure"
+  | "upstream_unavailable";
+
+type GitHubInstallationAccessTokenIssuanceResult =
+  | {
+      readonly expiresAt: string;
+      readonly installationId: number;
+      readonly ok: true;
+      readonly permissions: Readonly<Record<string, string>>;
+      readonly token: string;
+      revoke(): Promise<void>;
+    }
+  | {
+      readonly error: {
+        readonly message: string;
+        readonly name:
+          | "Error"
+          | "GitHubApiError"
+          | "GitHubApiTransportError"
+          | "GitHubAppConfigurationError";
+        readonly status: number | undefined;
+        readonly upstreamStatus: number | undefined;
+      };
+      readonly installationId: number | undefined;
+      readonly ok: false;
+      readonly reason: GitHubInstallationAccessTokenIssuanceFailureReason;
+    };
 
 export class GitHubAppConfigurationError extends Error {
   public constructor() {
@@ -38,19 +61,6 @@ export class GitHubAppConfigurationError extends Error {
 
 Object.defineProperty(GitHubAppConfigurationError.prototype, "name", {
   value: "GitHubAppConfigurationError",
-});
-
-export class GitHubInstallationAccessTokenIssuanceError extends Error {
-  public readonly installationId: number;
-
-  public constructor(installationId: number, cause: unknown) {
-    super("GitHub Installation Access Token Issuance failed", { cause });
-    this.installationId = installationId;
-  }
-}
-
-Object.defineProperty(GitHubInstallationAccessTokenIssuanceError.prototype, "name", {
-  value: "GitHubInstallationAccessTokenIssuanceError",
 });
 
 export interface GitHubAppConfiguration {
@@ -78,32 +88,31 @@ const githubInstallationAccessTokenResponseSchema = z.object({
   token: z.string().min(1),
 });
 
-export async function issueInstallationAccessTokenForRepository(
+export async function issueInstallationAccessToken(
   configuration: GitHubAppConfiguration,
-  resource: GitHubRepositoryResource,
-  permissions: GitHubInstallationPermissions,
+  request: InstallationAccessTokenRequest,
   dependencies: GitHubAppDependencies = defaultGitHubAppDependencies,
-): Promise<InstallationAccessToken> {
-  const authenticationHeaders = await githubAppAuthenticationHeaders(configuration, dependencies);
-  const repositoryPath = `${resource.owner}/${resource.repository}`;
-  const installation = await fetchGitHubApiJson(dependencies, {
-    headers: authenticationHeaders,
-    path: `/repos/${repositoryPath}/installation`,
-    responseSchema: githubInstallationResponseSchema.refine((installation) =>
-      githubRepositoryOwnerMatches(resource.owner, installation.account.login),
-    ),
-  });
-  const requestBody = {
-    permissions,
-    repositories: [resource.repository],
-  };
-  let responseBody: z.output<typeof githubInstallationAccessTokenResponseSchema>;
+): Promise<GitHubInstallationAccessTokenIssuanceResult> {
+  let installationId: number | undefined;
 
   try {
-    responseBody = await fetchGitHubApiJson(dependencies, {
+    const authenticationHeaders = await githubAppAuthenticationHeaders(configuration, dependencies);
+    const repositoryPath = `${request.resource.owner}/${request.resource.repository}`;
+    const installation = await fetchGitHubApiJson(dependencies, {
+      headers: authenticationHeaders,
+      path: `/repos/${repositoryPath}/installation`,
+      responseSchema: githubInstallationResponseSchema.refine((resolvedInstallation) =>
+        githubRepositoryOwnerMatches(request.resource.owner, resolvedInstallation.account.login),
+      ),
+    });
+    installationId = installation.id;
+    const responseBody = await fetchGitHubApiJson(dependencies, {
       headers: authenticationHeaders,
       init: {
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify({
+          permissions: request.permissions,
+          repositories: [request.resource.repository],
+        }),
         headers: {
           "content-type": "application/json",
         },
@@ -112,15 +121,84 @@ export async function issueInstallationAccessTokenForRepository(
       path: `/app/installations/${installation.id}/access_tokens`,
       responseSchema: githubInstallationAccessTokenResponseSchema,
     });
-  } catch (cause) {
-    throw new GitHubInstallationAccessTokenIssuanceError(installation.id, cause);
+
+    return {
+      expiresAt: responseBody.expires_at,
+      installationId: installation.id,
+      ok: true,
+      permissions: responseBody.permissions,
+      revoke: () => revokeGitHubInstallationAccessToken(dependencies, responseBody.token),
+      token: responseBody.token,
+    };
+  } catch (error) {
+    return {
+      error: installationAccessTokenIssuanceErrorFields(error),
+      installationId,
+      ok: false,
+      reason: installationAccessTokenIssuanceFailureReason(error),
+    };
+  }
+}
+
+function installationAccessTokenIssuanceFailureReason(
+  error: unknown,
+): GitHubInstallationAccessTokenIssuanceFailureReason {
+  if (error instanceof GitHubApiTransportError) {
+    return "upstream_unavailable";
+  }
+
+  if (error instanceof GitHubApiError) {
+    if (error.rateLimited || error.status === 503) {
+      return "upstream_unavailable";
+    }
+
+    if (error.status === 400 || error.status === 401 || error.status === 422) {
+      return "internal_failure";
+    }
+
+    if (error.status === 403 || error.status === 404 || error.status >= 500) {
+      return "upstream_failure";
+    }
+  }
+
+  return "internal_failure";
+}
+
+function installationAccessTokenIssuanceErrorFields(
+  error: unknown,
+): Extract<GitHubInstallationAccessTokenIssuanceResult, { ok: false }>["error"] {
+  if (error instanceof GitHubApiError) {
+    return {
+      message: error.message,
+      name: "GitHubApiError",
+      status: error.status,
+      upstreamStatus: error.upstreamStatus,
+    };
+  }
+
+  if (error instanceof GitHubApiTransportError) {
+    return {
+      message: error.message,
+      name: "GitHubApiTransportError",
+      status: undefined,
+      upstreamStatus: undefined,
+    };
+  }
+
+  if (error instanceof GitHubAppConfigurationError) {
+    return {
+      message: error.message,
+      name: "GitHubAppConfigurationError",
+      status: undefined,
+      upstreamStatus: undefined,
+    };
   }
 
   return {
-    expiresAt: responseBody.expires_at,
-    installationId: installation.id,
-    permissions: responseBody.permissions,
-    token: responseBody.token,
+    message: "unexpected Installation Access Token Issuance error",
+    name: "Error",
+    status: undefined,
+    upstreamStatus: undefined,
   };
 }
 

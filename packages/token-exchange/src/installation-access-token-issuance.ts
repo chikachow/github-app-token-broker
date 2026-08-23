@@ -1,16 +1,8 @@
-import {
-  GitHubAppConfigurationError,
-  GitHubInstallationAccessTokenIssuanceError,
-  issueInstallationAccessTokenForRepository,
-} from "@github-app-token-broker/github/app";
-import {
-  GitHubApiError,
-  GitHubApiTransportError,
-  revokeGitHubInstallationAccessToken,
-} from "@github-app-token-broker/github/http";
+import { issueInstallationAccessToken } from "@github-app-token-broker/github/app";
 import type {
   GitHubAppConfiguration,
   GitHubAppDependencies,
+  GitHubInstallationAccessTokenIssuanceFailureReason,
 } from "@github-app-token-broker/github/app";
 import type { AuthenticatedContext } from "./authentication.ts";
 import type { InstallationAccessTokenRequest } from "@github-app-token-broker/github/installation-access-token-request";
@@ -19,12 +11,10 @@ import { evaluateTokenIssuancePolicy } from "@github-app-token-broker/token-issu
 import type { ObserveTokenExchange } from "./events.ts";
 
 export type InstallationAccessTokenIssuanceFailureReason =
-  | "internal_failure"
+  | GitHubInstallationAccessTokenIssuanceFailureReason
   | "requested_permissions_unsupported"
   | "subject_token_unacceptable"
-  | "target_unsupported"
-  | "upstream_failure"
-  | "upstream_unavailable";
+  | "target_unsupported";
 
 export type InstallationAccessTokenIssuanceResult =
   | { expiresAt: string; ok: true; token: string }
@@ -103,65 +93,52 @@ export async function issueInstallationAccessTokenForContext(
     level: "info",
   });
 
-  let installationAccessToken: Awaited<
-    ReturnType<typeof issueInstallationAccessTokenForRepository>
-  >;
+  const issuance = await issueInstallationAccessToken(
+    githubApp,
+    installationAccessTokenRequest,
+    dependencies,
+  );
 
-  try {
-    installationAccessToken = await issueInstallationAccessTokenForRepository(
-      githubApp,
-      installationAccessTokenRequest.resource,
-      installationAccessTokenRequest.permissions,
-      dependencies,
-    );
-  } catch (error) {
-    const classifiedError =
-      error instanceof GitHubInstallationAccessTokenIssuanceError ? error.cause : error;
-    const reason = reasonForInstallationAccessTokenIssuanceError(classifiedError);
-
+  if (!issuance.ok) {
     await observe({
       fields: {
         error: {
-          message: logMessageForInstallationAccessTokenIssuanceError(classifiedError),
-          name: logNameForInstallationAccessTokenIssuanceError(classifiedError),
-          status: classifiedError instanceof GitHubApiError ? classifiedError.status : undefined,
-          upstream_status:
-            classifiedError instanceof GitHubApiError ? classifiedError.upstreamStatus : undefined,
+          message: issuance.error.message,
+          name: issuance.error.name,
+          status: issuance.error.status,
+          upstream_status: issuance.error.upstreamStatus,
         },
         event: "installation_access_token_issuance_failed",
         ...issuanceObservationFields(),
         target_installation: {
-          id:
-            error instanceof GitHubInstallationAccessTokenIssuanceError
-              ? error.installationId
-              : undefined,
+          id: issuance.installationId,
         },
       },
       level: "error",
     });
 
-    return { ok: false, reason };
+    return { ok: false, reason: issuance.reason };
   }
 
   try {
     await observe({
       fields: {
         event: "installation_access_token_issuance_succeeded",
-        expires_at: installationAccessToken.expiresAt,
+        expires_at: issuance.expiresAt,
         ...issuanceObservationFields(),
         target_installation: {
-          id: installationAccessToken.installationId,
+          id: issuance.installationId,
           repository: requestedResourceName,
         },
         installation_access_token: {
-          permissions: installationAccessToken.permissions,
+          permissions: issuance.permissions,
         },
       },
       level: "info",
     });
   } catch {
     try {
-      await revokeGitHubInstallationAccessToken(dependencies, installationAccessToken.token);
+      await issuance.revoke();
     } catch {
       // Revocation is best effort; the minted token must never be returned either way.
     }
@@ -170,62 +147,10 @@ export async function issueInstallationAccessTokenForContext(
   }
 
   return {
-    expiresAt: installationAccessToken.expiresAt,
+    expiresAt: issuance.expiresAt,
     ok: true,
-    token: installationAccessToken.token,
+    token: issuance.token,
   };
-}
-
-function reasonForInstallationAccessTokenIssuanceError(
-  error: unknown,
-): InstallationAccessTokenIssuanceFailureReason {
-  if (error instanceof GitHubApiTransportError) {
-    return "upstream_unavailable";
-  }
-
-  if (error instanceof GitHubApiError) {
-    if (error.rateLimited || error.status === 503) {
-      return "upstream_unavailable";
-    }
-
-    if (error.status === 400 || error.status === 401 || error.status === 422) {
-      return "internal_failure";
-    }
-
-    if (error.status === 403 || error.status === 404 || error.status >= 500) {
-      return "upstream_failure";
-    }
-  }
-
-  return "internal_failure";
-}
-
-function logMessageForInstallationAccessTokenIssuanceError(error: unknown): string {
-  if (
-    error instanceof GitHubApiError ||
-    error instanceof GitHubApiTransportError ||
-    error instanceof GitHubAppConfigurationError
-  ) {
-    return error.message;
-  }
-
-  return "unexpected Installation Access Token Issuance error";
-}
-
-function logNameForInstallationAccessTokenIssuanceError(error: unknown): string {
-  if (error instanceof GitHubApiError) {
-    return "GitHubApiError";
-  }
-
-  if (error instanceof GitHubApiTransportError) {
-    return "GitHubApiTransportError";
-  }
-
-  if (error instanceof GitHubAppConfigurationError) {
-    return "GitHubAppConfigurationError";
-  }
-
-  return "Error";
 }
 
 function subjectTokenLogFields(
