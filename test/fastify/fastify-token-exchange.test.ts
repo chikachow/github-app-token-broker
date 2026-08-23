@@ -24,7 +24,11 @@ describe("githubAppTokenExchangePlugin", () => {
       { parseAs: "string" },
       (_request, body, done) => done(null, { parsed: body }),
     );
-    app.post("/ordinary-form", async (request) => request.body);
+    let ordinaryParsedBody: unknown;
+    app.post("/ordinary-form", async (request) => {
+      ordinaryParsedBody = request.body;
+      return { ok: true };
+    });
     await app.register(githubAppTokenExchangePlugin, {
       prefix: "/automation",
       tokenExchange,
@@ -49,7 +53,9 @@ describe("githubAppTokenExchangePlugin", () => {
       expect(response.statusCode).toBe(200);
       expect(tokenExchange).toHaveBeenCalledOnce();
       expect((await app.inject({ method: "POST", url: "/token" })).statusCode).toBe(404);
-      expect(ordinaryResponse.json()).toEqual({ parsed: "field=value" });
+      expect(ordinaryResponse.statusCode).toBe(200);
+      expect(ordinaryResponse.json()).toEqual({ ok: true });
+      expect(ordinaryParsedBody).toEqual({ parsed: "field=value" });
     } finally {
       await app.close();
     }
