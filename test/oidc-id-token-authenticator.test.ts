@@ -290,8 +290,7 @@ describe("OIDC ID Token Authenticator", () => {
     expect(defaultEvents).toEqual([]);
   });
 
-  it("fails closed without recording a Provider Configuration observer failure as provider backoff", async () => {
-    let observerFailureEnabled = true;
+  it("contains a Provider Configuration observer failure without recording provider backoff", async () => {
     const events: OidcIdTokenAuthenticationEvent[] = [];
     const fetchOidcRemoteDocumentResponse = vi.fn(providerFetch({ cacheControl: "no-store" }));
     const authenticator = createOidcIdTokenAuthenticator(
@@ -305,7 +304,7 @@ describe("OIDC ID Token Authenticator", () => {
         observe: (event) => {
           events.push(event);
 
-          if (observerFailureEnabled && event.event === "oidc_provider_configuration_refreshed") {
+          if (event.event === "oidc_provider_configuration_refreshed") {
             throw new Error("Provider Configuration observer unavailable");
           }
         },
@@ -313,9 +312,9 @@ describe("OIDC ID Token Authenticator", () => {
     );
     const subjectToken = await signedIdToken();
 
-    await expect(authenticator.authenticateIdToken(subjectToken)).resolves.toEqual(
-      expectedFailure("internal_failure"),
-    );
+    await expect(authenticator.authenticateIdToken(subjectToken)).resolves.toMatchObject({
+      ok: true,
+    });
     expect(
       fetchOidcRemoteDocumentResponse.mock.calls.filter(
         ([input]) => new Request(input).url === `${issuer}/.well-known/openid-configuration`,
@@ -325,12 +324,11 @@ describe("OIDC ID Token Authenticator", () => {
       fetchOidcRemoteDocumentResponse.mock.calls.filter(
         ([input]) => new Request(input).url === jwksUri,
       ),
-    ).toHaveLength(0);
+    ).toHaveLength(1);
     expect(events.filter((event) => event.event === "oidc_remote_document_refresh_failed")).toEqual(
       [],
     );
 
-    observerFailureEnabled = false;
     await expect(authenticator.authenticateIdToken(subjectToken)).resolves.toMatchObject({
       ok: true,
     });
@@ -339,6 +337,17 @@ describe("OIDC ID Token Authenticator", () => {
         ([input]) => new Request(input).url === `${issuer}/.well-known/openid-configuration`,
       ),
     ).toHaveLength(2);
+    expect(
+      fetchOidcRemoteDocumentResponse.mock.calls.filter(
+        ([input]) => new Request(input).url === jwksUri,
+      ),
+    ).toHaveLength(2);
+    expect(
+      events.filter((event) => event.event === "oidc_provider_configuration_refreshed"),
+    ).toHaveLength(2);
+    expect(events.filter((event) => event.event === "oidc_remote_document_refresh_failed")).toEqual(
+      [],
+    );
   });
 
   it("does no provider I/O for an unregistered or malformed token issuer", async () => {
@@ -830,9 +839,18 @@ describe("OIDC ID Token Authenticator", () => {
     ).toHaveLength(3);
   });
 
-  it("publishes a coalesced JWK Set refresh failure once", async () => {
+  it("contains a coalesced JWK Set refresh-failure observer failure", async () => {
     const events: OidcIdTokenAuthenticationEvent[] = [];
-    const scenario = await beginCoalescedJwksRefreshFailure((event) => events.push(event));
+    const scenario = await beginCoalescedJwksRefreshFailure((event) => {
+      events.push(event);
+
+      if (
+        event.event === "oidc_remote_document_refresh_failed" &&
+        event.remoteDocumentKind === "jwk_set"
+      ) {
+        throw new Error("JWK Set refresh-failure observer unavailable");
+      }
+    });
 
     expect(scenario.jwksRequests()).toBe(2);
     scenario.failedRefresh.resolve(new Response(null, { status: 503 }));
@@ -878,41 +896,6 @@ describe("OIDC ID Token Authenticator", () => {
           event.remoteDocumentKind === "jwk_set",
       ),
     ).toHaveLength(3);
-  });
-
-  it("fails every coalesced caller closed when the shared JWK Set refresh-failure observer throws", async () => {
-    const events: OidcIdTokenAuthenticationEvent[] = [];
-    const scenario = await beginCoalescedJwksRefreshFailure((event) => {
-      events.push(event);
-
-      if (
-        event.event === "oidc_remote_document_refresh_failed" &&
-        event.remoteDocumentKind === "jwk_set"
-      ) {
-        throw new Error("JWK Set refresh-failure observer unavailable");
-      }
-    });
-
-    expect(scenario.jwksRequests()).toBe(2);
-    scenario.failedRefresh.resolve(new Response(null, { status: 503 }));
-    await expect(scenario.results).resolves.toEqual([
-      expectedFailure("internal_failure"),
-      expectedFailure("internal_failure"),
-    ]);
-    expect(
-      events.filter(
-        (event) =>
-          event.event === "oidc_remote_document_refresh_failed" &&
-          event.remoteDocumentKind === "jwk_set",
-      ),
-    ).toHaveLength(1);
-    expect(
-      events.filter(
-        (event) =>
-          event.event === "oidc_remote_document_stale_used" &&
-          event.remoteDocumentKind === "jwk_set",
-      ),
-    ).toEqual([]);
   });
 
   it("does not reuse a cached JWK Set after metadata changes the accepted signing-algorithm intersection", async () => {
