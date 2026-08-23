@@ -194,7 +194,9 @@ interface ProviderState {
 }
 
 interface JwksRefresh {
+  failureDiagnosticAttempted: boolean;
   readonly identity: JwksResolutionIdentity;
+  readonly observe: ((event: OidcIdTokenAuthenticationEvent) => void) | undefined;
   readonly result: Promise<CacheEntry<CachedJwks>>;
 }
 
@@ -429,7 +431,27 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
     observe: ((event: OidcIdTokenAuthenticationEvent) => void) | undefined,
   ): Promise<ValidatedOidcProviderMetadata> {
     try {
-      const refreshed = await this.#fetchAndValidateProviderMetadata(providerRegistration, now);
+      let refreshed: CacheEntry<ValidatedOidcProviderMetadata>;
+
+      try {
+        refreshed = await this.#fetchAndValidateProviderMetadata(providerRegistration, now);
+      } catch (error) {
+        providerState.metadataFailure = {
+          error,
+          retryAfter: now + providerFailureBackoffMilliseconds,
+        };
+        this.#observeRefreshFailure(
+          providerRegistration.issuer,
+          "provider_configuration",
+          error,
+          providerState.metadata,
+          providerState.metadataGeneration,
+          observe,
+        );
+
+        throw error;
+      }
+
       const previousJwksUri = providerState.metadata?.value.jwksUri.href;
       const metadataGeneration = providerState.metadataGeneration + 1;
 
@@ -464,21 +486,6 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
       }
 
       return refreshed.value;
-    } catch (error) {
-      providerState.metadataFailure = {
-        error,
-        retryAfter: now + providerFailureBackoffMilliseconds,
-      };
-      this.#observeRefreshFailure(
-        providerRegistration.issuer,
-        "provider_configuration",
-        error,
-        providerState.metadata,
-        providerState.metadataGeneration,
-        observe,
-      );
-
-      throw error;
     } finally {
       providerState.metadataRefresh = undefined;
     }
@@ -582,7 +589,9 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
 
     if (refresh === undefined || !jwksResolutionIdentitiesEqual(refresh.identity, identity)) {
       refresh = {
+        failureDiagnosticAttempted: false,
         identity,
+        observe,
         result: this.#fetchRemoteJwks(
           identity,
           providerMetadata.acceptedIdTokenSigningAlgorithms,
@@ -616,14 +625,18 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
           retryAfter: now + providerFailureBackoffMilliseconds,
         };
       }
-      this.#observeRefreshFailure(
-        providerMetadata.issuer,
-        "jwk_set",
-        error,
-        current,
-        providerState.metadataGeneration,
-        observe,
-      );
+
+      if (!refresh.failureDiagnosticAttempted) {
+        refresh.failureDiagnosticAttempted = true;
+        this.#observeRefreshFailure(
+          providerMetadata.issuer,
+          "jwk_set",
+          error,
+          current,
+          providerState.metadataGeneration,
+          refresh.observe,
+        );
+      }
 
       if (
         !forceRefresh &&
