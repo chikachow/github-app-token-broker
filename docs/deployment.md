@@ -40,6 +40,44 @@ timeout semantics are deployment concerns and are not supplied by this repositor
 remote-document diagnostics use the separate synchronous `observeOidcDiagnostic` callback and
 must not be wired to the mandatory async adapter.
 
+## Node 24 and Fastify 5 host adapter
+
+`@github-app-token-broker/fastify` mounts a prebuilt `TokenExchangeHandler` into a Fastify 5
+application. Its only plugin-specific option is `tokenExchange`; use Fastify's standard `prefix`
+registration option when the host does not expose `/token` at the application root.
+
+```ts
+import { githubAppTokenExchangePlugin } from "@github-app-token-broker/fastify";
+import { createGitHubAppTokenExchange } from "@github-app-token-broker/token-exchange";
+import Fastify from "fastify";
+
+const tokenExchange = createGitHubAppTokenExchange(deploymentOwnedConfiguration);
+const app = Fastify(deploymentOwnedFastifyOptions);
+
+app.addHook("onRequest", deploymentOwnedAdmissionHook);
+await app.register(githubAppTokenExchangePlugin, {
+  prefix: "/automation",
+  tokenExchange,
+});
+await app.listen(deploymentOwnedListenOptions);
+```
+
+The host owns handler construction and credentials, Subject-Token Audience, admission and rate
+limiting, request identity, logger construction and transport, `trustProxy`, listener options,
+startup, shutdown, and signal handling. The plugin removes inherited content parsers only inside
+its encapsulated scope, buffers form bodies up to the deep module's public limit, and maps only
+Fastify's media-type, content-length, and body-limit parser errors to the stable OAuth response.
+Sibling routes and parsers remain unchanged.
+
+Mandatory observations are awaited through the request logger. A synchronous request-logger
+failure rejects the mandatory callback so the deep handler fails closed; logger invocation does
+not itself claim durable persistence. Optional OIDC diagnostic logging remains best effort.
+
+`test/deployment/fastify-host` is a deny-all production-consumer fixture, not a production
+composition. `pnpm run node-deploy:check` builds and production-deploys that fixture into a
+temporary directory, verifies package-root ESM and declarations without source aliases, starts it
+only on an ephemeral loopback socket, and then removes it.
+
 ## External deployment contract
 
 The deployment system is maintained outside this repository. It must:
