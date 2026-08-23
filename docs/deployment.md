@@ -67,7 +67,10 @@ limiting, request identity, logger construction and transport, `trustProxy`, lis
 startup, shutdown, and signal handling. The plugin removes inherited content parsers only inside
 its encapsulated scope, buffers form bodies up to the deep module's public limit, and maps only
 Fastify's media-type, content-length, and body-limit parser errors to the stable OAuth response.
-Sibling routes and parsers remain unchanged.
+It also normalizes routed non-`POST` methods and malformed Fastify-to-Fetch request metadata to
+that response before invoking the handler. Node may reject `TRACK` and `CONNECT` before Fastify
+plugin routing, so those transport failures have no adapter OAuth-shape promise. Unrecognized
+handler and Fastify errors propagate to the host. Sibling routes and parsers remain unchanged.
 
 Mandatory observations are awaited through the request logger. A synchronous request-logger
 failure rejects the mandatory callback so the deep handler fails closed; logger invocation does
@@ -78,7 +81,7 @@ composition. `pnpm run node-deploy:check` builds and production-deploys that fix
 temporary directory, verifies package-root ESM and declarations without source aliases, starts it
 only on an ephemeral loopback socket, and then removes it.
 
-## External deployment contract
+## External Cloudflare Worker deployment contract
 
 The deployment system is maintained outside this repository. It must:
 

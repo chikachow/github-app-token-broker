@@ -16,7 +16,7 @@ The only public service route is `POST /token`. The service has no webhook recei
 - Provider packages contain reviewed GitHub Actions and Google service-account registrations plus exact organization-scoped Fly OIDC Provider Registration construction.
 - `createGitHubAppTokenExchange` accepts one semantic GitHub App configuration, an exact Subject-Token Audience, OIDC Provider Registrations, and a compiled Token Issuance Policy. `createTokenExchangeWorker` is the Cloudflare adapter that supplies bindings, admission control, and observation adapters. The Fastify plugin accepts only the already-built handler; its host owns credentials, admission, lifecycle, proxy trust, and listening. An external deployment owns the TypeScript composition and compiles it into its artifact. The source Wrangler template instead uses a generic deny-all entrypoint.
 
-The intended model is one GitHub App per deployment. OIDC Provider Registrations and Token Issuance Policy are build-time composition values, while App credentials, Subject-Token Audience, and rate limit are deployment bindings. Changing trust or policy requires a reviewed composition change and a newly built Worker artifact. The public API deliberately exposes no App selector or runtime policy loader.
+The intended model is one GitHub App per deployment. OIDC Provider Registrations and Token Issuance Policy are build-time composition values, while App credentials, Subject-Token Audience, and admission policy are deployment configuration. Changing trust or policy requires a reviewed composition change and a newly built deployment artifact. The public API deliberately exposes no App selector or runtime policy loader.
 
 ## `POST /token`
 
@@ -39,8 +39,8 @@ echoes whichever supported identifier the Client requested in
 
 Important invariants:
 
-- issuer trust comes only from exact OIDC Provider Registrations compiled into the Worker artifact
-- the ID Token must have the deployment's exact single-string `TOKEN_BROKER_AUDIENCE`; the RFC 8693 `audience` parameter is unsupported and grants nothing
+- issuer trust comes only from exact OIDC Provider Registrations compiled into the reviewed deployment artifact
+- the ID Token must have the deployment's exact single-string Subject-Token Audience; the Cloudflare Worker obtains it from `TOKEN_BROKER_AUDIENCE`, and the RFC 8693 `audience` parameter is unsupported and grants nothing
 - verified Claims are copied into an immutable snapshot before a provider profile or Token Issuance Policy can inspect them; profile admission and policy authorization remain separate decisions
 - every request names exactly one canonical Repository Resource
 - every request explicitly names a non-empty `scope`; the broker has no default Requested Permissions
@@ -54,7 +54,7 @@ Important invariants:
 
 See [the service contract](docs/service-contract.md) for complete request, response, error, provider, and policy behavior; [implementation](docs/implementation.md) for code boundaries; and [deployment](docs/deployment.md) for the public-source/external-deployment interface.
 
-## Configuration
+## Cloudflare Worker configuration
 
 The Worker consumes one App identity per deployment:
 
@@ -82,13 +82,14 @@ fnm exec --using=24 corepack pnpm run dev
 
 Do not commit keys, `.dev.vars`, `.env`, `.wrangler/`, `.local-secrets/`, or private deployment overlays.
 
-## Deployment boundary
+## Deployment boundaries
 
 This public repository does not deploy the service. A deployment system outside
 this repository must pin a reviewed source revision, run the source checks,
-supply deployment-owned configuration and secrets, deploy the Worker, verify
-`POST /token`, and re-export and test `GitHubAppInformationEntrypoint` when
-providing the internal service-binding RPC.
+supply deployment-owned configuration and secrets, deploy the selected host,
+and verify `POST /token`. A Cloudflare deployment also re-exports and tests
+`GitHubAppInformationEntrypoint` when providing the internal service-binding RPC;
+a Node deployment composes the runtime-neutral handler into its Fastify host.
 
 ## External references
 
