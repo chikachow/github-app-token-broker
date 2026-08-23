@@ -45,10 +45,11 @@ Classify its demonstrated value as:
 Mutation checks establish sensitivity to a curated fault, not an exhaustive
 mutation score or a defect probability. The optional
 `pnpm test:mutations:property` command applies its manifest only in a temporary
-clone of a clean committed revision. It runs the complete unmutated suite once,
-then typechecks every mutant before running all non-property tests and the exact
-responsible property. A responsible property that does not kill its mutant is
-unsupported even when an ordinary regression kills the same mutant.
+clone of a clean committed revision. After the frozen install, it builds package
+artifacts once, typechecks the clean clone, and runs the complete unmutated suite
+once. It then typechecks every mutant before running all non-property tests and
+the exact responsible property. A responsible property that does not kill its
+mutant is unsupported even when an ordinary regression kills the same mutant.
 
 ### Oracle boundary
 

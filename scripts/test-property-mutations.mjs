@@ -41,6 +41,7 @@ try {
   runChecked("git", ["clone", "--quiet", "--local", "--no-hardlinks", repository, clone]);
   runChecked("git", ["checkout", "--quiet", "--detach", head], clone);
   runPackageManager(["install", "--frozen-lockfile", "--ignore-scripts"], clone);
+  runPackageManager(["run", "build"], clone);
   runPackageManager(["run", "typecheck"], clone);
 
   const controls = runControlLanes(clone);
