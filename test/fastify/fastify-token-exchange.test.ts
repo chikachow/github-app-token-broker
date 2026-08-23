@@ -55,18 +55,53 @@ describe("githubAppTokenExchangePlugin", () => {
     }
   });
 
-  it("maps only parser media-type and body-limit failures to OAuth invalid_request", async () => {
+  it.each([
+    { contentType: "application/json", scenario: "JSON" },
+    { contentType: "text/plain", scenario: "text" },
+    { contentType: "not a type", scenario: "malformed media type" },
+    { contentType: undefined, scenario: "missing content type" },
+  ])("maps unsupported $scenario bodies to OAuth invalid_request", async ({ contentType }) => {
     const tokenExchange = vi.fn<TokenExchangeHandler>();
     const app = Fastify();
     await app.register(githubAppTokenExchangePlugin, { tokenExchange });
 
     try {
-      const unsupported = await app.inject({
-        body: JSON.stringify({ grant_type: "ignored" }),
-        headers: { "content-type": "application/json" },
+      const response = await app.inject({
+        body: "grant_type=ignored",
+        ...(contentType === undefined ? {} : { headers: { "content-type": contentType } }),
         method: "POST",
         url: "/token",
       });
+
+      expectOAuthInvalidRequest(response, 400);
+      expect(tokenExchange).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("lets an empty request with no content type reach the deep handler", async () => {
+    const tokenExchange = vi.fn<TokenExchangeHandler>(async () => Response.json({ reached: true }));
+    const app = Fastify();
+    await app.register(githubAppTokenExchangePlugin, { tokenExchange });
+
+    try {
+      const response = await app.inject({ method: "POST", url: "/token" });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ reached: true });
+      expect(tokenExchange).toHaveBeenCalledOnce();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("maps body-limit and invalid-content-length failures to OAuth invalid_request", async () => {
+    const tokenExchange = vi.fn<TokenExchangeHandler>();
+    const app = Fastify();
+    await app.register(githubAppTokenExchangePlugin, { tokenExchange });
+
+    try {
       const oversized = await app.inject({
         body: "x".repeat(maxTokenExchangeBodyBytes + 1),
         headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -83,7 +118,6 @@ describe("githubAppTokenExchangePlugin", () => {
         url: "/token",
       });
 
-      expectOAuthInvalidRequest(unsupported, 400);
       expectOAuthInvalidRequest(oversized, 413);
       expectOAuthInvalidRequest(invalidContentLength, 400);
       expect(tokenExchange).not.toHaveBeenCalled();
@@ -105,7 +139,10 @@ describe("githubAppTokenExchangePlugin", () => {
     const app = Fastify();
     app.addHook("onSend", async (_request, reply, payload) => {
       hookObservations.push({
+        cacheControl: reply.getHeader("cache-control"),
+        contentType: reply.getHeader("content-type"),
         payloadIsBuffer: Buffer.isBuffer(payload),
+        setCookie: reply.getHeader("set-cookie"),
         statusCode: reply.statusCode,
       });
       return payload;
@@ -134,7 +171,15 @@ describe("githubAppTokenExchangePlugin", () => {
         "second=value; Path=/; Secure",
       ]);
       expect(response.headers["x-observation"]).toBe("one, two");
-      expect(hookObservations).toEqual([{ payloadIsBuffer: true, statusCode: 207 }]);
+      expect(hookObservations).toEqual([
+        {
+          cacheControl: "no-store",
+          contentType: "application/octet-stream",
+          payloadIsBuffer: true,
+          setCookie: ["first=value; Path=/; HttpOnly", "second=value; Path=/; Secure"],
+          statusCode: 207,
+        },
+      ]);
     } finally {
       await app.close();
     }
@@ -336,6 +381,39 @@ describe("githubAppTokenExchangePlugin", () => {
     }
   });
 
+  it.each([
+    {
+      headers: { host: "[" },
+      scenario: "malformed Host",
+      trustProxy: false,
+    },
+    {
+      headers: { host: "broker.example", "x-forwarded-proto": "not a protocol" },
+      scenario: "malformed trusted forwarded protocol",
+      trustProxy: true,
+    },
+  ])("sanitizes $scenario before token exchange", async ({ headers, trustProxy }) => {
+    const tokenExchange = vi.fn<TokenExchangeHandler>();
+    const app = Fastify({ trustProxy });
+    await app.register(githubAppTokenExchangePlugin, { tokenExchange });
+
+    try {
+      const response = await app.inject({
+        headers: {
+          ...headers,
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        method: "POST",
+        url: "/token",
+      });
+
+      expectOAuthInvalidRequest(response, 400);
+      expect(tokenExchange).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
   it("lets host admission reject before body parsing and token exchange", async () => {
     const tokenExchange = vi.fn<TokenExchangeHandler>();
     const app = Fastify();
@@ -390,23 +468,23 @@ describe("githubAppTokenExchangePlugin", () => {
   it("translates duplicate headers and raw form bytes over a real loopback socket", async () => {
     const observed: Array<Record<string, unknown>> = [];
     const app = Fastify();
+    const responseHeaders = new Headers({ "cache-control": "no-store", pragma: "no-cache" });
+    responseHeaders.append("set-cookie", "socket=value; Path=/; HttpOnly");
     await app.register(githubAppTokenExchangePlugin, {
+      prefix: "/automation",
       tokenExchange: async (request) => {
         observed.push({
           body: await request.text(),
           clientHint: request.headers.get("x-client-hint"),
           url: request.url,
         });
-        return Response.json(
-          { ok: true },
-          { headers: { "cache-control": "no-store", pragma: "no-cache" } },
-        );
+        return Response.json({ ok: true }, { headers: responseHeaders });
       },
     });
     const address = await app.listen({ host: "127.0.0.1", port: 0 });
 
     try {
-      const response = await makeNodeRequest(`${address}/token?transport=socket`, {
+      const response = await makeNodeRequest(`${address}/automation/token?transport=socket`, {
         body: "scope=contents%3Aread&scope=actions%3Awrite",
         headers: {
           "content-type": "application/x-www-form-urlencoded",
@@ -417,13 +495,14 @@ describe("githubAppTokenExchangePlugin", () => {
       expect(response).toEqual({
         body: '{"ok":true}',
         cacheControl: "no-store",
+        setCookie: ["socket=value; Path=/; HttpOnly"],
         statusCode: 200,
       });
       expect(observed).toEqual([
         {
           body: "scope=contents%3Aread&scope=actions%3Awrite",
           clientHint: "one, two",
-          url: `${address}/token?transport=socket`,
+          url: `${address}/automation/token?transport=socket`,
         },
       ]);
     } finally {
@@ -452,7 +531,12 @@ async function makeNodeRequest(
     readonly body: string;
     readonly headers: Readonly<Record<string, string | string[]>>;
   },
-): Promise<{ body: string; cacheControl: string | undefined; statusCode: number | undefined }> {
+): Promise<{
+  body: string;
+  cacheControl: string | undefined;
+  setCookie: string[] | undefined;
+  statusCode: number | undefined;
+}> {
   return new Promise((resolve, reject) => {
     const request = nodeHttpRequest(url, { headers: input.headers, method: "POST" }, (response) => {
       const chunks: Buffer[] = [];
@@ -464,6 +548,7 @@ async function makeNodeRequest(
             typeof response.headers["cache-control"] === "string"
               ? response.headers["cache-control"]
               : undefined,
+          setCookie: response.headers["set-cookie"],
           statusCode: response.statusCode,
         });
       });
