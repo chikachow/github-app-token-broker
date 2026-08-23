@@ -1,3 +1,4 @@
+// oxlint-disable-next-line import/no-nodejs-modules -- This package intentionally targets Node.js.
 import { Buffer } from "node:buffer";
 
 import {
@@ -40,7 +41,14 @@ export const githubAppTokenExchangePlugin: FastifyPluginAsync<
   });
 
   fastify.all("/token", { bodyLimit: maxTokenExchangeBodyBytes }, async (request, reply) => {
-    const response = await options.tokenExchange(fastifyRequestToWebRequest(request), {
+    const url = fastifyRequestUrl(request);
+
+    if (url === null) {
+      await sendWebResponse(reply, tokenExchangeInvalidRequestResponse(400));
+      return;
+    }
+
+    const response = await options.tokenExchange(fastifyRequestToWebRequest(request, url), {
       async observe(observation) {
         logObservation(request, observation);
       },
@@ -92,7 +100,15 @@ function logAtLevel(
   log.call(request.log, fields, message);
 }
 
-function fastifyRequestToWebRequest(request: FastifyRequest): Request {
+function fastifyRequestUrl(request: FastifyRequest): URL | null {
+  try {
+    return new URL(request.raw.url ?? request.url, `${request.protocol}://${request.host}`);
+  } catch {
+    return null;
+  }
+}
+
+function fastifyRequestToWebRequest(request: FastifyRequest, url: URL): Request {
   const headers = new Headers();
 
   for (let index = 0; index < request.raw.rawHeaders.length; index += 2) {
@@ -107,8 +123,6 @@ function fastifyRequestToWebRequest(request: FastifyRequest): Request {
   const requestBody = isNodeBuffer(request.body) ? request.body : undefined;
   const mayHaveBody = request.method !== "GET" && request.method !== "HEAD";
   const body = mayHaveBody && requestBody !== undefined ? Uint8Array.from(requestBody) : undefined;
-  const url = new URL(request.raw.url ?? request.url, `${request.protocol}://${request.host}`);
-
   return new Request(url, {
     ...(body === undefined ? {} : { body }),
     headers,
