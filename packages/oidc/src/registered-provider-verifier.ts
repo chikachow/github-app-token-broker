@@ -103,9 +103,9 @@ interface ProviderState {
 }
 
 interface JwksRefresh {
-  failureDiagnosticOutcome?: Promise<void> | undefined;
+  failureDiagnosticAttempted: boolean;
+  readonly failureDiagnosticObserver: ((event: OidcIdTokenAuthenticationEvent) => void) | undefined;
   readonly identity: JwksResolutionIdentity;
-  readonly observe: ((event: OidcIdTokenAuthenticationEvent) => void) | undefined;
   readonly result: Promise<CacheEntry<CachedJwks>>;
 }
 
@@ -282,27 +282,7 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
     observe: ((event: OidcIdTokenAuthenticationEvent) => void) | undefined,
   ): Promise<ValidatedOidcProviderMetadata> {
     try {
-      let refreshed: CacheEntry<ValidatedOidcProviderMetadata>;
-
-      try {
-        refreshed = await this.#fetchAndValidateProviderMetadata(now);
-      } catch (error) {
-        this.#state.metadataFailure = {
-          error,
-          retryAfter: now + providerFailureBackoffMilliseconds,
-        };
-        this.#observeRefreshFailure(
-          this.#providerRegistration.issuer,
-          "provider_configuration",
-          error,
-          this.#state.metadata,
-          this.#state.metadataGeneration,
-          observe,
-        );
-
-        throw error;
-      }
-
+      const refreshed = await this.#fetchAndValidateProviderMetadata(now);
       const previousJwksUri = this.#state.metadata?.value.jwksUri.href;
       const metadataGeneration = this.#state.metadataGeneration + 1;
 
@@ -337,6 +317,21 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
       }
 
       return refreshed.value;
+    } catch (error) {
+      this.#state.metadataFailure = {
+        error,
+        retryAfter: now + providerFailureBackoffMilliseconds,
+      };
+      this.#observeRefreshFailure(
+        this.#providerRegistration.issuer,
+        "provider_configuration",
+        error,
+        this.#state.metadata,
+        this.#state.metadataGeneration,
+        observe,
+      );
+
+      throw error;
     } finally {
       this.#state.metadataRefresh = undefined;
     }
@@ -441,8 +436,9 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
 
     if (refresh === undefined || !jwksResolutionIdentitiesEqual(refresh.identity, identity)) {
       refresh = {
+        failureDiagnosticAttempted: false,
+        failureDiagnosticObserver: observe,
         identity,
-        observe,
         result: this.#fetchRemoteJwks(
           identity,
           providerMetadata.acceptedIdTokenSigningAlgorithms,
@@ -473,19 +469,17 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
         };
       }
 
-      if (refresh.failureDiagnosticOutcome === undefined) {
-        refresh.failureDiagnosticOutcome = Promise.resolve().then(() =>
-          this.#observeRefreshFailure(
-            providerMetadata.issuer,
-            "jwk_set",
-            error,
-            current,
-            this.#state.metadataGeneration,
-            refresh.observe,
-          ),
+      if (!refresh.failureDiagnosticAttempted) {
+        refresh.failureDiagnosticAttempted = true;
+        this.#observeRefreshFailure(
+          providerMetadata.issuer,
+          "jwk_set",
+          error,
+          current,
+          this.#state.metadataGeneration,
+          refresh.failureDiagnosticObserver,
         );
       }
-      await refresh.failureDiagnosticOutcome;
 
       if (
         !forceRefresh &&
@@ -599,7 +593,11 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
     event: OidcIdTokenAuthenticationEvent,
     observe: ((event: OidcIdTokenAuthenticationEvent) => void) | undefined,
   ): void {
-    observe?.(event);
+    try {
+      observe?.(event);
+    } catch {
+      // Optional OIDC diagnostics cannot change authentication or token issuance.
+    }
   }
 
   #observeRefreshFailure(
