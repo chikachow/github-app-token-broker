@@ -530,6 +530,37 @@ describe("Token Exchange Worker boundary", () => {
     }
   });
 
+  it("sanitizes a non-Error rate-limit rejection without leaking its value", async () => {
+    const failureDetail = "private non-Error rate-limit rejection";
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const fetchExternal = vi.fn<typeof fetch>();
+    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
+      ...testTokenExchangeWorkerRuntimeDependencies,
+      fetch: fetchExternal,
+    });
+
+    try {
+      const response = await invokeWorker(worker, await tokenRequest(), {
+        ...testEnv,
+        TOKEN_EXCHANGE_RATE_LIMIT: {
+          limit: async () => Promise.reject(failureDetail),
+        },
+      });
+      const responseBody = await response.clone().text();
+
+      await expectSanitizedServerError(response);
+      expect(consoleError).toHaveBeenCalledExactlyOnceWith({
+        error: { name: "string" },
+        event: "token_exchange_request_failed",
+      });
+      expect(JSON.stringify(consoleError.mock.calls)).not.toContain(failureDetail);
+      expect(responseBody).not.toContain(failureDetail);
+      expect(fetchExternal).not.toHaveBeenCalled();
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   it("sanitizes invalid audience configuration without leaking its detail", async () => {
     const failureDetail = "private invalid audience detail";
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
