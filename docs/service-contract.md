@@ -238,6 +238,8 @@ consumes, a successful GitHub response body is limited to `64 KiB`. A larger
 upstream document is an invalid successful representation and follows the
 `502` mapping above; it is not derived from a Token Exchange Client parameter.
 
+Each OpenID Provider Configuration and JWK Set request has one fixed broker-owned five-second deadline spanning response headers and complete bounded body consumption.
+
 OpenID Provider Configuration transport failures, timeouts, and non-success responses mean github-app-token-broker cannot obtain Provider Metadata and return `503 {"error":"temporarily_unavailable"}`. A successfully retrieved Provider Configuration whose representation or consumed metadata is invalid instead makes the subject token unverifiable and returns `400 {"error":"invalid_request"}`. This includes unexpected media types, oversized responses, malformed JSON or shape, an issuer mismatch, an invalid `jwks_uri`, and no intersection between the provider's advertised algorithms and the registration's accepted algorithms.
 
 JWK Set network failures, timeouts, non-200 responses, unexpected media types, oversized responses, malformed JSON or shape, an empty or wholly incompatible JWK Set, or ambiguous provider key material mean github-app-token-broker cannot obtain a usable JWK Set and return `503 {"error":"temporarily_unavailable"}`. Every JWK consumed by the verifier must have a string `kty`; when present, `alg`, `kid`, and `use` must be strings and `key_ops` and `x5c` must be arrays of strings. Malformed member structure makes the provider JWK Set unavailable rather than silently filtering the malformed key. Cryptographic import still determines whether structurally valid key material is usable for an accepted algorithm.

@@ -11,6 +11,7 @@ If private vulnerability reporting is unavailable, contact the repository mainta
 github-app-token-broker accepts Client-presented OpenID Connect ID Tokens from configured issuers and exchanges only the resulting Verified Subject Tokens for GitHub App installation access tokens narrowed to one selected repository and the Requested Permissions. Requested permission keys may include GitHub organization- or account-level permissions; repository selection and permission narrowing are independent controls. The Client is not authenticated and is not assumed to be the ID Token Subject. The important security properties are:
 
 - issuer trust is configured, not discovered from Client-presented tokens
+- OpenID Provider Configuration and JWK Set requests reject redirects and use a broker-owned fixed five-second deadline spanning response headers and complete bounded body consumption
 - the Verified Subject Token is derived only from an immutable copy of Subject Token Claims in an ID Token accepted through an exact OIDC Provider Registration; a non-null OIDC ID Token Profile evaluates that immutable verified snapshot before the separate Token Issuance Policy decision
 - the ID Token audience must be the exact single-string value in the deployment-owned `TOKEN_BROKER_AUDIENCE` binding; the binding is a non-empty, non-whitespace, single-line scalar, and the unsupported token-exchange `audience` parameter grants nothing
 - the Worker owns no public-location binding and never derives the audience from the incoming URL, `Host`, forwarded headers, or `/token` route
