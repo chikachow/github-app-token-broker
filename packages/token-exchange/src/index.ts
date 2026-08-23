@@ -1,4 +1,4 @@
-import type { SecretTextBinding } from "@github-app-token-broker/github/secrets";
+import type { GitHubAppConfiguration } from "@github-app-token-broker/github/app";
 import { createOidcIdTokenAuthenticator } from "@github-app-token-broker/oidc/id-token-authenticator";
 import {
   snapshotOidcProviderRegistrations,
@@ -32,10 +32,7 @@ export interface TokenExchangeComposition {
 
 export interface GitHubAppTokenExchangeConfiguration {
   readonly composition: TokenExchangeComposition;
-  readonly githubApp: {
-    readonly appId: string;
-    readonly privateKey: SecretTextBinding;
-  };
+  readonly githubApp: GitHubAppConfiguration;
   readonly subjectTokenAudience: string;
 }
 
@@ -63,8 +60,8 @@ export function createGitHubAppTokenExchange(
   assertTokenIssuancePolicyIssuersAreRegistered(tokenIssuancePolicy, oidcProviderRegistrations);
   const subjectTokenAudience = parseSubjectTokenAudience(configuration.subjectTokenAudience);
   const githubApp = Object.freeze({
-    GITHUB_APP_ID: configuration.githubApp.appId,
-    GITHUB_APP_PRIVATE_KEY: configuration.githubApp.privateKey,
+    appId: configuration.githubApp.appId,
+    privateKey: configuration.githubApp.privateKey,
   });
   const dependencies = Object.freeze({
     fetch: runtimeDependencies.fetch,

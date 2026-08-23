@@ -11,7 +11,10 @@ import {
   GitHubAppUnavailableError,
   GitHubAppUpstreamError,
 } from "../packages/github/src/app-information.ts";
-import { GitHubAppConfigurationError } from "../packages/github/src/app.ts";
+import {
+  GitHubAppConfigurationError,
+  type GitHubAppConfiguration,
+} from "../packages/github/src/app.ts";
 import { GitHubAppInformationEntrypoint } from "../workers/github-app-token-broker/src/app-information-entrypoint.ts";
 import {
   testGitHubAppResponse,
@@ -21,7 +24,12 @@ import {
 } from "./support/github-app-information.ts";
 import { testPrivateKeyPem } from "./support/rsa-test-key-pair.ts";
 
-const githubApp = {
+const githubAppConfiguration = {
+  appId: "2419473",
+  privateKey: testPrivateKeyPem,
+} satisfies GitHubAppConfiguration;
+
+const githubAppWorkerBindings = {
   GITHUB_APP_ID: "2419473",
   GITHUB_APP_PRIVATE_KEY: testPrivateKeyPem,
 };
@@ -66,7 +74,10 @@ describe("GitHub App Information", () => {
     vi.stubGlobal("fetch", fetchGitHub);
 
     try {
-      const entrypoint = new GitHubAppInformationEntrypoint({} as ExecutionContext, githubApp);
+      const entrypoint = new GitHubAppInformationEntrypoint(
+        {} as ExecutionContext,
+        githubAppWorkerBindings,
+      );
 
       await expect(entrypoint.getApp()).resolves.toMatchObject({ id: 2419473 });
       await expect(entrypoint.listInstallations()).resolves.toEqual([]);
@@ -147,7 +158,7 @@ describe("GitHub App Information", () => {
 
       return Response.json(body);
     });
-    const information = createGitHubAppInformation(githubApp, {
+    const information = createGitHubAppInformation(githubAppConfiguration, {
       fetch: fetchGitHub,
       now: () => now,
     });
@@ -206,7 +217,7 @@ describe("GitHub App Information", () => {
       html_url: "https://github.com/enterprises/fixture-enterprise/settings/installations/12345",
       target_type: "Enterprise",
     };
-    const information = createGitHubAppInformation(githubApp, {
+    const information = createGitHubAppInformation(githubAppConfiguration, {
       fetch: async () => Response.json([enterpriseInstallation]),
       now: () => now,
     });
@@ -216,7 +227,7 @@ describe("GitHub App Information", () => {
 
   it("passes through empty since and outdated values", async () => {
     const fetchGitHub = vi.fn<typeof fetch>(async () => Response.json([]));
-    const information = createGitHubAppInformation(githubApp, {
+    const information = createGitHubAppInformation(githubAppConfiguration, {
       fetch: fetchGitHub,
       now: () => now,
     });
@@ -237,7 +248,7 @@ describe("GitHub App Information", () => {
 
   it("accepts an installation whose account is null", async () => {
     const installation = { ...testGitHubInstallationResponse, account: null };
-    const information = createGitHubAppInformation(githubApp, {
+    const information = createGitHubAppInformation(githubAppConfiguration, {
       fetch: async () => Response.json(installation),
       now: () => now,
     });
@@ -252,7 +263,7 @@ describe("GitHub App Information", () => {
       ...testGitHubInstallationResponse,
       repository_selection: "future-selection",
     };
-    const information = createGitHubAppInformation(githubApp, {
+    const information = createGitHubAppInformation(githubAppConfiguration, {
       fetch: async () => Response.json(installation),
       now: () => now,
     });
@@ -276,7 +287,7 @@ describe("GitHub App Information", () => {
       permissions: testGitHubAppResponse.permissions,
       updated_at: testGitHubAppResponse.updated_at,
     };
-    const information = createGitHubAppInformation(githubApp, {
+    const information = createGitHubAppInformation(githubAppConfiguration, {
       fetch: async () => Response.json(app),
       now: () => now,
     });
@@ -299,7 +310,7 @@ describe("GitHub App Information", () => {
       throw new Error("installation page fixture must exceed the default GitHub response limit");
     }
 
-    const information = createGitHubAppInformation(githubApp, {
+    const information = createGitHubAppInformation(githubAppConfiguration, {
       fetch: async () =>
         new Response(responseBody, { headers: { "content-type": "application/json" } }),
       now: () => now,
@@ -310,7 +321,7 @@ describe("GitHub App Information", () => {
 
   it("accepts an installation page at the 1 MiB response limit", async () => {
     const responseBody = installationPageResponseBody(1024 * 1024);
-    const information = createGitHubAppInformation(githubApp, {
+    const information = createGitHubAppInformation(githubAppConfiguration, {
       fetch: async () => new Response(responseBody),
       now: () => now,
     });
@@ -320,7 +331,7 @@ describe("GitHub App Information", () => {
 
   it("rejects an installation page over the 1 MiB response limit", async () => {
     const responseBody = installationPageResponseBody(1024 * 1024 + 1);
-    const information = createGitHubAppInformation(githubApp, {
+    const information = createGitHubAppInformation(githubAppConfiguration, {
       fetch: async () => new Response(responseBody),
       now: () => now,
     });
@@ -330,7 +341,7 @@ describe("GitHub App Information", () => {
 
   it("rejects invalid RPC inputs before making a GitHub request", async () => {
     const fetchGitHub = vi.fn<typeof fetch>();
-    const information = createGitHubAppInformation(githubApp, {
+    const information = createGitHubAppInformation(githubAppConfiguration, {
       fetch: fetchGitHub,
       now: () => now,
     });
@@ -373,23 +384,23 @@ describe("GitHub App Information", () => {
   it("preserves private-key configuration errors", async () => {
     await expect(
       createGitHubAppInformation({
-        ...githubApp,
-        GITHUB_APP_PRIVATE_KEY: "not a private key",
+        ...githubAppConfiguration,
+        privateKey: "not a private key",
       }).getApp(),
     ).rejects.toBeInstanceOf(GitHubAppConfigurationError);
   });
 
   it.each([
     {
-      configuration: { ...githubApp, GITHUB_APP_ID: "not-an-app-id" },
+      configuration: { ...githubAppConfiguration, appId: "not-an-app-id" },
       description: "malformed App ID",
     },
     {
-      configuration: { ...githubApp, GITHUB_APP_ID: "0" },
+      configuration: { ...githubAppConfiguration, appId: "0" },
       description: "zero App ID",
     },
     {
-      configuration: { ...githubApp, GITHUB_APP_ID: "02419473" },
+      configuration: { ...githubAppConfiguration, appId: "02419473" },
       description: "App ID with a leading zero",
     },
   ])("classifies $description as invalid configuration", async ({ configuration }) => {
@@ -406,7 +417,7 @@ describe("GitHub App Information", () => {
 
   it("sanitizes unexpected local failures as internal errors", async () => {
     await expect(
-      createGitHubAppInformation(githubApp, {
+      createGitHubAppInformation(githubAppConfiguration, {
         fetch: vi.fn<typeof fetch>(),
         now: () => {
           throw new Error("clock failure");
@@ -435,7 +446,7 @@ describe("GitHub App Information", () => {
       method: "getApp" as const,
     },
   ])("normalizes GitHub failures to stable RPC errors", async ({ error, method, response }) => {
-    const information = createGitHubAppInformation(githubApp, {
+    const information = createGitHubAppInformation(githubAppConfiguration, {
       fetch: async () => response,
       now: () => now,
     });
@@ -470,7 +481,7 @@ describe("GitHub App Information", () => {
   ])(
     "normalizes GitHub $status without exposing private upstream detail",
     async ({ error, expected, privateDetail, status }) => {
-      const information = createGitHubAppInformation(githubApp, {
+      const information = createGitHubAppInformation(githubAppConfiguration, {
         fetch: async () => new Response(privateDetail, { status }),
         now: () => now,
       });
@@ -480,7 +491,7 @@ describe("GitHub App Information", () => {
   );
 
   it("maps transport failures to an unavailable RPC error", async () => {
-    const information = createGitHubAppInformation(githubApp, {
+    const information = createGitHubAppInformation(githubAppConfiguration, {
       fetch: async () => {
         throw new Error("network details must not cross the RPC boundary");
       },
@@ -493,7 +504,7 @@ describe("GitHub App Information", () => {
   it("maps the broker-owned GitHub deadline to an unavailable RPC error", async () => {
     const deadline = new AbortController();
     const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(deadline.signal);
-    const information = createGitHubAppInformation(githubApp, {
+    const information = createGitHubAppInformation(githubAppConfiguration, {
       fetch: async () => new Promise<Response>(() => undefined),
       now: () => now,
     });

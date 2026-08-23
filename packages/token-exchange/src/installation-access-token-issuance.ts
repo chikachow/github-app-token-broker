@@ -8,7 +8,10 @@ import {
   GitHubApiTransportError,
   revokeGitHubInstallationAccessToken,
 } from "@github-app-token-broker/github/http";
-import type { GitHubAppDependencies, GitHubAppEnv } from "@github-app-token-broker/github/app";
+import type {
+  GitHubAppConfiguration,
+  GitHubAppDependencies,
+} from "@github-app-token-broker/github/app";
 import type { AuthenticatedContext } from "./authentication.ts";
 import type { InstallationAccessTokenRequest } from "@github-app-token-broker/github/installation-access-token-request";
 import type { TokenIssuancePolicy } from "@github-app-token-broker/token-issuance-policy";
@@ -30,7 +33,7 @@ export type InstallationAccessTokenIssuanceResult =
 interface InstallationAccessTokenIssuanceInput {
   readonly authenticationContext: AuthenticatedContext;
   readonly dependencies: GitHubAppDependencies;
-  readonly githubApp: GitHubAppEnv;
+  readonly githubApp: GitHubAppConfiguration;
   readonly installationAccessTokenRequest: InstallationAccessTokenRequest;
   readonly observe: ObserveTokenExchange;
   readonly tokenIssuancePolicy: TokenIssuancePolicy;

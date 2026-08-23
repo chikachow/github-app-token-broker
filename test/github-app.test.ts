@@ -1,7 +1,10 @@
 import { decodeJwt } from "jose";
 import { describe, expect, it, vi } from "vitest";
 
-import { issueInstallationAccessTokenForRepository } from "../packages/github/src/app.ts";
+import {
+  issueInstallationAccessTokenForRepository,
+  type GitHubAppConfiguration,
+} from "../packages/github/src/app.ts";
 import { createGitHubRepositoryResource } from "@github-app-token-broker/github/installation-access-token-request";
 import { testInstallationId, testRepository } from "./support/constants.ts";
 import { githubInstallationResponse } from "./support/github-api.ts";
@@ -12,9 +15,9 @@ describe("GitHub App authentication", () => {
     const now = new Date("2026-06-29T12:34:00.000Z");
     const nowSeconds = Math.floor(now.getTime() / 1000);
     const githubApp = {
-      GITHUB_APP_ID: "2419473",
-      GITHUB_APP_PRIVATE_KEY: testPrivateKeyPem,
-    };
+      appId: "2419473",
+      privateKey: testPrivateKeyPem,
+    } satisfies GitHubAppConfiguration;
     const authorizationHeaders: string[] = [];
     const fetchGitHub = vi.fn<typeof fetch>(async (input, init) => {
       const request = new Request(input, init);
@@ -84,8 +87,8 @@ describe("GitHub App authentication", () => {
 
     const installationAccessToken = await issueInstallationAccessTokenForRepository(
       {
-        GITHUB_APP_ID: "2419473",
-        GITHUB_APP_PRIVATE_KEY: secretStoreBinding,
+        appId: "2419473",
+        privateKey: secretStoreBinding,
       },
       createGitHubRepositoryResource({
         owner: "fixture-owner",
@@ -242,8 +245,8 @@ function issueTestInstallationAccessToken(
 ) {
   return issueInstallationAccessTokenForRepository(
     {
-      GITHUB_APP_ID: "2419473",
-      GITHUB_APP_PRIVATE_KEY: testPrivateKeyPem,
+      appId: "2419473",
+      privateKey: testPrivateKeyPem,
     },
     createGitHubRepositoryResource({
       owner: "fixture-owner",

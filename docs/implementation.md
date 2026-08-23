@@ -20,8 +20,10 @@ There is no webhook runtime, deployment endpoint, dynamic issuer registry, App s
 
 `packages/github/src/app-information.ts` is the runtime-neutral read-only
 module behind the Worker's named `GitHubAppInformationEntrypoint`. The
-Cloudflare entrypoint remains a thin adapter around that module. It uses the
-same configured App JWT machinery as token issuance but never creates an
+Cloudflare entrypoint remains a thin adapter around that module: it maps the
+`GITHUB_APP_ID` and `GITHUB_APP_PRIVATE_KEY` bindings to semantic `{ appId,
+privateKey }` configuration before crossing the runtime-neutral seam. It uses
+the same configured App JWT machinery as token issuance but never creates an
 Installation Access Token. Its four methods map directly to GitHub's App-JWT
 metadata endpoints and return GitHub-shaped values. The entrypoint is exported
 from `generic-worker.ts` for an explicitly configured Cloudflare service
