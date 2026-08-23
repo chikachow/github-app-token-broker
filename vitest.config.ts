@@ -21,6 +21,12 @@ export default defineConfig({
       exclude: ["**/*.test.ts", "packages/*/dist/**", "test/**", "worker-configuration.d.ts"],
       provider: "istanbul",
       reporter: ["text", "lcov"],
+      thresholds: {
+        branches: 94,
+        functions: 98,
+        lines: 97,
+        statements: 97,
+      },
     },
     projects: [
       {
@@ -45,10 +51,19 @@ export default defineConfig({
           exclude: [
             ...configDefaults.exclude,
             "test/fastify/**/*.test.ts",
+            "test/node/**/*.test.ts",
             "test/properties/**/*.property.test.ts",
             "test/worker-integration/**",
           ],
           name: "unit",
+        },
+      },
+      {
+        resolve: { alias: tokenExchangeSourceAlias },
+        test: {
+          allowOnly: false,
+          include: ["test/node/**/*.test.ts"],
+          name: "node",
         },
       },
       {
@@ -65,6 +80,7 @@ export default defineConfig({
           allowOnly: false,
           include: ["test/properties/**/*.property.test.ts"],
           name: "property",
+          testTimeout: 10_000,
         },
       },
       {
