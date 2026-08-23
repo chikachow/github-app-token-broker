@@ -4,7 +4,7 @@ import type {
   OidcVerificationEvidence,
   VerifiedSubjectToken,
 } from "@github-app-token-broker/oidc/id-token-authenticator";
-import type { ObserveTokenExchange } from "./observability.ts";
+import type { ObserveOidcDiagnostic, ObserveTokenExchange } from "./events.ts";
 
 export interface AuthenticatedContext {
   readonly verificationEvidence: OidcVerificationEvidence;
@@ -35,8 +35,15 @@ export async function authenticateOidcIdToken(
   request: Request,
   authenticator: OidcIdTokenAuthenticator,
   observe: ObserveTokenExchange,
+  observeOidcDiagnostic?: ObserveOidcDiagnostic,
 ): Promise<AuthenticateRequestResult> {
-  const authentication = await authenticator.authenticateIdToken(subjectToken);
+  const authentication = await authenticator.authenticateIdToken(subjectToken, (event) => {
+    try {
+      observeOidcDiagnostic?.({ fields: event, level: "warn" });
+    } catch {
+      // Optional OIDC diagnostics must not affect authentication or token issuance.
+    }
+  });
 
   if (!authentication.ok) {
     const { failure } = authentication;

@@ -1,12 +1,25 @@
+import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-github-actions";
+import {
+  createGitHubAppTokenExchange,
+  type TokenExchangeObservation,
+} from "@github-app-token-broker/token-exchange";
 import fc from "fast-check";
 import { expect } from "vitest";
 
-import { handleTokenExchangeRequest } from "../../../workers/github-app-token-broker/src/token-exchange.ts";
+import { testNow } from "../../support/constants.ts";
+import { fetchGitHubTestDouble } from "../../support/github-api.ts";
+import {
+  fetchOidcRemoteDocumentResponseTestDouble,
+  tokenExchangeRequestBody,
+} from "../../support/oidc.ts";
+import { testPrivateKeyPem } from "../../support/rsa-test-key-pair.ts";
+import { testTokenIssuancePolicy } from "../../support/token-issuance-policy.ts";
 
 export const formGeneratedRunBudget = 750;
 const tokenEndpoint = "https://broker.example/token";
-const resource = "https://api.github.com/repos/fixture-owner/fixture-repository";
-const scope = "contents:read";
+const fixtureForm = new URLSearchParams(await tokenExchangeRequestBody());
+const resource = requiredFormValue(fixtureForm, "resource");
+const scope = requiredFormValue(fixtureForm, "scope");
 
 type FormEntry = readonly [string, string];
 
@@ -16,12 +29,12 @@ interface FormScenario {
 }
 
 const baseEntries = [
-  ["grant_type", "urn:ietf:params:oauth:grant-type:token-exchange"],
-  ["requested_token_type", "urn:ietf:params:oauth:token-type:access_token"],
+  ["grant_type", requiredFormValue(fixtureForm, "grant_type")],
+  ["requested_token_type", requiredFormValue(fixtureForm, "requested_token_type")],
   ["resource", resource],
   ["scope", scope],
-  ["subject_token", "subject-token"],
-  ["subject_token_type", "urn:ietf:params:oauth:token-type:id_token"],
+  ["subject_token", requiredFormValue(fixtureForm, "subject_token")],
+  ["subject_token_type", requiredFormValue(fixtureForm, "subject_token_type")],
 ] as const satisfies readonly FormEntry[];
 
 const emptyFieldNameArbitrary = fc.constantFrom(
@@ -63,12 +76,16 @@ export const formScenarioArbitrary: fc.Arbitrary<FormScenario> = fc
   });
 
 const expectedObservation = {
-  exchangeCount: 1,
+  accessToken: "ghs_test_token",
+  issuanceEvents: [
+    "installation_access_token_issuance_started",
+    "installation_access_token_issuance_succeeded",
+  ],
   kind: "success",
   resource,
   scope,
   status: 200,
-  subjectToken: "subject-token",
+  subjectTokenKind: "id_token",
 } as const;
 
 export async function expectFormScenario(scenario: FormScenario): Promise<void> {
@@ -81,42 +98,53 @@ export async function expectFormScenario(scenario: FormScenario): Promise<void> 
 type ObservedFormOutcome =
   | {
       readonly error: string;
-      readonly exchangeCount: number;
       readonly kind: "error";
       readonly status: number;
     }
-  | {
-      readonly exchangeCount: number;
-      readonly kind: "success";
-      readonly resource: string;
-      readonly scope: string;
-      readonly status: number;
-      readonly subjectToken: string;
-    };
+  | typeof expectedObservation;
+
+const tokenExchange = createGitHubAppTokenExchange(
+  {
+    composition: {
+      oidcProviderRegistrations: [githubActionsOidcProviderRegistration],
+      tokenIssuancePolicy: testTokenIssuancePolicy,
+    },
+    githubApp: { appId: "2419473", privateKey: testPrivateKeyPem },
+    subjectTokenAudience: "https://broker.example",
+  },
+  {
+    fetch: (input, init) => {
+      const request = new Request(input, init);
+
+      return new URL(request.url).hostname === "token.actions.githubusercontent.com"
+        ? fetchOidcRemoteDocumentResponseTestDouble(request)
+        : fetchGitHubTestDouble(request);
+    },
+    now: () => testNow,
+  },
+);
 
 async function observeTokenExchangeForm(
   entries: readonly FormEntry[],
 ): Promise<ObservedFormOutcome> {
-  type Runtime = Parameters<typeof handleTokenExchangeRequest>[1];
-  type ExchangeInput = Parameters<Runtime["exchange"]>[0];
-  let exchangeInput: ExchangeInput | undefined;
-  let exchangeCount = 0;
+  const observations: TokenExchangeObservation[] = [];
   const form = new URLSearchParams();
 
   for (const [name, value] of entries) {
     form.append(name, value);
   }
 
-  const response = await handleTokenExchangeRequest(
-    new Request(tokenEndpoint, { body: form, method: "POST" }),
+  const response = await tokenExchange(
+    new Request(tokenEndpoint, {
+      body: form,
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      method: "POST",
+    }),
     {
-      async exchange(input) {
-        exchangeCount += 1;
-        exchangeInput = input;
-        return { expiresAt: "2030-01-01T00:00:00.000Z", ok: true, token: "ghs_property" };
+      observe: async (observation) => {
+        observations.push(observation);
       },
-      now: () => new Date("2026-01-01T00:00:00.000Z"),
-      rateLimit: async () => true,
+      observeOidcDiagnostic: () => undefined,
     },
   );
   const responseBody: unknown = await response.json();
@@ -130,22 +158,37 @@ async function observeTokenExchangeForm(
         typeof responseBody.error === "string"
           ? responseBody.error
           : "missing_error",
-      exchangeCount,
       kind: "error",
       status: response.status,
     };
   }
 
-  if (exchangeInput === undefined) {
-    throw new Error("successful Token Exchange did not invoke the exchange runtime");
-  }
+  expect(responseBody).toMatchObject({ access_token: expectedObservation.accessToken, scope });
+  expect(observations).toHaveLength(2);
+  expect(observations[1]).toMatchObject({
+    fields: {
+      installation_access_token_request: { resource, scope },
+      subject_token: { subject_token_kind: expectedObservation.subjectTokenKind },
+    },
+  });
 
   return {
-    exchangeCount,
+    accessToken: expectedObservation.accessToken,
+    issuanceEvents: observations.map(({ fields }) => fields["event"]),
     kind: "success",
-    resource: exchangeInput.tokenRequest.resource.href,
-    scope: exchangeInput.tokenRequest.scope,
+    resource,
+    scope,
     status: response.status,
-    subjectToken: exchangeInput.subjectToken,
+    subjectTokenKind: expectedObservation.subjectTokenKind,
   };
+}
+
+function requiredFormValue(form: URLSearchParams, name: string): string {
+  const value = form.get(name);
+
+  if (value === null || value.length === 0) {
+    throw new Error(`fixture Token Exchange form is missing ${name}`);
+  }
+
+  return value;
 }

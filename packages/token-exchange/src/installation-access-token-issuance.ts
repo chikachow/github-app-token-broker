@@ -9,11 +9,11 @@ import {
   revokeGitHubInstallationAccessToken,
 } from "@github-app-token-broker/github/http";
 import type { GitHubAppDependencies, GitHubAppEnv } from "@github-app-token-broker/github/app";
-import type { AuthenticatedContext } from "../authentication.ts";
+import type { AuthenticatedContext } from "./authentication.ts";
 import type { InstallationAccessTokenRequest } from "@github-app-token-broker/github/installation-access-token-request";
 import type { TokenIssuancePolicy } from "@github-app-token-broker/token-issuance-policy";
 import { evaluateTokenIssuancePolicy } from "@github-app-token-broker/token-issuance-policy";
-import type { ObserveTokenExchange } from "../observability.ts";
+import type { ObserveTokenExchange } from "./events.ts";
 
 export type InstallationAccessTokenIssuanceFailureReason =
   | "internal_failure"

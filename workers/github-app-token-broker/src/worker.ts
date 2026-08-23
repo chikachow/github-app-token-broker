@@ -1,35 +1,32 @@
-import { problemResponse } from "@github-app-token-broker/http/problem-details";
-import { createOidcIdTokenAuthenticator } from "@github-app-token-broker/oidc/id-token-authenticator";
-import {
-  parseSubjectTokenAudience,
-  type SubjectTokenAudience,
-} from "@github-app-token-broker/oidc/subject-token-audience";
 import type { GitHubAppEnv } from "@github-app-token-broker/github/app";
-import type { InstallationAccessTokenExchange } from "./installation-access-token-exchange.ts";
-import { createInstallationAccessTokenExchange } from "./installation-access-token-exchange.ts";
-import {
-  observeOidcDiagnosticWithConsole,
-  observeTokenExchangeWithConsole,
-} from "./observability.ts";
-import type { ObserveOidcDiagnostic, ObserveTokenExchange } from "./observability.ts";
-import {
-  handleTokenExchangeRequest,
-  tokenExchangeMethodNotAllowedResponse,
-  unexpectedTokenExchangeFailureResponse,
-} from "./token-exchange.ts";
-import {
-  assertTokenIssuancePolicyIssuersAreRegistered,
-  type TokenIssuancePolicy,
-} from "@github-app-token-broker/token-issuance-policy";
+import { jsonResponse, problemResponse } from "@github-app-token-broker/http/problem-details";
 import {
   snapshotOidcProviderRegistrations,
   type OidcProviderRegistration,
 } from "@github-app-token-broker/oidc/provider-registration";
+import {
+  parseSubjectTokenAudience,
+  type SubjectTokenAudience,
+} from "@github-app-token-broker/oidc/subject-token-audience";
+import {
+  createGitHubAppTokenExchange,
+  type ObserveOidcDiagnostic,
+  type ObserveTokenExchange,
+  type TokenExchangeComposition,
+  type TokenExchangeHandler,
+  tokenExchangeInvalidRequestResponse,
+} from "@github-app-token-broker/token-exchange";
+import {
+  assertTokenIssuancePolicyIssuersAreRegistered,
+  type TokenIssuancePolicy,
+} from "@github-app-token-broker/token-issuance-policy";
 
-export interface TokenExchangeComposition {
-  readonly oidcProviderRegistrations: readonly OidcProviderRegistration[];
-  readonly tokenIssuancePolicy: TokenIssuancePolicy;
-}
+import {
+  observeOidcDiagnosticWithConsole,
+  observeTokenExchangeWithConsole,
+} from "./observability.ts";
+
+export type { TokenExchangeComposition } from "@github-app-token-broker/token-exchange";
 
 export interface TokenExchangeWorkerRuntimeDependencies {
   readonly fetch: typeof fetch;
@@ -57,58 +54,43 @@ export function createTokenExchangeWorker(
   );
   const tokenIssuancePolicy = composition.tokenIssuancePolicy;
   assertTokenIssuancePolicyIssuersAreRegistered(tokenIssuancePolicy, oidcProviderRegistrations);
-  const workerDependencies = Object.freeze({
+  const capturedComposition = Object.freeze({ oidcProviderRegistrations, tokenIssuancePolicy });
+  const dependencies = Object.freeze({
     fetch: runtimeDependencies.fetch,
     now: runtimeDependencies.now,
     observe: runtimeDependencies.observe ?? observeTokenExchangeWithConsole,
     observeOidcDiagnostic:
       runtimeDependencies.observeOidcDiagnostic ?? observeOidcDiagnosticWithConsole,
-    oidcProviderRegistrations,
-    tokenIssuancePolicy,
   });
-  let configuredRuntime:
-    | {
-        readonly audience: SubjectTokenAudience;
-        readonly tokenExchange: InstallationAccessTokenExchange;
-      }
-    | undefined;
+  let configuredRuntime: ConfiguredTokenExchangeRuntime | undefined;
 
   return {
     async fetch(request, env) {
       try {
         const audience = parseSubjectTokenAudience(env.TOKEN_BROKER_AUDIENCE);
-        configuredRuntime ??= {
-          audience,
-          tokenExchange: createInstallationAccessTokenExchange({
-            githubAppDependencies: workerDependencies,
-            oidcIdTokenAuthenticator: createOidcIdTokenAuthenticator(
-              {
-                providerRegistrations: workerDependencies.oidcProviderRegistrations,
-                subjectTokenAudience: audience,
-              },
-              {
-                fetch: (input, init) => workerDependencies.fetch(input, init),
-                now: () => workerDependencies.now(),
-                observe: (event) => {
-                  try {
-                    workerDependencies.observeOidcDiagnostic({ fields: event, level: "warn" });
-                  } catch {
-                    // Optional diagnostics must not affect authentication or token issuance.
-                  }
-                },
-              },
-            ),
-            observe: workerDependencies.observe,
-            tokenIssuancePolicy: workerDependencies.tokenIssuancePolicy,
-          }),
-        };
 
-        if (configuredRuntime.audience !== audience) {
+        if (configuredRuntime === undefined) {
+          configuredRuntime = createConfiguredRuntime(
+            env,
+            audience,
+            capturedComposition,
+            dependencies,
+          );
+        } else if (configuredRuntime.audience !== audience) {
           throw new TypeError(
             "TOKEN_BROKER_AUDIENCE must not change during a Worker isolate lifetime",
           );
+        } else if (
+          configuredRuntime.appId !== env.GITHUB_APP_ID ||
+          configuredRuntime.privateKey !== env.GITHUB_APP_PRIVATE_KEY
+        ) {
+          configuredRuntime = createConfiguredRuntime(
+            env,
+            audience,
+            capturedComposition,
+            dependencies,
+          );
         }
-        const tokenExchange = configuredRuntime.tokenExchange;
 
         const url = new URL(request.url);
 
@@ -116,23 +98,24 @@ export function createTokenExchangeWorker(
           return problemResponse(404);
         }
 
+        const context = {
+          observe: dependencies.observe,
+          observeOidcDiagnostic: dependencies.observeOidcDiagnostic,
+        };
+
         if (request.method !== "POST") {
-          return tokenExchangeMethodNotAllowedResponse();
+          return tokenExchangeInvalidRequestResponse(400);
         }
 
-        return await handleTokenExchangeRequest(request, {
-          exchange: (input) =>
-            tokenExchange.exchange({
-              ...input,
-              githubApp: githubApp(env),
-            }),
-          now: () => workerDependencies.now(),
-          rateLimit: async (key) => {
-            const result = await env.TOKEN_EXCHANGE_RATE_LIMIT.limit({ key });
-
-            return result.success;
-          },
+        const rateLimit = await env.TOKEN_EXCHANGE_RATE_LIMIT.limit({
+          key: tokenExchangeRateLimitKey(request),
         });
+
+        if (!rateLimit.success) {
+          return workerOAuthErrorResponse(429, "temporarily_unavailable");
+        }
+
+        return await configuredRuntime.tokenExchange(request, context);
       } catch (error) {
         return unexpectedTokenExchangeFailureResponse(error);
       }
@@ -140,9 +123,66 @@ export function createTokenExchangeWorker(
   };
 }
 
-function githubApp(env: TokenExchangeWorkerEnv) {
+interface ConfiguredTokenExchangeRuntime {
+  readonly appId: string;
+  readonly audience: SubjectTokenAudience;
+  readonly privateKey: TokenExchangeWorkerEnv["GITHUB_APP_PRIVATE_KEY"];
+  readonly tokenExchange: TokenExchangeHandler;
+}
+
+function createConfiguredRuntime(
+  env: TokenExchangeWorkerEnv,
+  audience: SubjectTokenAudience,
+  composition: {
+    readonly oidcProviderRegistrations: readonly OidcProviderRegistration[];
+    readonly tokenIssuancePolicy: TokenIssuancePolicy;
+  },
+  dependencies: Pick<TokenExchangeWorkerRuntimeDependencies, "fetch" | "now">,
+): ConfiguredTokenExchangeRuntime {
   return {
-    GITHUB_APP_ID: env.GITHUB_APP_ID,
-    GITHUB_APP_PRIVATE_KEY: env.GITHUB_APP_PRIVATE_KEY,
+    appId: env.GITHUB_APP_ID,
+    audience,
+    privateKey: env.GITHUB_APP_PRIVATE_KEY,
+    tokenExchange: createGitHubAppTokenExchange(
+      {
+        composition,
+        githubApp: {
+          appId: env.GITHUB_APP_ID,
+          privateKey: env.GITHUB_APP_PRIVATE_KEY,
+        },
+        subjectTokenAudience: audience,
+      },
+      dependencies,
+    ),
   };
+}
+
+function tokenExchangeRateLimitKey(request: Request): string {
+  return request.headers.get("cf-connecting-ip") ?? "unknown";
+}
+
+function unexpectedTokenExchangeFailureResponse(error: unknown): Response {
+  try {
+    console.error({
+      error: { name: error instanceof Error ? "Error" : typeof error },
+      event: "token_exchange_request_failed",
+    });
+  } catch {
+    // Logging must not prevent the Token Endpoint from returning a sanitized response.
+  }
+
+  return workerOAuthErrorResponse(500, "server_error");
+}
+
+function workerOAuthErrorResponse(status: number, error: string): Response {
+  return jsonResponse(
+    { error },
+    {
+      headers: {
+        "cache-control": "no-store",
+        pragma: "no-cache",
+      },
+      status,
+    },
+  );
 }

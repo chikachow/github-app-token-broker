@@ -2,7 +2,7 @@
 
 ## Workspace layout
 
-- `workers/github-app-token-broker`: the only runtime, package `@github-app-token-broker/worker`, and the only public route (`POST /token`)
+- `workers/github-app-token-broker`: the Cloudflare adapter, package `@github-app-token-broker/worker`, and the only deployed public route (`POST /token`)
 - `packages/oidc`: exact-registration ID Token authentication, provider metadata/JWK Set retrieval, validation, caching, and diagnostics
 - `packages/oidc-provider-fly`: source-supported exact Fly organization-scoped OIDC Provider Registration construction with an explicit null OIDC ID Token Profile
 - `packages/oidc-provider-github-actions`: GitHub Actions OIDC Provider Registration and ID Token profile
@@ -10,6 +10,7 @@
 - `packages/github`: Installation Access Token Request normalization, the Repository Resource-oriented issuance capability, GitHub App JWT authentication, owner binding, installation-token minting, and GitHub App Information queries
 - `packages/token-issuance-policy`: structural Permit Statement compilation, validation, and evaluation
 - `packages/http`: bounded body readers and HTTP/problem-response helpers
+- `packages/token-exchange`: the runtime-neutral deep module behind the Token Endpoint, including protocol validation, authentication orchestration, policy-controlled issuance, observations, and OAuth response mapping
 - `test`: behavioral unit tests for the Token Endpoint and domain packages, plus a real Workerd integration project for the GitHub App Information RPC entrypoint
 
 There is no webhook runtime, deployment endpoint, dynamic issuer registry, App selector, or multi-key service.
@@ -40,9 +41,11 @@ records the design rationale, the
 evidence, and the [service contract](service-contract.md) is authoritative for
 the implemented capability and security boundary.
 
-## Worker composition
+## Token Exchange composition
 
-`createTokenExchangeWorker` accepts a `TokenExchangeComposition` containing OIDC Provider Registrations and one compiled `TokenIssuancePolicy`. It snapshots the registration array, rejects duplicate issuers, and requires every Permit Statement issuer to have a registration before returning the Worker handler. The policy compiler validates and recursively freezes its structural result, so composition needs no opaque identity map or module-owned state. Construction performs no network I/O.
+`createGitHubAppTokenExchange` accepts a `TokenExchangeComposition` containing OIDC Provider Registrations and one compiled `TokenIssuancePolicy`, semantic `{ appId, privateKey }` GitHub App credentials, and the exact Subject-Token Audience. It snapshots the registration array and credentials, rejects duplicate issuers, and requires every Permit Statement issuer to have a registration before returning its Fetch-compatible handler. The GitHub API destination is not part of this interface and remains fixed inside `packages/github`. The policy compiler validates and recursively freezes its structural result, so composition needs no opaque identity map or module-owned state. Construction performs no network I/O.
+
+`createTokenExchangeWorker` is a Cloudflare adapter around that handler. It preserves construction-time composition validation, translates Worker credential and audience bindings to the semantic interface, owns path routing and rate limiting before the handler, and recreates the configured handler if App credentials change. Rate limiting is deliberately not a token-exchange configuration knob because admission policy and request identity belong to the hosting adapter.
 
 The compiled policy snapshot is a public structural Interface. Its
 `permitStatements[].resource` is a Repository Resource Constraint with an
@@ -51,7 +54,7 @@ consumers discriminate owner-wide constraints with `repository === null`.
 
 An external deployment owns the TypeScript entrypoint that supplies those two values. The source package root has named exports only. `generic-worker.ts` is the public-safe Wrangler entrypoint and deliberately composes empty registrations with an empty, deny-all Token Issuance Policy. A built artifact cannot replace its composition through bindings or requests.
 
-The optional `TokenExchangeWorkerRuntimeDependencies` parameter is a construction and test seam for Fetch, time, mandatory structured Token Exchange observations, and optional OIDC remote-document diagnostics. `observe` returns `Promise<void>` and is awaited; fulfillment acknowledges the observation but does not itself prove durable persistence. `observeOidcDiagnostic` is a separately named synchronous callback whose return type is exactly `undefined`. It is never wired to the mandatory promise-returning observer, and diagnostic callback failures are contained. The default adapters late-bind the runtime Fetch implementation and clock and write both classes of event to the console. These dependencies are not trust or authorization configuration surfaces, although mandatory observation availability deliberately controls whether the endpoint can return a token.
+The runtime-neutral handler accepts a request context with mandatory `observe` and separately named optional `observeOidcDiagnostic` callbacks. `observe` returns `Promise<void>` and is awaited; fulfillment acknowledges the observation but does not itself prove durable persistence. `observeOidcDiagnostic` is synchronous and returns exactly `undefined`. It is never wired to the mandatory observer, and diagnostic callback failures are contained. The Worker adapter supplies these callbacks from `TokenExchangeWorkerRuntimeDependencies`; its defaults write both event classes to the console. Fetch and time remain construction/test seams. These dependencies are not trust or authorization configuration surfaces, although mandatory observation availability deliberately controls whether the endpoint can return a token.
 
 The deployment supplies one non-secret `TOKEN_BROKER_AUDIENCE` Worker binding. Before routing any request, the OIDC package's single Subject-Token Audience parser validates it as an exact non-empty, non-whitespace, single-line domain value. `worker.ts` constructs and caches the exchange with that explicit audience and rejects an audience change within an isolate. It owns no public endpoint-location binding and does not derive the audience from the incoming request URL, headers, or source-owned `/token` route. The OIDC ID Token Authenticator accepts this composed domain value rather than embedding a project name, preserving reuse and exact scalar-audience validation.
 

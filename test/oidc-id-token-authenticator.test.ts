@@ -263,6 +263,33 @@ describe("OIDC ID Token Authenticator", () => {
     });
   });
 
+  it("routes one authentication operation's diagnostics to its per-call observer", async () => {
+    const defaultEvents: OidcIdTokenAuthenticationEvent[] = [];
+    const requestEvents: OidcIdTokenAuthenticationEvent[] = [];
+    const authenticator = createOidcIdTokenAuthenticator(
+      {
+        providerRegistrations: [registration],
+        subjectTokenAudience,
+      },
+      {
+        fetch: successfulProviderFetch,
+        now: () => authenticationTestNow,
+        observe: (event) => defaultEvents.push(event),
+      },
+    );
+
+    await expect(
+      authenticator.authenticateIdToken(await signedIdToken(), (event) =>
+        requestEvents.push(event),
+      ),
+    ).resolves.toMatchObject({ ok: true });
+
+    expect(requestEvents).toContainEqual(
+      expect.objectContaining({ event: "oidc_provider_configuration_refreshed" }),
+    );
+    expect(defaultEvents).toEqual([]);
+  });
+
   it("does no provider I/O for an unregistered or malformed token issuer", async () => {
     const fetchOidcRemoteDocumentResponse = vi.fn(successfulProviderFetch);
     const authenticator = testAuthenticator(fetchOidcRemoteDocumentResponse);

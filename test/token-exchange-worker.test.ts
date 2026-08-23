@@ -5,6 +5,7 @@ import {
   type TokenExchangeWorkerEnv,
 } from "@github-app-token-broker/worker";
 import { compileTokenIssuancePolicy } from "@github-app-token-broker/token-issuance-policy";
+import { decodeJwt } from "jose";
 
 import { testInstallationId, testNow, testRepository } from "./support/constants.ts";
 import { fetchGitHubTestDouble } from "./support/github-api.ts";
@@ -49,7 +50,11 @@ describe("Token Exchange Worker boundary", () => {
   );
 
   it("rejects non-POST requests at the Token Endpoint boundary", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", { method: "GET" });
+    const response = await fetchTokenExchange("https://example.test/token", {
+      body: await tokenExchangeRequestBody(),
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      method: "PUT",
+    });
 
     expect(response.status).toBe(400);
     expect(response.headers.get("cache-control")).toBe("no-store");
@@ -123,144 +128,6 @@ describe("Token Exchange Worker boundary", () => {
       await expectSanitizedServerError(response);
       expect(githubRequests).toEqual([]);
       expectSanitizedLog(consoleError, observerFailure, "ghs_test_token");
-    } finally {
-      consoleError.mockRestore();
-    }
-  });
-
-  it("revokes a minted token before failing when the success observation is not acknowledged", async () => {
-    const observerFailure = "private post-mint observer failure";
-    const githubRequests: Request[] = [];
-    const observedEvents: unknown[] = [];
-    let completeRevocation: (response: Response) => void = () => undefined;
-    let markRevocationStarted: () => void = () => undefined;
-    const revocation = new Promise<Response>((resolve) => {
-      completeRevocation = resolve;
-    });
-    const revocationStarted = new Promise<void>((resolve) => {
-      markRevocationStarted = resolve;
-    });
-    const fetchExternal = vi.fn<typeof fetch>((input, init) => {
-      const request = new Request(input, init);
-
-      if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
-        return fetchOidcRemoteDocumentResponseTestDouble(request);
-      }
-
-      githubRequests.push(request);
-
-      if (request.method === "DELETE" && new URL(request.url).pathname === "/installation/token") {
-        markRevocationStarted();
-
-        return revocation;
-      }
-
-      return fetchGitHubTestDouble(request);
-    });
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
-      fetch: fetchExternal,
-      now: () => testNow,
-      observe: async (observation) => {
-        const event = observation.fields["event"];
-        observedEvents.push(event);
-
-        if (event === "installation_access_token_issuance_succeeded") {
-          throw new Error(observerFailure);
-        }
-      },
-      observeOidcDiagnostic: () => undefined,
-    });
-
-    try {
-      let responseSettled = false;
-      const responsePromise = invokeWorker(worker, await tokenRequest()).then((response) => {
-        responseSettled = true;
-
-        return response;
-      });
-
-      await revocationStarted;
-      await Promise.resolve();
-      expect(responseSettled).toBe(false);
-      completeRevocation(new Response(null, { status: 204 }));
-      const response = await responsePromise;
-
-      await expectSanitizedServerError(response);
-      expect(observedEvents).toEqual([
-        "installation_access_token_issuance_started",
-        "installation_access_token_issuance_succeeded",
-      ]);
-      expect(
-        githubRequests.map((request) => ({
-          method: request.method,
-          path: new URL(request.url).pathname,
-        })),
-      ).toEqual([
-        { method: "GET", path: `/repos/${testRepository}/installation` },
-        { method: "POST", path: `/app/installations/${testInstallationId}/access_tokens` },
-        { method: "DELETE", path: "/installation/token" },
-      ]);
-      const revocationRequest = githubRequests[2];
-      expect(revocationRequest?.headers.get("authorization")).toBe("Bearer ghs_test_token");
-      expectSanitizedLog(consoleError, observerFailure, "ghs_test_token");
-    } finally {
-      consoleError.mockRestore();
-    }
-  });
-
-  it("does not return or re-observe a token when GitHub rejects revocation", async () => {
-    const observerFailure = "private post-mint observer failure";
-    const githubRequests: Request[] = [];
-    const observedEvents: unknown[] = [];
-    const fetchExternal = vi.fn<typeof fetch>((input, init) => {
-      const request = new Request(input, init);
-
-      if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
-        return fetchOidcRemoteDocumentResponseTestDouble(request);
-      }
-
-      githubRequests.push(request);
-
-      return request.method === "DELETE" && new URL(request.url).pathname === "/installation/token"
-        ? Promise.resolve(new Response("private revocation response", { status: 503 }))
-        : fetchGitHubTestDouble(request);
-    });
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
-      fetch: fetchExternal,
-      now: () => testNow,
-      observe: async (observation) => {
-        const event = observation.fields["event"];
-        observedEvents.push(event);
-
-        if (event === "installation_access_token_issuance_succeeded") {
-          throw new Error(observerFailure);
-        }
-      },
-      observeOidcDiagnostic: () => undefined,
-    });
-
-    try {
-      const response = await invokeWorker(worker, await tokenRequest());
-
-      await expectSanitizedServerError(response);
-      expect(observedEvents).toEqual([
-        "installation_access_token_issuance_started",
-        "installation_access_token_issuance_succeeded",
-      ]);
-      expect(
-        githubRequests.filter(
-          (request) =>
-            request.method === "DELETE" && new URL(request.url).pathname === "/installation/token",
-        ),
-      ).toHaveLength(1);
-      expectSanitizedLog(
-        consoleError,
-        observerFailure,
-        "private revocation response",
-        "ghs_test_token",
-      );
     } finally {
       consoleError.mockRestore();
     }
@@ -540,6 +407,43 @@ describe("Token Exchange Worker boundary", () => {
     expect(response.status).toBe(200);
     expect(initialFetch).toHaveBeenCalled();
     expect(replacementFetch).not.toHaveBeenCalled();
+  });
+
+  it("rebuilds the runtime when GitHub App credentials change", async () => {
+    const observedIssuers: unknown[] = [];
+    const fetchExternal = vi.fn<typeof fetch>((input, init) => {
+      const request = new Request(input, init);
+
+      if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
+        return fetchOidcRemoteDocumentResponseTestDouble(request);
+      }
+
+      const authorization = request.headers.get("authorization");
+      observedIssuers.push(
+        authorization === null ? undefined : decodeJwt(authorization.slice("Bearer ".length)).iss,
+      );
+
+      return fetchGitHubTestDouble(request);
+    });
+    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
+      fetch: fetchExternal,
+      now: () => testNow,
+      observe: async () => undefined,
+      observeOidcDiagnostic: () => undefined,
+    });
+    const originalEnv = { ...testEnv, GITHUB_APP_ID: "111" };
+    const changedEnv = { ...testEnv, GITHUB_APP_ID: "222" };
+
+    const methodResponse = await invokeWorker(
+      worker,
+      new Request("https://example.test/token"),
+      originalEnv,
+    );
+    const tokenResponse = await invokeWorker(worker, await tokenRequest(), changedEnv);
+
+    expect(methodResponse.status).toBe(400);
+    expect(tokenResponse.status).toBe(200);
+    expect(observedIssuers).toEqual(["222", "222"]);
   });
 
   it("sanitizes a changed audience after configuration is cached", async () => {
