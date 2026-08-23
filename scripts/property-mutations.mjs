@@ -1,19 +1,14 @@
 const bodySource = "packages/http/src/body.ts";
-const requestBoundaryPropertyTest = "test/properties/request-boundaries.property.test.ts";
-const bodyPropertyTest = requestBoundaryPropertyTest;
+const bodyPropertyTest = "test/properties/http-body.property.test.ts";
 const githubSource = "packages/github/src/installation-access-token-request.ts";
-const githubPropertyTest = requestBoundaryPropertyTest;
+const githubPropertyTest = "test/properties/installation-access-token-request.property.test.ts";
 const policySource = "packages/token-issuance-policy/src/token-issuance-policy.ts";
 const policyPropertyTest = "test/properties/token-issuance-policy.property.test.ts";
 const tokenExchangeSource = "workers/github-app-token-broker/src/token-exchange.ts";
-const tokenExchangePropertyTest = requestBoundaryPropertyTest;
+const tokenExchangePropertyTest = "test/properties/token-exchange-form.property.test.ts";
 const ordinaryTestSuite = lane([], ["unit", "worker-integration"]);
 
-const bodyTests = propertyTestLanes(
-  bodyPropertyTest,
-  "body",
-  "reassembles non-empty subarray views across empty chunks without offset drift",
-);
+const bodyTests = propertyTestLanes(bodyPropertyTest, "body");
 const githubPermissionTests = propertyTestLanes(
   githubPropertyTest,
   "github-permissions",
@@ -29,16 +24,8 @@ const githubResourceTests = propertyTestLanes(
   "github-resource",
   "round-trips canonical resources and rejects each reviewed mutation",
 );
-const policyTests = propertyTestLanes(
-  policyPropertyTest,
-  "policy",
-  "matches an independent compiled policy-evaluation oracle",
-);
-const tokenExchangeTests = propertyTestLanes(
-  tokenExchangePropertyTest,
-  "token-exchange-form",
-  "keeps one non-empty form value regardless of empty-value ordering",
-);
+const policyTests = propertyTestLanes(policyPropertyTest, "policy");
+const tokenExchangeTests = propertyTestLanes(tokenExchangePropertyTest, "token-exchange-form");
 
 export const propertyMutations = Object.freeze([
   mutation({

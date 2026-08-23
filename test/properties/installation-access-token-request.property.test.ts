@@ -10,16 +10,6 @@ import {
   normalizeInstallationAccessTokenRequest,
   parseGitHubRepositoryResource,
 } from "@github-app-token-broker/github/installation-access-token-request";
-import {
-  bodyGeneratedRunBudget,
-  bodyReadScenarioArbitrary,
-  expectBodyReadScenario,
-} from "./support/http-body.ts";
-import {
-  expectFormScenario,
-  formGeneratedRunBudget,
-  formScenarioArbitrary,
-} from "./support/token-exchange-form.ts";
 
 const generatedRunBudget = 1_000;
 const repositoryResource = "https://api.github.com/repos/property-owner/property-repository";
@@ -424,19 +414,4 @@ describe("GitHub Repository Resource properties", () => {
   })("round-trips canonical resources and rejects each reviewed mutation", (scenario) => {
     expectRepositoryResourceScenario(scenario);
   });
-});
-
-describe("bounded HTTP body properties", () => {
-  test.prop([bodyReadScenarioArbitrary], {
-    numRuns: bodyGeneratedRunBudget,
-  })(
-    "reassembles non-empty subarray views across empty chunks without offset drift",
-    expectBodyReadScenario,
-  );
-});
-
-describe("Token Exchange form properties", () => {
-  test.prop([formScenarioArbitrary], {
-    numRuns: formGeneratedRunBudget,
-  })("keeps one non-empty form value regardless of empty-value ordering", expectFormScenario);
 });
