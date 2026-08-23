@@ -49,12 +49,15 @@ the implemented capability and security boundary.
 `createTokenExchangeWorker` is a Cloudflare adapter around that handler. It preserves construction-time composition validation, translates Worker credential and audience bindings to the semantic interface, owns path routing and rate limiting before the handler, and recreates the configured handler if App credentials change. Rate limiting is deliberately not a token-exchange configuration knob because admission policy and request identity belong to the hosting adapter.
 
 `githubAppTokenExchangePlugin` is an encapsulated Fastify adapter around an already-built handler.
-It registers the `/token` path for every method so the deep handler remains authoritative for the
-OAuth method response, removes inherited parsers only in its child scope, installs one raw Buffer
-form parser, and applies the public Token Exchange body limit at the route. The adapter converts
-documented Fastify parser failures to the exported OAuth `invalid_request` response and rethrows
-all other errors to the host. It reconstructs duplicate request headers from Node raw headers,
-copies Fetch response metadata and bytes into the Fastify reply, and preserves separate
+It registers the `/token` path broadly and normalizes routed non-`POST` methods to the OAuth
+`invalid_request` response before Fetch request construction because Fetch cannot represent every
+Node method. Node can reject `TRACK` and `CONNECT` before Fastify plugin routing, so those transport
+failures have no adapter OAuth-shape promise. The plugin removes inherited parsers only in its child
+scope, installs one raw Buffer form parser, and applies the public Token Exchange body limit at the
+route. The adapter converts documented Fastify parser failures and malformed Fastify-to-Fetch
+request metadata to the exported OAuth `invalid_request` response. Unrecognized handler and
+Fastify errors propagate to the host. It reconstructs duplicate request headers from Node raw
+headers, copies Fetch response metadata and bytes into the Fastify reply, and preserves separate
 `Set-Cookie` fields.
 
 The Fastify request logger receives mandatory and optional observations at their declared levels.

@@ -15,16 +15,21 @@ Run this checklist before making the repository public or tagging a release.
 
 - `README.md` describes the current source repository and deployment boundary.
 - `docs/service-contract.md` matches implemented behaviour.
-- `docs/implementation.md` matches the workspace packages, Worker entrypoints, bindings, and verification commands.
+- `docs/implementation.md` matches the workspace packages, host entrypoints, bindings, and verification commands.
 - `docs/deployment.md` documents only the generic interface between this source repository and an external deployment system.
 - The Worker package exposes the named composition Interface and no default production composition.
+- The Fastify package exposes only the named handler-only plugin contract.
+- `node-deploy:check` verifies the Fastify package's built ESM and declarations through a
+  production-pruned external consumer built from tracked clean source.
+- The Fastify deployment fixture remains deny-all and is not a production composition; Node host
+  lifecycle, admission, and composition remain externally owned.
 - Deployment-owned entrypoints re-export `GitHubAppInformationEntrypoint` and
   exercise it through a named service binding; each concrete consumer tests its
   exact production binding configuration.
 - The generic Wrangler entrypoint remains deny-all and contains no deployment inventory.
 - No dynamic issuer-trust or authorization-policy binding has been introduced.
 - An external deployment owns and independently tests the OIDC Provider Registrations and Token Issuance Policy compiled into its artifact.
-- Deployment validation proves the Worker audience binding exactly equals the audience requested by its Clients and separately proves that Clients use the intended routed HTTPS Token Exchange Endpoint.
+- Cloudflare Worker deployment validation proves its audience binding exactly equals the audience requested by its Clients and separately proves that Clients use the intended routed HTTPS Token Exchange Endpoint.
 - The runtime binding inventory has no configurable GitHub API destination; all App-credential requests remain fixed to `https://api.github.com` and retain the 10-second broker deadline.
 - Installation Access Token integration tests cover both legacy opaque and JWT-shaped GitHub token values and prove that no temporary stateful-token override is sent.
 - The GitHub App Information service binding remains explicitly trusted, read-only, non-public, unable to mint tokens or expose the private key, and unable to enumerate installation repositories.

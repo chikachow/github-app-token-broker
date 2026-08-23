@@ -313,31 +313,61 @@ describe("githubAppTokenExchangePlugin", () => {
     }
   });
 
-  it("keeps all token-path methods under the deep handler method contract", async () => {
-    const methods: Array<"DELETE" | "GET" | "HEAD" | "OPTIONS" | "PATCH" | "PUT"> = [
+  it("normalizes routed non-POST methods before Fetch request construction", async () => {
+    const methods: Array<"DELETE" | "GET" | "HEAD" | "OPTIONS" | "PATCH" | "PUT" | "TRACE"> = [
       "DELETE",
       "GET",
       "HEAD",
       "OPTIONS",
       "PATCH",
       "PUT",
+      "TRACE",
     ];
-    const observedMethods: string[] = [];
+    const tokenExchange = vi.fn<TokenExchangeHandler>(async () =>
+      Response.json({ must_not_reach: true }),
+    );
     const app = Fastify();
-    await app.register(githubAppTokenExchangePlugin, {
-      tokenExchange: async (request) => {
-        observedMethods.push(request.method);
-        return new Response(null, { status: 204 });
-      },
-    });
+    await app.register(githubAppTokenExchangePlugin, { tokenExchange });
+    const address = await app.listen({ host: "127.0.0.1", port: 0 });
 
     try {
       for (const method of methods) {
-        const response = await app.inject({ method, url: "/token" });
-        expect(response.statusCode).toBe(204);
+        const response = await makeNodeRequest(`${address}/token`, {
+          body: "",
+          headers: {},
+          method,
+        });
+
+        expect(response.statusCode, method).toBe(400);
+        expect(response.cacheControl, method).toBe("no-store");
+        expect(response.pragma, method).toBe("no-cache");
+        if (method !== "HEAD") {
+          expect(response.body).toBe('{"error":"invalid_request"}');
+        }
       }
 
-      expect(observedMethods).toEqual(methods);
+      expect(tokenExchange).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("leaves a transport-rejected TRACK request outside the adapter OAuth contract", async () => {
+    const tokenExchange = vi.fn<TokenExchangeHandler>();
+    const app = Fastify();
+    await app.register(githubAppTokenExchangePlugin, { tokenExchange });
+    const address = await app.listen({ host: "127.0.0.1", port: 0 });
+
+    try {
+      const response = await makeNodeRequest(`${address}/token`, {
+        body: "",
+        headers: {},
+        method: "TRACK",
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.cacheControl).toBeUndefined();
+      expect(tokenExchange).not.toHaveBeenCalled();
     } finally {
       await app.close();
     }
@@ -505,6 +535,7 @@ describe("githubAppTokenExchangePlugin", () => {
       expect(response).toEqual({
         body: '{"ok":true}',
         cacheControl: "no-store",
+        pragma: "no-cache",
         setCookie: ["socket=value; Path=/; HttpOnly"],
         statusCode: 200,
       });
@@ -540,29 +571,39 @@ async function makeNodeRequest(
   input: {
     readonly body: string;
     readonly headers: Readonly<Record<string, string | string[]>>;
+    readonly method?: string;
   },
 ): Promise<{
   body: string;
   cacheControl: string | undefined;
+  pragma: string | undefined;
   setCookie: string[] | undefined;
   statusCode: number | undefined;
 }> {
   return new Promise((resolve, reject) => {
-    const request = nodeHttpRequest(url, { headers: input.headers, method: "POST" }, (response) => {
-      const chunks: Buffer[] = [];
-      response.on("data", (chunk: Buffer) => chunks.push(chunk));
-      response.on("end", () => {
-        resolve({
-          body: Buffer.concat(chunks).toString("utf8"),
-          cacheControl:
-            typeof response.headers["cache-control"] === "string"
-              ? response.headers["cache-control"]
-              : undefined,
-          setCookie: response.headers["set-cookie"],
-          statusCode: response.statusCode,
+    const request = nodeHttpRequest(
+      url,
+      { headers: input.headers, method: input.method ?? "POST" },
+      (response) => {
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk: Buffer) => chunks.push(chunk));
+        response.on("end", () => {
+          resolve({
+            body: Buffer.concat(chunks).toString("utf8"),
+            cacheControl:
+              typeof response.headers["cache-control"] === "string"
+                ? response.headers["cache-control"]
+                : undefined,
+            pragma:
+              typeof response.headers["pragma"] === "string"
+                ? response.headers["pragma"]
+                : undefined,
+            setCookie: response.headers["set-cookie"],
+            statusCode: response.statusCode,
+          });
         });
-      });
-    });
+      },
+    );
     request.on("error", reject);
     request.end(input.body);
   });
