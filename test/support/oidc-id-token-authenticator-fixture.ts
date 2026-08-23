@@ -98,7 +98,7 @@ export async function signedIdToken(
     audience?: string | string[];
     claims?: Record<string, unknown>;
     expiresInSeconds?: number;
-    kid?: string;
+    kid?: string | null;
     tokenIssuer?: string;
   } = {},
 ): Promise<string> {
@@ -113,6 +113,9 @@ export async function signedIdToken(
     sub: "subject",
     ...options.claims,
   })
-    .setProtectedHeader({ alg: options.algorithm ?? "RS256", kid: options.kid ?? "test-key-1" })
+    .setProtectedHeader({
+      alg: options.algorithm ?? "RS256",
+      ...(options.kid === null ? {} : { kid: options.kid ?? "test-key-1" }),
+    })
     .sign(privateKey);
 }

@@ -42,6 +42,15 @@ describe("Registered OIDC Provider Verifier", () => {
     ]);
   });
 
+  it("verifies a token without a key ID against a singleton JWK Set", async () => {
+    await expect(
+      testVerifier(successfulProviderFetch).verifyIdToken(await signedIdToken({ kid: null })),
+    ).resolves.toMatchObject({
+      ok: true,
+      verificationEvidence: { resolvedKeyId: null },
+    });
+  });
+
   it("rejects a Provider Configuration redirect without using or caching its document", async () => {
     let now = new Date("2026-01-01T00:00:00Z");
     let configurationIsDirect = false;
@@ -136,13 +145,15 @@ describe("Registered OIDC Provider Verifier", () => {
       events.push(event);
 
       if (observerFailureEnabled && event.event === "oidc_provider_configuration_refreshed") {
-        throw new Error("Provider Configuration observer unavailable");
+        throw Object.assign(new Error("Provider Configuration observer unavailable"), {
+          code: "ERR_OBSERVER_UNAVAILABLE",
+        });
       }
     };
     const subjectToken = await signedIdToken();
 
     await expect(verifier.verifyIdToken(subjectToken, observe)).resolves.toEqual(
-      expectedFailure("internal_failure"),
+      expectedFailure("internal_failure", "ERR_OBSERVER_UNAVAILABLE"),
     );
     expect(
       fetchOidcRemoteDocumentResponse.mock.calls.filter(
@@ -1238,6 +1249,7 @@ describe("Registered OIDC Provider Verifier", () => {
   );
 
   it.each([
+    ["a missing keys member", Response.json({}), "ERR_OIDC_JWKS_INVALID"],
     ["a non-object key", Response.json({ keys: ["invalid"] }), "ERR_OIDC_JWKS_INVALID"],
     [
       "a key without kty",

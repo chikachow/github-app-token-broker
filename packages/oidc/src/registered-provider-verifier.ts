@@ -455,10 +455,6 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
     try {
       const refreshed = await refresh.result;
 
-      if (!jwksResolutionIdentitiesEqual(refreshed.value.identity, refresh.identity)) {
-        throw new OidcRemoteDocumentError("ERR_OIDC_JWKS_REFRESH_IDENTITY_MISMATCH");
-      }
-
       if (this.#state.jwksRefresh === refresh) {
         this.#state.jwks = refreshed.cacheable ? refreshed : undefined;
         this.#state.jwksFailure = undefined;
@@ -637,7 +633,7 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
     issuer: OidcIssuerIdentifier,
     remoteDocumentKind: "jwk_set" | "provider_configuration",
     current: CacheEntry<unknown>,
-    metadataGeneration: number | undefined,
+    metadataGeneration: number,
     observe: ((event: OidcIdTokenAuthenticationEvent) => void) | undefined,
   ): void {
     this.#observe(
@@ -646,7 +642,7 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
         remoteDocumentKind,
         event: "oidc_remote_document_stale_used",
         issuer,
-        ...(metadataGeneration === undefined ? {} : { metadataGeneration }),
+        metadataGeneration,
       },
       observe,
     );
@@ -866,11 +862,11 @@ function classifyAuthenticationError(error: unknown): OidcIdTokenAuthenticationF
   const diagnosticCode = diagnosticCodeOf(error);
 
   if (error instanceof OidcRemoteDocumentError) {
-    return providerUnavailable(diagnosticCode, error.providerHttpStatus);
+    return providerUnavailable(error.code, error.providerHttpStatus);
   }
 
   if (error instanceof OidcSubjectTokenError) {
-    return subjectTokenRejected(diagnosticCode);
+    return subjectTokenRejected(error.code);
   }
 
   if (error instanceof errors.JOSEError) {
@@ -886,7 +882,7 @@ function classifyAuthenticationError(error: unknown): OidcIdTokenAuthenticationF
   }
 
   if (error instanceof OidcProviderMetadataValidationError) {
-    return subjectTokenRejected(diagnosticCode);
+    return subjectTokenRejected(error.code);
   }
 
   return internalFailure(diagnosticCode);
@@ -909,10 +905,10 @@ const providerJoseErrorCodes = new Set([
   "ERR_JWKS_MULTIPLE_MATCHING_KEYS",
 ]);
 
-function subjectTokenRejected(diagnosticCode?: string): OidcIdTokenAuthenticationFailureResult {
+function subjectTokenRejected(diagnosticCode: string): OidcIdTokenAuthenticationFailureResult {
   return {
     failure: {
-      diagnostics: diagnosticCode === undefined ? {} : { diagnosticCode },
+      diagnostics: { diagnosticCode },
       kind: "subject_token_rejected",
     },
     ok: false,
@@ -920,13 +916,13 @@ function subjectTokenRejected(diagnosticCode?: string): OidcIdTokenAuthenticatio
 }
 
 function providerUnavailable(
-  diagnosticCode?: string,
+  diagnosticCode: string,
   providerHttpStatus?: number,
 ): OidcIdTokenAuthenticationFailureResult {
   return {
     failure: {
       diagnostics: {
-        ...(diagnosticCode === undefined ? {} : { diagnosticCode }),
+        diagnosticCode,
         ...(providerHttpStatus === undefined ? {} : { providerHttpStatus }),
       },
       kind: "provider_unavailable",
