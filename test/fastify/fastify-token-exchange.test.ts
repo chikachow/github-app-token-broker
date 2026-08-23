@@ -392,6 +392,16 @@ describe("githubAppTokenExchangePlugin", () => {
       scenario: "malformed trusted forwarded protocol",
       trustProxy: true,
     },
+    {
+      headers: { host: "user:pass@example.com" },
+      scenario: "password-bearing Host",
+      trustProxy: false,
+    },
+    {
+      headers: { host: "user@example.com" },
+      scenario: "username-bearing Host",
+      trustProxy: false,
+    },
   ])("sanitizes $scenario before token exchange", async ({ headers, trustProxy }) => {
     const tokenExchange = vi.fn<TokenExchangeHandler>();
     const app = Fastify({ trustProxy });

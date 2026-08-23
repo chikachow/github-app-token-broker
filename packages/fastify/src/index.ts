@@ -41,14 +41,14 @@ export const githubAppTokenExchangePlugin: FastifyPluginAsync<
   });
 
   fastify.all("/token", { bodyLimit: maxTokenExchangeBodyBytes }, async (request, reply) => {
-    const url = fastifyRequestUrl(request);
+    const webRequest = fastifyRequestToWebRequest(request);
 
-    if (url === null) {
+    if (webRequest === null) {
       await sendWebResponse(reply, tokenExchangeInvalidRequestResponse(400));
       return;
     }
 
-    const response = await options.tokenExchange(fastifyRequestToWebRequest(request, url), {
+    const response = await options.tokenExchange(webRequest, {
       async observe(observation) {
         logObservation(request, observation);
       },
@@ -100,34 +100,33 @@ function logAtLevel(
   log.call(request.log, fields, message);
 }
 
-function fastifyRequestUrl(request: FastifyRequest): URL | null {
+function fastifyRequestToWebRequest(request: FastifyRequest): Request | null {
   try {
-    return new URL(request.raw.url ?? request.url, `${request.protocol}://${request.host}`);
+    const headers = new Headers();
+
+    for (let index = 0; index < request.raw.rawHeaders.length; index += 2) {
+      const name = request.raw.rawHeaders[index];
+      const value = request.raw.rawHeaders[index + 1];
+
+      if (name !== undefined && value !== undefined) {
+        headers.append(name, value);
+      }
+    }
+
+    const requestBody = isNodeBuffer(request.body) ? request.body : undefined;
+    const mayHaveBody = request.method !== "GET" && request.method !== "HEAD";
+    const body =
+      mayHaveBody && requestBody !== undefined ? Uint8Array.from(requestBody) : undefined;
+    const url = new URL(request.raw.url ?? request.url, `${request.protocol}://${request.host}`);
+
+    return new Request(url, {
+      ...(body === undefined ? {} : { body }),
+      headers,
+      method: request.method,
+    });
   } catch {
     return null;
   }
-}
-
-function fastifyRequestToWebRequest(request: FastifyRequest, url: URL): Request {
-  const headers = new Headers();
-
-  for (let index = 0; index < request.raw.rawHeaders.length; index += 2) {
-    const name = request.raw.rawHeaders[index];
-    const value = request.raw.rawHeaders[index + 1];
-
-    if (name !== undefined && value !== undefined) {
-      headers.append(name, value);
-    }
-  }
-
-  const requestBody = isNodeBuffer(request.body) ? request.body : undefined;
-  const mayHaveBody = request.method !== "GET" && request.method !== "HEAD";
-  const body = mayHaveBody && requestBody !== undefined ? Uint8Array.from(requestBody) : undefined;
-  return new Request(url, {
-    ...(body === undefined ? {} : { body }),
-    headers,
-    method: request.method,
-  });
 }
 
 function isNodeBuffer(value: unknown): value is Buffer {
