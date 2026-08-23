@@ -1,4 +1,4 @@
-import type { GitHubAppEnv } from "@github-app-token-broker/github/app";
+import type { GitHubAppConfiguration } from "@github-app-token-broker/github/app";
 import { jsonResponse, problemResponse } from "@github-app-token-broker/http/problem-details";
 import {
   snapshotOidcProviderRegistrations,
@@ -25,6 +25,10 @@ import {
   observeOidcDiagnosticWithConsole,
   observeTokenExchangeWithConsole,
 } from "./observability.ts";
+import {
+  githubAppConfigurationFromWorkerBindings,
+  type GitHubAppWorkerBindings,
+} from "./github-app-bindings.ts";
 
 export type { TokenExchangeComposition } from "@github-app-token-broker/token-exchange";
 
@@ -35,7 +39,7 @@ export interface TokenExchangeWorkerRuntimeDependencies {
   readonly observeOidcDiagnostic?: ObserveOidcDiagnostic;
 }
 
-export interface TokenExchangeWorkerEnv extends GitHubAppEnv {
+export interface TokenExchangeWorkerEnv extends GitHubAppWorkerBindings {
   readonly TOKEN_BROKER_AUDIENCE: string;
   readonly TOKEN_EXCHANGE_RATE_LIMIT: {
     limit(options: { readonly key: string }): Promise<{ readonly success: boolean }>;
@@ -68,10 +72,11 @@ export function createTokenExchangeWorker(
     async fetch(request, env) {
       try {
         const audience = parseSubjectTokenAudience(env.TOKEN_BROKER_AUDIENCE);
+        const githubApp = githubAppConfigurationFromWorkerBindings(env);
 
         if (configuredRuntime === undefined) {
           configuredRuntime = createConfiguredRuntime(
-            env,
+            githubApp,
             audience,
             capturedComposition,
             dependencies,
@@ -81,11 +86,11 @@ export function createTokenExchangeWorker(
             "TOKEN_BROKER_AUDIENCE must not change during a Worker isolate lifetime",
           );
         } else if (
-          configuredRuntime.appId !== env.GITHUB_APP_ID ||
-          configuredRuntime.privateKey !== env.GITHUB_APP_PRIVATE_KEY
+          configuredRuntime.appId !== githubApp.appId ||
+          configuredRuntime.privateKey !== githubApp.privateKey
         ) {
           configuredRuntime = createConfiguredRuntime(
-            env,
+            githubApp,
             audience,
             capturedComposition,
             dependencies,
@@ -134,12 +139,12 @@ export function createTokenExchangeWorker(
 interface ConfiguredTokenExchangeRuntime {
   readonly appId: string;
   readonly audience: SubjectTokenAudience;
-  readonly privateKey: TokenExchangeWorkerEnv["GITHUB_APP_PRIVATE_KEY"];
+  readonly privateKey: GitHubAppConfiguration["privateKey"];
   readonly tokenExchange: TokenExchangeHandler;
 }
 
 function createConfiguredRuntime(
-  env: TokenExchangeWorkerEnv,
+  githubApp: GitHubAppConfiguration,
   audience: SubjectTokenAudience,
   composition: {
     readonly oidcProviderRegistrations: readonly OidcProviderRegistration[];
@@ -148,16 +153,13 @@ function createConfiguredRuntime(
   dependencies: Pick<TokenExchangeWorkerRuntimeDependencies, "fetch" | "now">,
 ): ConfiguredTokenExchangeRuntime {
   return {
-    appId: env.GITHUB_APP_ID,
+    appId: githubApp.appId,
     audience,
-    privateKey: env.GITHUB_APP_PRIVATE_KEY,
+    privateKey: githubApp.privateKey,
     tokenExchange: createGitHubAppTokenExchange(
       {
         composition,
-        githubApp: {
-          appId: env.GITHUB_APP_ID,
-          privateKey: env.GITHUB_APP_PRIVATE_KEY,
-        },
+        githubApp,
         subjectTokenAudience: audience,
       },
       dependencies,

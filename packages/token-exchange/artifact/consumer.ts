@@ -37,3 +37,15 @@ const invalidConfiguration: GitHubAppTokenExchangeConfiguration = {
 };
 
 void invalidConfiguration;
+
+const workerBindings = {
+  GITHUB_APP_ID: "1",
+  GITHUB_APP_PRIVATE_KEY: "fixture-private-key",
+};
+const invalidWorkerBindingConfiguration: GitHubAppTokenExchangeConfiguration = {
+  ...configuration,
+  // @ts-expect-error Worker binding names are adapted before runtime-neutral composition.
+  githubApp: workerBindings,
+};
+
+void invalidWorkerBindingConfiguration;

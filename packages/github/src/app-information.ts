@@ -4,7 +4,7 @@ import {
   defaultGitHubAppDependencies,
   githubAppAuthenticationHeaders,
   GitHubAppConfigurationError,
-  type GitHubAppEnv,
+  type GitHubAppConfiguration,
   type GitHubAppDependencies,
 } from "./app.ts";
 import { fetchGitHubApiJson, GitHubApiError, GitHubApiTransportError } from "./http.ts";
@@ -185,7 +185,7 @@ export interface GitHubAppInformation {
 }
 
 export function createGitHubAppInformation(
-  configuration: GitHubAppEnv,
+  configuration: GitHubAppConfiguration,
   dependencies: GitHubAppDependencies = defaultGitHubAppDependencies,
 ): GitHubAppInformation {
   return {
@@ -228,7 +228,7 @@ export function createGitHubAppInformation(
 }
 
 async function requestGitHubAppInformation<Schema extends z.ZodType>(
-  configuration: GitHubAppEnv,
+  configuration: GitHubAppConfiguration,
   dependencies: GitHubAppDependencies,
   {
     notFound = false,

@@ -8,10 +8,13 @@ import {
   type GitHubAppListInstallationsInput,
   type GitHubAppRepositoryInstallationInput,
 } from "@github-app-token-broker/github/app-information";
-import type { GitHubAppEnv } from "@github-app-token-broker/github/app";
+import {
+  githubAppConfigurationFromWorkerBindings,
+  type GitHubAppWorkerBindings,
+} from "./github-app-bindings.ts";
 
 export class GitHubAppInformationEntrypoint
-  extends WorkerEntrypoint<GitHubAppEnv>
+  extends WorkerEntrypoint<GitHubAppWorkerBindings>
   implements GitHubAppInformation
 {
   async getApp(): Promise<GitHubApp> {
@@ -35,6 +38,6 @@ export class GitHubAppInformationEntrypoint
   }
 
   #information(): GitHubAppInformation {
-    return createGitHubAppInformation(this.env);
+    return createGitHubAppInformation(githubAppConfigurationFromWorkerBindings(this.env));
   }
 }
