@@ -12,6 +12,7 @@ import {
   type TokenExchangeRequestContext,
   type TokenExchangeRuntimeDependencies,
 } from "@github-app-token-broker/token-exchange";
+import { decodeJwt } from "jose";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -43,6 +44,51 @@ const configuration = {
 } satisfies GitHubAppTokenExchangeConfiguration;
 
 describe("GitHub App Token Exchange public interface", () => {
+  it("uses the platform fetch and clock when runtime dependencies are omitted", async () => {
+    const externalRequests: Request[] = [];
+    const platformFetch = vi.fn<typeof fetch>((input, init) => {
+      const request = new Request(input, init);
+      externalRequests.push(request);
+
+      return fetchExternal(request);
+    });
+    vi.useFakeTimers({ now: testNow });
+    vi.stubGlobal("fetch", platformFetch);
+
+    try {
+      const tokenExchange = createGitHubAppTokenExchange(configuration);
+      const response = await tokenExchange(await tokenRequest(), requestContext());
+      const nowSeconds = Math.floor(testNow.getTime() / 1000);
+      const githubAppJwtClaims = externalRequests
+        .filter((request) => new URL(request.url).hostname === "api.github.com")
+        .map((request) => {
+          const authorization = request.headers.get("authorization");
+
+          if (authorization === null) {
+            throw new Error("expected GitHub request authentication");
+          }
+
+          return decodeJwt(authorization.slice("Bearer ".length));
+        });
+
+      expect(response.status).toBe(200);
+      expect(externalRequests.map(({ url }) => url)).toEqual([
+        "https://token.actions.githubusercontent.com/.well-known/openid-configuration",
+        "https://token.actions.githubusercontent.com/.well-known/jwks",
+        "https://api.github.com/repos/fixture-owner/fixture-source-repository/installation",
+        "https://api.github.com/app/installations/67890/access_tokens",
+      ]);
+      expect(githubAppJwtClaims).toHaveLength(2);
+      expect(githubAppJwtClaims.map(({ exp, iat }) => ({ exp, iat }))).toEqual([
+        { exp: nowSeconds + 9 * 60, iat: nowSeconds - 60 },
+        { exp: nowSeconds + 9 * 60, iat: nowSeconds - 60 },
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps the GitHub destination fixed and preserves transport constraints", async () => {
     const githubRequests: Array<{ init: RequestInit | undefined; url: string }> = [];
     const timeout = vi.spyOn(AbortSignal, "timeout");
