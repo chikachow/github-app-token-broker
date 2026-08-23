@@ -338,8 +338,13 @@ describe("GitHub App Information", () => {
     await expect(information.listInstallations({ per_page: 101 })).rejects.toBeInstanceOf(
       GitHubAppInputError,
     );
-    await expect(information.getInstallation({ installation_id: 0 })).rejects.toBeInstanceOf(
+    await expectStableSanitizedError(
+      information.getInstallation({ installation_id: 0 }),
       GitHubAppInputError,
+      {
+        message: "invalid GitHub App Information request",
+        name: "GitHubAppInputError",
+      },
     );
     await expect(
       information.getRepositoryInstallation({ owner: "fixture/owner", repo: "fixture-repository" }),
@@ -412,11 +417,6 @@ describe("GitHub App Information", () => {
 
   it.each([
     {
-      error: GitHubAppConfigurationError,
-      response: new Response(null, { status: 401 }),
-      method: "getApp" as const,
-    },
-    {
       error: GitHubAppNotFoundError,
       response: new Response(null, { status: 404 }),
       method: "getInstallation" as const,
@@ -434,11 +434,6 @@ describe("GitHub App Information", () => {
       response: new Response(null, { status: 503 }),
       method: "getApp" as const,
     },
-    {
-      error: GitHubAppUpstreamError,
-      response: new Response(null, { status: 500 }),
-      method: "getApp" as const,
-    },
   ])("normalizes GitHub failures to stable RPC errors", async ({ error, method, response }) => {
     const information = createGitHubAppInformation(githubApp, {
       fetch: async () => response,
@@ -452,6 +447,37 @@ describe("GitHub App Information", () => {
 
     await expect(result).rejects.toBeInstanceOf(error);
   });
+
+  it.each([
+    {
+      error: GitHubAppConfigurationError,
+      expected: {
+        message: "invalid GitHub App configuration",
+        name: "GitHubAppConfigurationError",
+      },
+      privateDetail: "private credential failure",
+      status: 401,
+    },
+    {
+      error: GitHubAppUpstreamError,
+      expected: {
+        message: "GitHub App Information request failed upstream",
+        name: "GitHubAppUpstreamError",
+      },
+      privateDetail: "private upstream failure",
+      status: 500,
+    },
+  ])(
+    "normalizes GitHub $status without exposing private upstream detail",
+    async ({ error, expected, privateDetail, status }) => {
+      const information = createGitHubAppInformation(githubApp, {
+        fetch: async () => new Response(privateDetail, { status }),
+        now: () => now,
+      });
+
+      await expectStableSanitizedError(information.getApp(), error, expected, privateDetail);
+    },
+  );
 
   it("maps transport failures to an unavailable RPC error", async () => {
     const information = createGitHubAppInformation(githubApp, {
@@ -490,6 +516,26 @@ function requestUrl(input: RequestInfo | URL): URL {
   }
 
   return new URL(input instanceof URL ? input.href : input);
+}
+
+async function expectStableSanitizedError(
+  operation: Promise<unknown>,
+  errorType: new () => Error,
+  expected: { readonly message: string; readonly name: string },
+  privateDetail?: string,
+): Promise<void> {
+  try {
+    await operation;
+  } catch (error) {
+    expect(error).toBeInstanceOf(errorType);
+    expect(error).toMatchObject(expected);
+    if (privateDetail !== undefined) {
+      expect(String(error)).not.toContain(privateDetail);
+    }
+    return;
+  }
+
+  throw new Error(`expected ${expected.name}`);
 }
 
 function installationPageResponseBody(byteLength: number): string {
