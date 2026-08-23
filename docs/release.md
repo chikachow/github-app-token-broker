@@ -16,7 +16,7 @@ Run this checklist before making the repository public or tagging a release.
 - `README.md` describes the current source repository and deployment boundary.
 - `docs/service-contract.md` matches implemented behaviour.
 - `docs/implementation.md` matches the workspace packages, host entrypoints, bindings, and verification commands.
-- `docs/deployment.md` documents only the generic interface between this source repository and an external deployment system.
+- `docs/deployment.md` keeps the Node host and Cloudflare Worker deployment boundaries clearly distinguished.
 - The Worker package exposes the named composition Interface and no default production composition.
 - The Fastify package exposes only the named handler-only plugin contract.
 - `node-deploy:check` verifies the Fastify package's built ESM and declarations through a

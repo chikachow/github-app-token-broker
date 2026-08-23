@@ -8,7 +8,7 @@ This document describes the public interface, security boundaries, and externall
 | -------- | ------ | -------------------------------------------- | ------------------------- |
 | `/token` | `POST` | Accept OpenID Connect ID Tokens for exchange | OAuth token response JSON |
 
-Unknown routes return `404` problem details. Unsupported methods on `/token` return OAuth error JSON with `400 {"error":"invalid_request"}`.
+Unknown routes return `404` problem details. Routed unsupported methods on `/token` return OAuth error JSON with `400 {"error":"invalid_request"}`. A transport may reject a method it cannot represent before the endpoint route; no OAuth response shape is promised in that case.
 
 ## Internal GitHub App Information RPC
 
