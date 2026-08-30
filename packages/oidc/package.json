@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@github-app-token-broker/http": "workspace:*",
-    "jose": "6.2.9",
+    "jose": "6.2.10",
     "zod": "4.4.3"
   }
 }
