@@ -53,33 +53,8 @@ export interface PermitStatementDefinition {
   readonly subjectToken: OidcSubjectTokenConstraintDefinition;
 }
 
-interface ClaimEqualsPredicate {
-  readonly claimName: string;
-  readonly expectedValue: string | boolean;
-  readonly kind: "claim-equals";
-}
-
-interface ClaimOneOfPredicate {
-  readonly claimName: string;
-  readonly expectedValues: readonly [string, ...string[]];
-  readonly kind: "claim-one-of";
-}
-
-type ClaimPredicate = ClaimEqualsPredicate | ClaimOneOfPredicate;
-
-interface OidcSubjectTokenConstraint {
-  readonly claimPredicates: readonly ClaimPredicate[];
-  readonly issuer: OidcIssuerIdentifier;
-}
-
-interface PermitStatement {
-  readonly permissions: GitHubInstallationPermissions;
-  readonly resource: GitHubRepositoryResourceConstraint;
-  readonly subjectToken: OidcSubjectTokenConstraint;
-}
-
 export interface TokenIssuancePolicy {
-  readonly permitStatements: readonly PermitStatement[];
+  readonly permitStatements: readonly PermitStatementDefinition[];
 }
 
 export type TokenIssuancePolicyEvaluation =
@@ -293,7 +268,7 @@ export function assertTokenIssuancePolicyIssuersAreRegistered(
   }
 }
 
-function compilePermitStatement(value: unknown, path: string): PermitStatement {
+function compilePermitStatement(value: unknown, path: string): PermitStatementDefinition {
   const statement = readExactObject(value, path, ["permissions", "resource", "subjectToken"]);
   const subjectToken = readExactObject(statement["subjectToken"], `${path}.subjectToken`, [
     "claimPredicates",
@@ -351,7 +326,10 @@ function compilePermitStatement(value: unknown, path: string): PermitStatement {
   });
 }
 
-function normalizeClaimPredicates(value: unknown, path: string): readonly ClaimPredicate[] {
+function normalizeClaimPredicates(
+  value: unknown,
+  path: string,
+): readonly ClaimPredicateDefinition[] {
   const definitions = readArray(value, path);
   const claimNames = new Set<string>();
   const predicates = definitions.map((definition, index) => {
@@ -408,7 +386,7 @@ function normalizeClaimPredicates(value: unknown, path: string): readonly ClaimP
 }
 
 function claimPredicatesMatch(
-  predicates: readonly ClaimPredicate[],
+  predicates: readonly ClaimPredicateDefinition[],
   claims: Readonly<Record<string, unknown>>,
 ): boolean {
   return predicates.every((predicate) => {
