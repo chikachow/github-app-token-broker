@@ -71,19 +71,13 @@ export function createGitHubAppTokenExchange(
     { providerRegistrations: oidcProviderRegistrations, subjectTokenAudience },
     dependencies,
   );
-  const tokenExchange = createInstallationAccessTokenExchange({
-    githubApp,
-    githubAppDependencies: dependencies,
-    oidcIdTokenAuthenticator,
-    tokenIssuancePolicy,
-  });
-  const endpointRuntime = {
-    exchange: (
-      input: Parameters<typeof tokenExchange.exchange>[0],
-      context: TokenExchangeRequestContext,
-    ) => tokenExchange.exchange(input, context),
+  return createTokenExchangeEndpoint({
+    installationAccessTokenExchange: createInstallationAccessTokenExchange({
+      githubApp,
+      githubAppDependencies: dependencies,
+      oidcIdTokenAuthenticator,
+      tokenIssuancePolicy,
+    }),
     now: dependencies.now,
-  };
-
-  return createTokenExchangeEndpoint(endpointRuntime);
+  });
 }

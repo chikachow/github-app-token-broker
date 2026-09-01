@@ -1,9 +1,10 @@
 import { jsonResponse } from "@github-app-token-broker/http/problem-details";
 import { readRequestBodyUpTo } from "@github-app-token-broker/http/request-body";
 import { normalizeInstallationAccessTokenRequest } from "@github-app-token-broker/github/installation-access-token-request";
-import type { InstallationAccessTokenExchangeResult } from "./installation-access-token-exchange.ts";
-import type { InstallationAccessTokenRequest } from "@github-app-token-broker/github/installation-access-token-request";
-import type { InstallationAccessTokenIssuanceFailureReason } from "./installation-access-token-issuance.ts";
+import type {
+  InstallationAccessTokenExchange,
+  InstallationAccessTokenExchangeFailureReason,
+} from "./installation-access-token-exchange.ts";
 import type { TokenExchangeRequestContext } from "./events.ts";
 
 /** @public */
@@ -23,6 +24,19 @@ const unsupportedInvalidRequestParameters = [
   "client_id",
   "client_secret",
 ];
+const oauthFailureByReason = {
+  internal_failure: { error: "server_error", status: 500 },
+  invalid_token: { error: "invalid_request", status: 400 },
+  oidc_internal_failure: { error: "server_error", status: 500 },
+  oidc_provider_failure: { error: "temporarily_unavailable", status: 503 },
+  requested_permissions_unsupported: { error: "invalid_scope", status: 400 },
+  subject_token_unacceptable: { error: "invalid_request", status: 400 },
+  target_unsupported: { error: "invalid_target", status: 400 },
+  upstream_failure: { error: "server_error", status: 502 },
+  upstream_unavailable: { error: "temporarily_unavailable", status: 503 },
+} as const satisfies Readonly<
+  Record<InstallationAccessTokenExchangeFailureReason, { error: string; status: number }>
+>;
 
 /** @public */
 export function tokenExchangeInvalidRequestResponse(status: 400 | 413): Response {
@@ -30,14 +44,7 @@ export function tokenExchangeInvalidRequestResponse(status: 400 | 413): Response
 }
 
 interface TokenExchangeEndpointRuntime {
-  exchange(
-    input: {
-      readonly request: Request;
-      readonly subjectToken: string;
-      readonly tokenRequest: InstallationAccessTokenRequest;
-    },
-    context: TokenExchangeRequestContext,
-  ): Promise<InstallationAccessTokenExchangeResult>;
+  readonly installationAccessTokenExchange: InstallationAccessTokenExchange;
   now(): Date;
 }
 
@@ -131,7 +138,7 @@ async function handleTokenExchangeRequestCore(
     return oauthErrorResponse(400, tokenRequest.error);
   }
 
-  const result = await runtime.exchange(
+  const result = await runtime.installationAccessTokenExchange(
     {
       request,
       subjectToken,
@@ -141,7 +148,7 @@ async function handleTokenExchangeRequestCore(
   );
 
   if (!result.ok) {
-    const failure = oauthErrorForTokenExchangeFailure(result);
+    const failure = oauthFailureByReason[result.reason];
 
     return oauthErrorResponse(failure.status, failure.error);
   }
@@ -305,45 +312,6 @@ function oauthErrorResponse(status: number, error: string, headers?: HeadersInit
       status,
     },
   );
-}
-
-function oauthErrorForTokenExchangeFailure(
-  failure: Extract<InstallationAccessTokenExchangeResult, { ok: false }>,
-): { error: string; status: number } {
-  if (failure.stage !== "authentication") {
-    return oauthErrorForIssuanceFailure(failure.reason);
-  }
-
-  const { reason } = failure;
-
-  switch (reason) {
-    case "invalid_token":
-      return { error: "invalid_request", status: 400 };
-    case "oidc_internal_failure":
-      return { error: "server_error", status: 500 };
-    case "oidc_provider_failure":
-      return { error: "temporarily_unavailable", status: 503 };
-  }
-}
-
-function oauthErrorForIssuanceFailure(reason: InstallationAccessTokenIssuanceFailureReason): {
-  error: string;
-  status: number;
-} {
-  switch (reason) {
-    case "internal_failure":
-      return { error: "server_error", status: 500 };
-    case "requested_permissions_unsupported":
-      return { error: "invalid_scope", status: 400 };
-    case "subject_token_unacceptable":
-      return { error: "invalid_request", status: 400 };
-    case "target_unsupported":
-      return { error: "invalid_target", status: 400 };
-    case "upstream_failure":
-      return { error: "server_error", status: 502 };
-    case "upstream_unavailable":
-      return { error: "temporarily_unavailable", status: 503 };
-  }
 }
 
 function expiresInSeconds(expiresAt: string, now: Date): number {
