@@ -2,10 +2,6 @@ export function awaitWithAbortSignal<Value>(
   operation: Promise<Value>,
   signal: AbortSignal,
 ): Promise<Value> {
-  if (signal.aborted) {
-    return Promise.reject(signal.reason);
-  }
-
   return new Promise((resolve, reject) => {
     const rejectForAbort = () => {
       reject(signal.reason);
@@ -14,7 +10,13 @@ export function awaitWithAbortSignal<Value>(
       signal.removeEventListener("abort", rejectForAbort);
     };
 
-    signal.addEventListener("abort", rejectForAbort, { once: true });
+    if (signal.aborted) {
+      rejectForAbort();
+    } else {
+      signal.addEventListener("abort", rejectForAbort, { once: true });
+    }
+
+    // The operation can still reject after cancellation, including a pre-abort.
     void operation.then(
       (value) => {
         removeAbortListener();
