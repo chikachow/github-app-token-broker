@@ -17,9 +17,7 @@ export type OidcAuthenticationFailureReason =
   | "oidc_provider_failure";
 
 interface AuthenticateRequestFailure {
-  diagnosticCode?: string;
   ok: false;
-  providerHttpStatus?: number;
   reason: OidcAuthenticationFailureReason;
 }
 
@@ -48,12 +46,23 @@ export async function authenticateOidcIdToken(
   if (!authentication.ok) {
     const { failure } = authentication;
     const reason = authenticationFailureReason(failure);
-    const diagnostics = authenticationFailureDiagnostics(failure);
+    const { diagnosticCode } = failure.diagnostics;
+    const providerHttpStatus =
+      failure.kind === "provider_unavailable" ? failure.diagnostics.providerHttpStatus : undefined;
 
-    await observeAuthenticationFailure(observe, request, reason, diagnostics);
+    await observe({
+      fields: {
+        ...(diagnosticCode === undefined ? {} : { diagnosticCode }),
+        ...(providerHttpStatus === undefined ? {} : { providerHttpStatus }),
+        path: new URL(request.url).pathname,
+        reason,
+        userAgent: request.headers.get("user-agent"),
+      },
+      level: "warn",
+      message: "OIDC authentication failed",
+    });
 
     return {
-      ...diagnostics,
       ok: false,
       reason,
     };
@@ -65,39 +74,6 @@ export async function authenticateOidcIdToken(
       verifiedSubjectToken: authentication.verifiedSubjectToken,
     },
     ok: true,
-  };
-}
-
-async function observeAuthenticationFailure(
-  observe: ObserveTokenExchange,
-  request: Request,
-  reason: OidcAuthenticationFailureReason,
-  diagnostics: Pick<AuthenticateRequestFailure, "diagnosticCode" | "providerHttpStatus">,
-): Promise<void> {
-  const url = new URL(request.url);
-
-  await observe({
-    fields: {
-      ...diagnostics,
-      path: url.pathname,
-      reason,
-      userAgent: request.headers.get("user-agent"),
-    },
-    level: "warn",
-    message: "OIDC authentication failed",
-  });
-}
-
-function authenticationFailureDiagnostics(
-  failure: OidcIdTokenAuthenticationFailure,
-): Pick<AuthenticateRequestFailure, "diagnosticCode" | "providerHttpStatus"> {
-  const { diagnosticCode } = failure.diagnostics;
-  const providerHttpStatus =
-    failure.kind === "provider_unavailable" ? failure.diagnostics.providerHttpStatus : undefined;
-
-  return {
-    ...(diagnosticCode === undefined ? {} : { diagnosticCode }),
-    ...(providerHttpStatus === undefined ? {} : { providerHttpStatus }),
   };
 }
 
