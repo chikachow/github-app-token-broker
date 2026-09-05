@@ -179,8 +179,12 @@ export const propertyMutations = Object.freeze([
     description: "accept conflicting duplicate scope levels",
     file: githubSource,
     id: "github-scope-conflicting-duplicate",
-    replacement: "if (permissions[name] !== undefined && permissions[name] === level) {",
-    search: "if (permissions[name] !== undefined) {",
+    replacement: `if (permissions[name] !== undefined && permissions[name] !== level) {
+      continue;
+    }`,
+    search: `if (permissions[name] !== undefined && permissions[name] !== level) {
+      return null;
+    }`,
     tests: githubScopeTests,
   }),
   mutation({

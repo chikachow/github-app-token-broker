@@ -190,7 +190,6 @@ function parseGitHubInstallationScope(value: string): GitHubInstallationPermissi
   }
 
   const permissions: Record<string, GitHubInstallationPermissionLevel> = Object.create(null);
-  const seen = new Set<string>();
 
   for (const scope of scopeTokens) {
     const permission = parseGitHubInstallationPermissionScope(scope);
@@ -199,18 +198,13 @@ function parseGitHubInstallationScope(value: string): GitHubInstallationPermissi
       return null;
     }
 
-    if (seen.has(scope)) {
-      continue;
-    }
-
     const [name, level] = permission;
 
-    if (permissions[name] !== undefined) {
+    if (permissions[name] !== undefined && permissions[name] !== level) {
       return null;
     }
 
     permissions[name] = level;
-    seen.add(scope);
   }
 
   return permissions;
