@@ -2,7 +2,14 @@
 
 Keep changes small, explicit, and grounded in the service contract.
 
-Before opening a pull request:
+For a local documentation-only handoff, check formatting with the pinned tooling,
+resolve changed links and fragment targets, verify documented commands against
+their owning scripts, and inspect `git diff --check`, `git diff`, and
+`git status --short` (including new files). See
+[Implementation: Validation](docs/implementation.md#validation) for runtime and
+artifact checks. Documentation-only pull requests still require the gates below.
+
+Before opening or updating a pull request:
 
 1. Run `pnpm install --frozen-lockfile`.
 2. Run `node --run check`.
@@ -22,3 +29,19 @@ public behavior and security semantics. Each external deployment's reviewed
 TypeScript composition is authoritative for that artifact's exact OIDC Provider
 Registration and Permit Statement inventories. Do not document a concrete
 deployment inventory in this public repository.
+
+## Maintaining agent instructions
+
+`AGENTS.md` owns the coding workflow and its context pointers. Keep instructions
+that protect this broker's contracts, domain terminology, runtime boundaries,
+validation lanes, or publication requirements. Link to existing documentation
+owners for details. When editing guidance, check repository-owned instructions
+and skills used for that workflow for contradictory requirements. Keep personal
+style, host configuration, and unrelated API guidance outside this repository.
+
+This approach draws on OpenAI's
+[GPT-6 Astra guidance](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra)
+and [GPT-5.6 Sol prompting guidance](https://developers.openai.com/api/docs/guides/prompt-guidance-gpt-5p6):
+preserve outcomes, evidence, constraints, and completion criteria while removing
+redundant process advice. Retain the broker's explicit security and PR gates when
+pruning.
