@@ -440,13 +440,19 @@ describe("GitHub App Token Exchange public interface", () => {
     expect(response.headers.get("pragma")).toBe("no-cache");
     await expect(response.json()).resolves.toEqual({ error: "temporarily_unavailable" });
     expect(githubRequests).toEqual([]);
-    expect(observations).toHaveLength(1);
-    expect(observations[0]).toMatchObject({
-      fields: { path: "/token", reason: "oidc_provider_failure" },
-      level: "warn",
-      message: "OIDC authentication failed",
-    });
-    expect(observations[0]?.fields).not.toHaveProperty("rayId");
+    expect(observations).toEqual([
+      {
+        fields: {
+          diagnosticCode: "ERR_OIDC_PROVIDER_CONFIGURATION_HTTP_STATUS",
+          providerHttpStatus: 503,
+          path: "/token",
+          reason: "oidc_provider_failure",
+          userAgent: null,
+        },
+        level: "warn",
+        message: "OIDC authentication failed",
+      },
+    ]);
   });
 
   it("sanitizes a real OIDC internal failure with runtime-neutral request context", async () => {
