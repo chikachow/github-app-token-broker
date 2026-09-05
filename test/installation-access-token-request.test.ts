@@ -141,6 +141,10 @@ describe("InstallationAccessTokenRequest normalization", () => {
     "contents:write\tpull_requests:write",
     "contents:write\npull_requests:write",
     "contents:read contents:write",
+    "contents:write contents:read",
+    "contents:read contents:read contents:write",
+    "__proto__:read __proto__:write",
+    "__proto__:write __proto__:read",
     "contents:read:write",
     ":read",
     'bad"name:read',
@@ -158,6 +162,16 @@ describe("InstallationAccessTokenRequest normalization", () => {
       error: "invalid_scope",
       ok: false,
     });
+  });
+
+  it.each(["__proto__", "constructor"])("deduplicates the permission name %s", (name) => {
+    const request = mustNormalizeTokenRequest({
+      resource: fixtureSourceResource,
+      scope: `${name}:read ${name}:read`,
+    });
+
+    expect(request.permissions).toEqual({ [name]: "read" });
+    expect(request.scope).toBe(`${name}:read`);
   });
 });
 
