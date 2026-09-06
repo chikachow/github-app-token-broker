@@ -131,3 +131,19 @@ cancelled, or is skipped.
 The `node` Vitest project exclusively owns `test/node/**/*.test.ts`; the Workerd `unit` project excludes that directory, making the selected runtime explicit for those behavioral tests.
 
 The aggregate check builds once, then reuses that artifact for the artifact, typecheck, test, Node production-consumer, and deployment lanes. Standalone `artifact:check`, `typecheck`, `test`, `node-deploy:check`, and `deploy:dry-run` commands build their prerequisites first. Workspace builds synchronize injected package copies, so those standalone commands also work after a frozen clean install with no pre-existing `dist`. The artifact check imports the built Token Exchange ESM directly under Node and typechecks a self-importing consumer through the package's exports and bundled declarations; no source alias participates. The Node deployment check production-deploys a Fastify host fixture, imports the deployed package roots, typechecks the public adapter options, and exercises a real loopback listener. The root Wrangler file is a unit-test harness. It intentionally repeats the package Worker's compatibility flags and binding shapes so Workerd unit tests execute under the production runtime constraints; `env-types:check`, the GitHub App Information Workerd integration project, and the package dry-run validate the deployable config. The package Wrangler file is a public-safe dry-run template; deployment-owned identifiers and routes are supplied by the external deployment system.
+
+### Container integration
+
+`node --run test:integration` builds and runs the isolated Docker Compose suite
+against Fastify then Wrangler/Workerd in separate projects, each with its own
+upstream fixtures and keys. Append `-- fastify` or `-- worker` to select one host.
+Each invocation removes its image, containers, network, and generated-key volume. It requires a running Docker engine with Compose
+(including OrbStack) and does not need host-installed dependencies or vendor
+credentials. The image uses the repository's frozen pnpm tree and Node 24.
+Reusable Docker build cache remains available for subsequent runs.
+
+The [container integration decision](decisions/container-integration-testing.md)
+owns isolation and oracle boundaries. [Running and extending the
+suite](../test/integration/README.md) documents services, scenarios, debugging,
+and CI bootstrap. The [experiment record](research/container-integration-testing.md)
+separates observed results from vendor and deployment limitations.

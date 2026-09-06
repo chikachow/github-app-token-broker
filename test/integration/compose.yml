@@ -1,0 +1,56 @@
+x-runtime: &runtime
+  image: ${COMPOSE_PROJECT_NAME}-runtime
+  init: true
+  volumes:
+    - fixtures:/app/test/integration/.generated
+  networks: [integration]
+  logging:
+    driver: json-file
+    options:
+      max-size: 5m
+      max-file: "1"
+
+services:
+  prepare:
+    <<: *runtime
+    build:
+      context: ../..
+      dockerfile: test/integration/Dockerfile
+    command: node test/integration/prepare.mjs
+  oidc:
+    <<: *runtime
+    command: node test/integration/upstream.mjs oidc
+    depends_on:
+      prepare: { condition: service_completed_successfully }
+    networks:
+      integration:
+        aliases: [token.actions.githubusercontent.com]
+  github:
+    <<: *runtime
+    command: node test/integration/upstream.mjs github
+    depends_on:
+      prepare: { condition: service_completed_successfully }
+    networks:
+      integration:
+        aliases: [api.github.com]
+  broker:
+    <<: *runtime
+    environment:
+      INTEGRATION_HOST: ${INTEGRATION_HOST:?Set INTEGRATION_HOST to fastify or worker}
+      NODE_EXTRA_CA_CERTS: /app/test/integration/.generated/ca.pem
+    command: node test/integration/host.mjs
+    depends_on:
+      prepare: { condition: service_completed_successfully }
+  tests:
+    <<: *runtime
+    volumes: []
+    environment:
+      INTEGRATION_HOST: ${INTEGRATION_HOST:?Set INTEGRATION_HOST to fastify or worker}
+    command: node --test test/integration/host-lifecycle.mjs test/integration/scenarios.mjs
+    depends_on: [oidc, github, broker]
+
+volumes:
+  fixtures:
+networks:
+  integration:
+    internal: true

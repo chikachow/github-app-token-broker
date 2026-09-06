@@ -25,6 +25,7 @@
     "test": "pnpm --filter @github-app-token-broker/token-exchange run build && node --run test:built",
     "test:built": "WRANGLER_LOG=none WRANGLER_LOG_PATH=.wrangler/logs WRANGLER_REGISTRY_PATH=.wrangler/registry vitest run",
     "test:coverage": "pnpm --filter @github-app-token-broker/token-exchange run build && WRANGLER_LOG=none WRANGLER_LOG_PATH=.wrangler/logs WRANGLER_REGISTRY_PATH=.wrangler/registry vitest run --coverage",
+    "test:integration": "node scripts/test-integration.mjs",
     "test:mutations:property": "node scripts/test-property-mutations.mjs",
     "typecheck": "node --run build && node --run typecheck:built",
     "typecheck:built": "node --run typecheck:packages && pnpm --recursive --filter './workers/*' run typecheck && node --run typecheck:test",
