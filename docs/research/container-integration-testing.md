@@ -39,7 +39,7 @@ JWT authentication and narrowing through `repositories`, `repository_ids`, and
 
 OrbStack already provides a Docker engine and Compose support, so use ordinary
 `docker compose` commands. Apple Container would add another orchestration path
-without serving the requested Compose-to-Actions parity.
+without improving local Docker support.
 ([OrbStack Docker documentation](https://docs.orbstack.dev/docker/))
 
 Compose supports waiting for declared health checks with
@@ -59,21 +59,34 @@ same-job Docker build cannot supply a declarative service image.
 [service syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idservices),
 [runner initialization source](https://github.com/actions/runner/blob/main/src/Runner.Worker/JobExtension.cs))
 
-For a pull-request lane without registry publication, start pinned public Node
-service images, then copy the current checkout's built fixture artifacts into
-those containers and start their processes after dependency installation and
-build. Perform application readiness checks after that bootstrap; a service
-health check that needs checkout files would block initialization before the
-checkout step can execute. The alternative is publishing images in a preceding
-job, which adds registry authorization and image lifecycle ownership. This
-bootstrap recommendation is an inference from the documented service lifecycle,
-not a claim that Actions builds services from source.
+The current workflows call Compose directly for startup, exit status, logs, and
+cleanup. Both host workflows reference `test/integration/compose.yml`, sharing
+one service definition with local runs. That file owns image build, dependencies,
+internal network, key volume, and service commands.
 
-Use the same fixture launch commands and artifact layout in Compose and CI.
-Pass the Actions-owned container IDs and network name to bootstrap code rather
-than discovering unrelated containers by partial names. Capture bounded logs on
-failure and inspect process exit state so startup failures do not become opaque
-request timeouts.
+Earlier experiments used idle services with `docker exec` bootstrap, a shared
+runner invoked by a matrix, per-container `docker run` steps, and inline Compose
+heredocs. The chosen structure keeps lifecycle steps explicit and service
+configuration in one ordinary YAML file. Publishing fixture images for native
+Actions services would add registry and image lifecycle ownership.
+
+The earlier Compose cancellation experiment launched its Bash entry command and
+sent SIGINT only to its PID, matching the Actions runner's signal target. With
+`exec node scripts/test-integration.mjs`, the orchestrator received that signal,
+returned nonzero, and removed its Worker project's resources in 0.8 seconds.
+An intervening `node --run` package-script chain did not forward that signal.
+That measurement applies to the local runner, not the current workflow cleanup
+step. The current workflow waits with `docker compose wait tests` and removes
+the stack with `docker compose down` in the subsequent `always()` step.
+([Actions process cancellation](https://github.com/actions/runner/blob/main/src/Runner.Sdk/ProcessInvoker.cs))
+
+The earlier inline declarations resolved to the same Compose configuration now
+shared directly by local and CI runs. Executing those workflow steps locally passed
+34 Fastify tests and 35 Worker tests and removed each stack's containers,
+network, key volume, and image. A separate Worker experiment sent SIGINT only
+to the workflow wait step's entry PID: it returned exit status 130, and the exact
+cleanup step removed all project resources. This reproduces the commands and
+signal target locally; it does not claim a hosted Actions cancellation run.
 
 ## Workers HTTPS feasibility
 
@@ -145,16 +158,17 @@ Experiments ran on OrbStack Docker Engine 29.4.0, Compose 5.1.2, Linux ARM64,
 with the digest-pinned Node 24.18.0 image and the frozen repository dependencies.
 Wrangler was 4.127.0 and its Workerd was 1.20260826.1.
 
-| Experiment                                           | Observation and resulting choice                                                                                                                                                                                    |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Default host processes with native Fetch and test CA | Both hosts completed signed issuance across separate HTTPS OIDC and GitHub containers. No Fetch injection or GitHub origin override was necessary.                                                                  |
-| OIDC failures with only upstream state reset         | The first failure populated the broker's ten-second retry backoff; subsequent scenarios made no new OIDC request. Restart actual host processes between independent cases.                                          |
-| Cacheable JWKS followed immediately by a rotated key | Both hosts correctly rejected the unknown key during their ten-second refresh cooldown. The permanent scenario checks suppression, then waits 10.1 seconds and requires one JWKS refresh and successful issuance.   |
-| CA removed from fresh host child processes           | Both hosts returned `503` before any upstream HTTP request; the equivalent trusted configuration succeeded. This tests the TLS verification boundary itself.                                                        |
-| Incomplete OIDC and GitHub HTTPS bodies              | Public failures occurred at the owning five-second and ten-second deadlines, with the expected upstream stage reached. The tests retain scheduling tolerance and do not claim immediate remote-socket cancellation. |
-| Known-length and chunked request bodies              | Both real listeners rejected bodies exceeding 64 KiB before upstream I/O.                                                                                                                                           |
-| Worker admission                                     | Thirty requests from one fixture IP were admitted, the next received `429`, and a different IP remained admissible. This establishes local binding behavior only.                                                   |
-| Local Compose run                                    | All 59 baseline scenarios passed in 88.9 seconds, excluding image build and cleanup. The runner propagated earlier experimental failures and removed its project containers and key volume.                         |
+| Experiment                                           | Observation and resulting choice                                                                                                                                                                                                                                                                                |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Default host processes with native Fetch and test CA | Both hosts completed signed issuance across separate HTTPS OIDC and GitHub containers. No Fetch injection or GitHub origin override was necessary.                                                                                                                                                              |
+| OIDC failures with only upstream state reset         | The first failure populated the broker's ten-second retry backoff; subsequent scenarios made no new OIDC request. Restart actual host processes between independent cases.                                                                                                                                      |
+| Cacheable JWKS followed immediately by a rotated key | Both hosts correctly rejected the unknown key during their ten-second refresh cooldown. The permanent scenario checks suppression, then waits 10.1 seconds and requires one JWKS refresh and successful issuance.                                                                                               |
+| CA removed from fresh host child processes           | Both hosts returned `503` before any upstream HTTP request; the equivalent trusted configuration succeeded. This tests the TLS verification boundary itself.                                                                                                                                                    |
+| Incomplete OIDC and GitHub HTTPS bodies              | Public failures occurred at the owning five-second and ten-second deadlines, with the expected upstream stage reached. The tests retain scheduling tolerance and do not claim immediate remote-socket cancellation.                                                                                             |
+| Known-length and chunked request bodies              | Both real listeners rejected bodies exceeding 64 KiB before upstream I/O.                                                                                                                                                                                                                                       |
+| Worker admission                                     | Thirty requests from one fixture IP were admitted, the next received `429`, and a different IP remained admissible. This establishes local binding behavior only.                                                                                                                                               |
+| Local Compose run                                    | All 59 baseline scenarios passed in 88.9 seconds, excluding image build and cleanup. The runner propagated earlier experimental failures and removed its project containers and key volume.                                                                                                                     |
+| CI-style bootstrap                                   | Four idle digest-pinned public Node containers shared Linux build artifacts; the then-current bootstrap script launched them, and the host driver used dynamic published ports. All 59 baseline scenarios passed in 88.7 seconds. This reproduces the bootstrap and networking, not a hosted Actions execution. |
 
 A sensitivity experiment modified only a disposable built Token Exchange
 artifact, broadening mint `contents` from the requested `read` to `write`. The
@@ -177,6 +191,18 @@ unclassified `500` mapping. Neither experiment required changing production
 behavior. Independent review also replaced an incomplete malformed-percent form
 with a complete exchange containing a duplicate required parameter, and required
 fresh GitHub minting during OIDC-cache reuse to avoid a token-cache false positive.
+
+The earlier CI-like bootstrap used a standard bridge network because Actions publishes
+service ports to the runner. The local Compose stack uses an internal network
+and a containerized driver with no published ports. In the first bootstrap
+experiment, publishing ports on an internal network did not expose usable port
+mappings; matching Actions' bridge topology resolved that setup error.
+
+The Actions documentation and runner schema support service `command`,
+`entrypoint`, and workspace volume mounts, which the earlier idle-container
+experiment used. The current workflows reference the shared Compose file.
+([service syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idservices),
+[runner service schema](https://github.com/actions/runner/blob/main/src/Sdk/DTPipelines/workflow-v1.0.json))
 
 The fixtures establish protocol and host integration. They do not establish real
 GitHub App installation grants, live vendor OIDC issuance, Cloudflare edge routing,

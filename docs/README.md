@@ -6,7 +6,7 @@
 - [Release checklist](release.md): public-source and publish-readiness checks.
 - [Domain glossary](../CONTEXT.md): project terminology.
 - [OIDC authentication decision](decisions/oidc-id-token-authentication.md), [CEL-free policy decision](decisions/cel-free-token-issuance-policy.md), [GitHub failure-classification decision](decisions/github-api-failure-classification.md), [GitHub App Information RPC decision](decisions/github-app-information-rpc.md), and [property-based testing decision](decisions/property-based-testing.md): durable security, interface, and testing rationale.
-- [Container integration testing decision](decisions/container-integration-testing.md) and [experiment record](research/container-integration-testing.md): real-host protocol testing with Docker Compose.
+- [Container integration testing decision](decisions/container-integration-testing.md) and [experiment record](research/container-integration-testing.md): real-host protocol testing with Compose locally and a shared Compose service definition and explicit Actions steps.
 - [GitHub App Information research](research/github-app-information.md) and [TypeScript property-based testing survey](research/property-based-testing-2026-08.md): dated source-backed findings.
 
 Decision records may describe source-supported capabilities. The service contract is authoritative for public behavior and security semantics. Each external deployment's reviewed TypeScript composition is authoritative for the OIDC Provider Registrations and Permit Statements compiled into its artifact.

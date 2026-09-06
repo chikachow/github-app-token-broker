@@ -40,7 +40,7 @@ waits for that reset before stopping the remaining host. Cache and rotation scen
 process. These control interfaces are test infrastructure and are never part of
 the broker's public routes.
 
-Compose uses an internal network and publishes no ports. Only the test
+Both local and CI runs use an internal network and publish no ports. Only the test
 processes trust the generated CA. `api.github.com` and
 `token.actions.githubusercontent.com` resolve to the fixtures through network
 aliases, preserving production origin validation. Wrangler telemetry and optional
@@ -51,7 +51,7 @@ Cloudflare request metadata retrieval are disabled in this isolated environment.
 `host-lifecycle.mjs` drives the actual supervisor with a gated disposable Node
 listener. It covers SIGINT/SIGTERM during reset shutdown and startup, repeated
 signals, process-group removal, and supervisor exit. It runs alongside the
-protocol suite in the isolated Compose driver.
+protocol suite in the isolated test container.
 
 The shared suite covers signed issuance, exact mint narrowing, signature and
 Claim rejection, provider profile rejection, policy denials before GitHub I/O,
@@ -95,6 +95,25 @@ the `tests` service. Each host restarts between cases; the intentional stateful
 checks stay within one case. Never share one set of mutable fixture controls
 between parallel test runs. Use distinct Compose project names; the image tag
 also includes that name, so separate checkouts cannot replace each other's image.
+
+## CI
+
+[Fastify](../../.github/workflows/ci-integration-fastify.yml) and
+[Worker](../../.github/workflows/ci-integration-worker.yml) have separate reusable
+workflows. Each selects its host and invokes Compose in named steps to start
+services, wait for the test result, show logs, and clean up with `always()`.
+[compose.yml](compose.yml) is the single service definition for CI and local runs:
+it owns the image build, commands, startup dependencies, network, and volumes.
+
+Containers run their service commands immediately; the shared driver waits for
+readiness before scenarios. The Dockerfile, fixture programs, and tests are shared.
+The driver uses fixed service names and control APIs, so it needs no endpoint
+overrides or key-volume mount. Only the broker trusts the generated CA.
+
+Each hosted job owns its Compose project, image, containers, network, and keys.
+CI neither publishes images nor needs registry-write or OIDC-token permission.
+The aggregate `ci` job requires both workflows alongside the existing checks;
+failure in one host does not cancel the other.
 
 ## Extending the suite
 

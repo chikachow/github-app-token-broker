@@ -9,8 +9,8 @@ import { it } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
-// These tests run in the isolated Compose driver or an Actions runner. The broker
-// services use other containers, leaving the supervisor's loopback ports free.
+// These tests run in the isolated test container. The broker services use
+// other containers, leaving the supervisor's loopback ports free.
 const supervisor = fileURLToPath(new URL("./host.mjs", import.meta.url));
 const listener = `
 import { createServer } from "node:http";

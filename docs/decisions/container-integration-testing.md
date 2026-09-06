@@ -24,6 +24,11 @@ Each invocation selects Fastify or Wrangler/Workerd and owns separate HTTPS OIDC
 and GitHub fixtures, signing keys, and host state. Use Docker Compose locally;
 the default command runs both hosts sequentially in distinct projects, while
 explicit host selections can run concurrently.
+GitHub Actions uses separate Fastify and Worker workflows with named Compose
+startup, test-result, logging, and cleanup steps. Both workflows use the same
+`test/integration/compose.yml` service definition as local runs. Either host
+failure leaves the other's evidence available, and both results are required
+by the aggregate CI check.
 No live credentials or deployment inventory participate.
 
 The fixture composition imports public package roots. Fastify consumes built
@@ -68,7 +73,18 @@ for request-size tests. Measure the owning timeout with scheduling tolerance and
 require the expected request sequence. These checks do not claim that returning
 a timeout necessarily terminates every remote socket immediately.
 
-The local Compose runner builds an image tagged with its Compose project name,
+Each CI job checks out source, then Compose builds the fixture image with frozen
+Linux dependencies and public packages. Service dependencies order startup after
+successful key preparation. Containers run their declared service commands
+directly. Named workflow steps wait for the test container's exit status and
+collect logs; an `always()` step removes the stack. No image publication or
+registry credentials are needed.
+
+The service declaration, Dockerfile, fixture programs, and scenarios are shared
+with local runs. Workflow lifecycle commands remain explicit, while Compose
+configuration has one owner in its own YAML file.
+
+The Compose runner builds an image tagged with its Compose project name,
 runs on an internal network, propagates the test exit code, and removes its own
 image, containers, and generated-key volume on completion or interruption.
 Docker's reusable build cache remains.
@@ -83,12 +99,25 @@ Docker's reusable build cache remains.
 - The lane uses real time for network deadlines and one bounded key-rotation
   cooldown. Exhaustive cache/time combinations remain in focused tests.
 - Integration runs separately from `node --run check` so ordinary source checks
-  do not acquire a Docker prerequisite.
+  do not acquire a Docker prerequisite. CI requires both lanes.
 - The existing named-entrypoint RPC test and production-consumer checks remain
   authoritative for their additional boundaries; this suite does not claim
   coverage of a deployment-owned trusted service binding.
 
 ## Rejected alternatives
+
+- Delegating CI lifecycle commands to the local runner: hides the operational
+  steps from the workflow.
+- Embedding Compose YAML in a workflow heredoc: duplicates the service definition
+  and makes both YAML documents harder to read.
+- Per-container `docker run` steps: make startup dependencies, network ownership,
+  and cleanup imperative. Compose expresses these declaratively.
+- Idle Actions service containers followed by `docker exec` bootstrap: separates
+  container startup from the actual service commands.
+- Native upstream-image services waiting for checkout and dependency readiness:
+  adds cross-step startup coordination before the services can run.
+- Publishing fixture images for native Actions `services:`: adds registry
+  credentials and image lifecycle work when each job can build its checkout locally.
 
 - Rewriting GitHub URLs or injecting Fetch responses: bypasses the network and
   fixed-origin boundary this lane is intended to exercise.

@@ -12,7 +12,7 @@ artifact checks. Documentation-only pull requests still require the gates below.
 Before opening or updating a pull request:
 
 1. Run `pnpm install --frozen-lockfile`.
-2. Run `node --run check`.
+2. Run `node --run check` and `node --run test:integration`. The integration command requires Docker with Compose; it is a separate required CI lane.
 3. Update `docs/service-contract.md` when externally observable behaviour changes.
 4. Update `docs/implementation.md` when package layout, Worker entrypoints, request flow, or bindings change.
 5. Update `docs/deployment.md` and `docs/release.md` when source/deployment ownership or publish-readiness checks change.
