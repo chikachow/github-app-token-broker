@@ -94,7 +94,7 @@ App credentials remain Worker environment bindings. One Worker instance receives
 5. `installation-access-token-issuance.ts` maps that single evaluation result and awaits a token-free `installation_access_token_issuance_started` observation before any GitHub request.
 6. `packages/github` accepts the normalized Installation Access Token Request at one issuance boundary, resolves App authentication once for the exchange, resolves the requested repository installation, validates the returned installation owner, and mints a token limited to the repository and Requested Permissions. It returns either the token with its bound revocation capability or a classified failure with sanitized operational evidence; raw GitHub HTTP errors do not cross into Token Exchange.
 7. The issuance module awaits `installation_access_token_issuance_succeeded` before returning a token. Rejection triggers one awaited best-effort invocation of the token's bound revocation capability and never re-enters the failed observer.
-8. The Token Endpoint maps known failures to stable OAuth errors and sanitizes every otherwise unexpected failure to non-cacheable `500 {"error":"server_error"}` without logging raw tokens.
+8. The Token Endpoint maps authentication, policy, and issuance failure reasons directly to stable OAuth errors and sanitizes every otherwise unexpected failure to non-cacheable `500 {"error":"server_error"}` without logging raw tokens.
 
 ## OIDC security boundary
 
