@@ -59,7 +59,10 @@ duplicate form parameters, known-length and chunked request limits, unsupported
 methods, untrusted TLS, OIDC redirects and malformed/oversized documents, GitHub
 redirects, installation-owner mismatch, rate-limit/unavailable responses, rejected
 or malformed mint responses, real response-body deadlines, document reuse, and
-unknown-key refresh cooldown followed by rotation. Worker-specific coverage
+unknown-key refresh cooldown followed by rotation. A failing test logger/observer
+also proves that post-mint observation failure withholds the token and waits for
+authenticated revocation; the GitHub fixture gates its response until the driver
+releases it. The default host compositions are used for the remaining cases. Worker-specific coverage
 exercises its local admission binding.
 
 Error expectations follow [the service contract](../../docs/service-contract.md),

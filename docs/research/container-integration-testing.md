@@ -222,3 +222,12 @@ ignoring SIGTERM, with both live and already-exited launchers. All four released
 the listener and removed the process group; ordinary shutdown took about 12 ms
 and forced shutdown about five seconds. Both full Linux host runs also passed
 with the revised supervisor.
+
+## Observation failure experiment
+
+The expanded suite, including gated post-mint observation failure and revocation,
+passed all 61 scenarios in 92.9 seconds. Both actual adapters held exchange
+completion until the fixture released the authenticated revocation response,
+then returned sanitized failure without the token. This does not independently
+establish first-response-header timing or non-reentry into the failed observer;
+focused tests retain those additional observation responsibilities.

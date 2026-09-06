@@ -123,6 +123,36 @@ void describe(host === "worker" ? "Workerd" : "Fastify", { concurrency: false },
     failure(await exchange(), 503, "temporarily_unavailable");
     assert.deepEqual(await evidence(), [[], []], "TLS rejection must precede HTTP requests");
   });
+  void it("withholds the token and awaits revocation after failed success observation", async () => {
+    await reset("normal", "revocation-gated");
+    await restartHost("observation-failure");
+    let settled = false;
+    const pending = exchange().finally(() => {
+      settled = true;
+    });
+    try {
+      const deadline = Date.now() + 5000;
+      while (!(await control(github, "state")).events.some((event) => event.method === "DELETE")) {
+        assert.ok(Date.now() < deadline, "broker never attempted revocation");
+        await delay(25);
+      }
+      await delay(50);
+      assert.equal(settled, false, "broker must await the revocation response");
+    } finally {
+      await control(github, "release-revocation", {});
+    }
+    failure(await pending, 500, "server_error");
+    const [, events] = await evidence();
+    assert.deepEqual(
+      events.filter((event) => event.method).map((event) => [event.method, event.path]),
+      [
+        ["GET", "/repos/integration-owner/target/installation"],
+        ["POST", "/app/installations/12345/access_tokens"],
+        ["DELETE", "/installation/token"],
+      ],
+    );
+    assert.deepEqual(events.at(-1), { kind: "revoked" });
+  });
   for (const [name, mode] of [
     ["exchanges a signed ID Token over TLS and narrows the App-authenticated mint", "normal"],
     ["accepts valid JWKS with additive padding below the response limit", "padded-jwks"],

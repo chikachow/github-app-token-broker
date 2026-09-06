@@ -7,7 +7,7 @@
       "entry": ["artifact/consumer.ts"]
     },
     ".": {
-      "entry": ["test/integration/*.mjs", "test/integration/worker.ts"]
+      "entry": ["test/integration/*.mjs", "test/integration/worker*.ts"]
     }
   },
   "ignoreBinaries": ["openssl"]

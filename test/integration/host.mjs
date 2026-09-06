@@ -34,10 +34,11 @@ async function stop() {
   }
   throw new Error("host process group did not exit");
 }
-async function start(trustCa = true) {
+async function start(profile = "normal") {
   assert.ok(!shuttingDown, "host shutdown requested");
   const env = { ...process.env };
-  if (!trustCa) delete env.NODE_EXTRA_CA_CERTS;
+  if (profile === "untrusted-ca") delete env.NODE_EXTRA_CA_CERTS;
+  env.INTEGRATION_FAIL_OBSERVATION = String(profile === "observation-failure");
   child = spawn(
     process.execPath,
     [`test/integration/${role === "worker" ? "start-worker" : "fastify"}.mjs`],
@@ -70,7 +71,7 @@ const control = createServer((request, response) => {
   }
   if (
     request.method !== "POST" ||
-    !["/reset", "/reset/untrusted-ca"].includes(request.url) ||
+    !["/reset", "/reset/untrusted-ca", "/reset/observation-failure"].includes(request.url) ||
     resetting ||
     shuttingDown
   ) {
@@ -80,7 +81,7 @@ const control = createServer((request, response) => {
   resetting = (async () => {
     try {
       await stop();
-      await start(request.url !== "/reset/untrusted-ca");
+      await start(request.url.split("/")[2] ?? "normal");
       response.writeHead(shuttingDown ? 503 : 204).end();
     } catch {
       response.writeHead(shuttingDown ? 503 : 500).end();

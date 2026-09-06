@@ -55,6 +55,14 @@ scenarios intentionally retain one process and prove both the absence of OIDC
 refetches and continued GitHub token minting. Rotation checks observe the real
 refresh cooldown rather than injecting a clock or changing cache policy.
 
+A separate fixture composition deliberately fails post-mint observation. Fastify
+uses a synchronously failing logger stream; the Worker uses its existing observer
+interface. The GitHub fixture holds the revocation response open, allowing the
+driver to require that the token response remains pending until revocation is
+released, followed by sanitized failure with no token. This tests the
+[mandatory observation decision](fail-closed-token-exchange-observability.md); it
+does not claim that the default console logger provides durable storage.
+
 Use actual incomplete HTTPS bodies for deadline tests and actual chunked uploads
 for request-size tests. Measure the owning timeout with scheduling tolerance and
 require the expected request sequence. These checks do not claim that returning

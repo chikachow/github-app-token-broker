@@ -8,7 +8,10 @@ await writeFile(
   "test/integration/.generated/wrangler.json",
   JSON.stringify({
     name: "integration-broker",
-    main: "../worker.ts",
+    main:
+      process.env.INTEGRATION_FAIL_OBSERVATION === "true"
+        ? "../worker-observation-failure.ts"
+        : "../worker.ts",
     compatibility_date: source.compatibility_date,
     compatibility_flags: source.compatibility_flags,
     ratelimits: source.ratelimits,

@@ -20,6 +20,7 @@ const jwk = (name) => ({
 let mode = "normal";
 let events = [];
 let failures = [];
+let releaseRevocation;
 const record = (event) => {
   assert.ok(events.length < 200, "fixture request budget exceeded");
   events.push(event);
@@ -134,6 +135,17 @@ async function protocol(request, response) {
     }
   } else {
     assert.equal(request.headers.host, "api.github.com");
+    if (request.url === "/installation/token") {
+      assert.equal(request.method, "DELETE");
+      assert.equal(request.headers.authorization, "Bearer ghs_disposable_integration_token");
+      assert.equal(mode, "revocation-gated");
+      await new Promise((resolve) => {
+        releaseRevocation = resolve;
+      });
+      record({ kind: "revoked" });
+      response.writeHead(204).end();
+      return;
+    }
     verifyApp(request);
     if (request.url === "/repos/integration-owner/target/installation") {
       assert.equal(request.method, "GET");
@@ -195,11 +207,17 @@ const control = httpServer(
       return json(response, 200, { ready: true });
     if (request.method === "GET" && request.url === "/state")
       return json(response, 200, { events, failures });
+    if (role === "github" && request.method === "POST" && request.url === "/release-revocation") {
+      releaseRevocation?.();
+      releaseRevocation = undefined;
+      return json(response, 200, { released: true });
+    }
     if (request.method === "POST" && request.url === "/scenario") {
       const input = await body(request);
       assert.ok(
         [
           "normal",
+          "revocation-gated",
           "redirect",
           "stall",
           "unavailable",

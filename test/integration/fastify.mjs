@@ -4,7 +4,20 @@ import { createGitHubAppTokenExchange } from "@github-app-token-broker/token-exc
 import Fastify from "fastify";
 import { composition } from "./composition.ts";
 
-const app = Fastify({ logger: true });
+const app = Fastify({
+  logger:
+    process.env.INTEGRATION_FAIL_OBSERVATION === "true"
+      ? {
+          stream: {
+            write(message) {
+              if (JSON.parse(message).event === "installation_access_token_issuance_succeeded") {
+                throw new Error("synthetic observation failure");
+              }
+            },
+          },
+        }
+      : true,
+});
 await app.register(githubAppTokenExchangePlugin, {
   tokenExchange: createGitHubAppTokenExchange({
     composition,
