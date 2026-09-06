@@ -103,10 +103,12 @@ Source maintenance workflows pin an immutable external action release and use it
 
 ## Public source boundary
 
-Source CI runs nine granular validation lanes in parallel. Dedicated `artifact:check` and
+Source CI runs independent validation workflows in parallel. Dedicated `artifact:check` and
 `node-deploy:check` lanes independently validate the source-owned built Token Exchange artifact
 and production-pruned Fastify consumer contracts, while the Worker dry-run lane validates the
-public-safe template. Successful source CI does not validate a deployment-owned composition,
+public-safe template. Separate Fastify and Worker container integration jobs each exercise a synthetic composition against
+isolated HTTPS OIDC and GitHub services on both real hosts. Successful source CI does not validate
+a deployment-owned composition,
 credentials, routes, or post-deployment smoke tests; the external deployment system retains those
 responsibilities.
 

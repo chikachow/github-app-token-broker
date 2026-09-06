@@ -1,0 +1,40 @@
+name: integration-fastify
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      INTEGRATION_HOST: fastify
+      COMPOSE_PROJECT_NAME: broker-integration-fastify
+      COMPOSE_FILE: test/integration/compose.yml
+    steps:
+      - id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build and start services
+        run: docker compose up --build --detach
+
+      - name: Wait for the test result
+        run: docker compose wait tests
+
+      - name: Show test results
+        if: ${{ always() && steps.checkout.outcome == 'success' }}
+        run: docker compose logs --no-color tests
+
+      - name: Collect service failure logs
+        if: ${{ failure() && steps.checkout.outcome == 'success' }}
+        run: docker compose logs --no-color --tail 100 prepare oidc github broker
+
+      - name: Remove containers, keys, network, and image
+        if: ${{ always() && steps.checkout.outcome == 'success' }}
+        timeout-minutes: 2
+        run: docker compose down --volumes --remove-orphans --rmi all
