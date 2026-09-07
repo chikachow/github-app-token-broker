@@ -121,12 +121,15 @@ fnm exec --using=24 corepack pnpm run test:coverage
 fnm exec --using=24 corepack pnpm run test:mutations:property
 ```
 
-Continuous integration runs nine reusable validation lanes in parallel: formatting, lint,
+Continuous integration runs reusable validation workflows in parallel: formatting, lint,
 generated environment types, typechecking, Knip, test coverage, the built Token Exchange artifact
-contract, the production-pruned Node deployment contract, and the Worker deployment dry run. Each
-lane installs the frozen dependency tree and invokes the corresponding standalone command so it
-builds its own prerequisites. The test lane alone receives `id-token: write` for its Codecov OIDC
-upload. The required `ci` result aggregates all nine lanes and fails when any lane fails, is
+contract, the production-pruned Node deployment contract, the Worker deployment dry run, and
+container integration. Separate Fastify and Worker workflows invoke Compose in
+named fixture startup, host-driver execution, logging, and cleanup steps. They share
+`test/integration/compose.yml` with local runs. Each job owns independent fixtures
+and builds frozen dependencies inside its image. Other lanes install the frozen
+dependency tree and invoke their standalone commands to build prerequisites. The test lane alone receives `id-token: write` for its Codecov OIDC
+upload. The required `ci` result aggregates all validation jobs and fails when any lane fails, is
 cancelled, or is skipped.
 
 The built Token Exchange artifact and Node production-consumer checks both validate
@@ -159,8 +162,8 @@ with separate project names. The driver requires the pinned Node 24 runtime and
 a running Docker engine with Compose (including OrbStack); it needs no
 host-installed packages or vendor credentials. The image uses the repository's
 frozen pnpm tree and Node 24. Local cleanup removes the project's containers,
-network, and generated-key volume. Image removal is optional; reusable Docker
-build cache remains.
+network, and generated-key volume. Image removal is optional locally and included
+in CI; reusable Docker build cache remains.
 
 Fastify runs a bundled synthetic deployment from a separate `pnpm deploy --prod`
 directory. Worker runs emitted `wrangler deploy --dry-run` output with
@@ -174,5 +177,6 @@ bridge network permits outbound access; it is not an egress-isolation boundary.
 
 The [container integration decision](decisions/container-integration-testing.md)
 owns isolation and oracle boundaries. [Running and extending the
-suite](../test/integration/README.md) documents services, scenarios, and debugging. The [experiment record](research/container-integration-testing.md)
+suite](../test/integration/README.md) documents services, scenarios, debugging,
+and CI execution. The [experiment record](research/container-integration-testing.md)
 separates observed results from vendor and deployment limitations.

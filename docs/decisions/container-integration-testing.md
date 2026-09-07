@@ -85,8 +85,16 @@ stack, and explicit cleanup, as documented in the
 project; distinct projects can run concurrently. Each project owns its image tag
 and mutable state. The test command returns its result and leaves the stack for
 inspection. Cleanup removes containers, network, and key volume. Image removal
-is optional; reusable build cache remains. No separate
+is optional locally and included in CI; reusable build cache remains. No separate
 local lifecycle wrapper is needed.
+
+GitHub Actions has separate Fastify and Worker workflows with explicit fixture
+startup, host-driver execution, failure logs, and `always()` cleanup. They share
+the Compose file and Dockerfile with local runs. Each builds frozen dependencies
+and artifacts from its checkout; no image publication or registry credentials
+are needed. The test step stops surviving Docker command descendants before
+cleanup through a Linux process group and shell traps. Both workflow results are
+required by the aggregate CI check.
 
 ## Consequences
 
@@ -99,7 +107,7 @@ local lifecycle wrapper is needed.
   lifetimes preserve cold-state and compiled-profile boundaries. Compose owns
   lifecycle and readiness. Exhaustive clock/cache combinations stay in focused tests.
 - The host needs the pinned Node runtime and Docker Compose. Integration remains
-  separate from `node --run check`.
+  separate from `node --run check`, while CI requires both lanes.
 - The existing production-consumer and named-entrypoint RPC checks retain their
   additional boundaries. Exporting the RPC entrypoint does not exercise a
   deployment-owned trusted service binding.
@@ -114,6 +122,10 @@ local lifecycle wrapper is needed.
   outbound requests, bypassing the native TLS path this lane exercises.
 - A containerized driver needs Docker access to recreate brokers; a host driver
   keeps Docker access on the host and reaches ports published only on loopback.
+- Hiding CI in the local runner obscures workflow operations. Inline Compose
+  heredocs duplicate the service definition; ordinary Compose YAML has one owner.
+- Idle containers followed by `docker exec`, services waiting for checkout, or
+  published fixture images add bootstrap or registry lifecycle work.
 - Rewriting upstream URLs, injecting Fetch responses, or disabling TLS validation
   bypasses the network and trust boundaries under test.
 - Direct Workerd configuration requires rate-binding emulation that Wrangler
