@@ -4,8 +4,8 @@ import {
   createLocalJWKSet,
   decodeProtectedHeader,
   errors,
-  importJWK,
   jwtVerify,
+  type CryptoKey,
   type JWK,
   type JSONWebKeySet,
   type JWTVerifyGetKey,
@@ -51,22 +51,6 @@ const verifiedOidcIdTokenClaimsSchema = z.looseObject({
   iss: z.string().min(1),
   sub: z.string().min(1),
 });
-const verificationJwkShapeByAlgorithm = {
-  EdDSA: { crv: "Ed25519", kty: "OKP" },
-  ES256: { crv: "P-256", kty: "EC" },
-  ES384: { crv: "P-384", kty: "EC" },
-  ES512: { crv: "P-521", kty: "EC" },
-  PS256: { kty: "RSA" },
-  PS384: { kty: "RSA" },
-  PS512: { kty: "RSA" },
-  RS256: { kty: "RSA" },
-  RS384: { kty: "RSA" },
-  RS512: { kty: "RSA" },
-} as const satisfies Record<
-  OidcIdTokenSigningAlgorithm,
-  { readonly crv?: string; readonly kty: string }
->;
-
 type OidcIdTokenAuthenticationFailureResult = Extract<
   OidcIdTokenAuthenticationResult,
   { readonly ok: false }
@@ -461,7 +445,11 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
       }
 
       return refreshed.value;
-    } catch (error) {
+    } catch (cause) {
+      const error = hasJoseErrorCode(cause, "ERR_JWKS_INVALID")
+        ? new OidcRemoteDocumentError("ERR_OIDC_JWKS_INVALID", { cause })
+        : cause;
+
       if (this.#state.jwksRefresh === refresh) {
         this.#state.jwksFailure = {
           error,
@@ -546,8 +534,10 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
     const localGetKey = createLocalJWKSet(jwks);
 
     const getKey: JWTVerifyGetKey = async (protectedHeader, token) => {
+      let key: CryptoKey;
+
       try {
-        return await localGetKey(protectedHeader, token);
+        key = await localGetKey(protectedHeader, token);
       } catch (error) {
         if (hasJoseErrorCode(error, "ERR_JWKS_NO_MATCHING_KEY")) {
           throw error;
@@ -557,6 +547,12 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
           cause: error,
         });
       }
+
+      if (!isUsableVerificationKey(key)) {
+        throw new OidcRemoteDocumentError("ERR_OIDC_JWKS_KEY_INVALID");
+      }
+
+      return key;
     };
 
     return cacheEntry(
@@ -981,6 +977,7 @@ function isStructurallyValidJsonWebKey(input: unknown): input is JWK {
 
   return (
     typeof jwk["kty"] === "string" &&
+    (!("ext" in jwk) || typeof jwk["ext"] === "boolean") &&
     optionalMemberIsString(jwk, "alg") &&
     optionalMemberIsString(jwk, "kid") &&
     optionalMemberIsString(jwk, "use") &&
@@ -1028,16 +1025,14 @@ async function jsonWebKeySetHasUsableVerificationKey(
   jwks: JSONWebKeySet,
   acceptedAlgorithms: readonly OidcIdTokenSigningAlgorithm[],
 ): Promise<boolean> {
-  for (const algorithm of acceptedAlgorithms) {
-    for (const jwk of jwks.keys) {
-      if (!jsonWebKeyCanVerifyAlgorithm(jwk, algorithm)) {
-        continue;
-      }
+  for (const jwk of jwks.keys) {
+    const getKey = createLocalJWKSet({ keys: [jwk] });
 
+    for (const algorithm of acceptedAlgorithms) {
       try {
-        const key = await importJWK({ ...jwk, ext: true }, algorithm);
+        const key = await getKey({ alg: algorithm });
 
-        if (!(key instanceof Uint8Array) && key.type === "public") {
+        if (isUsableVerificationKey(key)) {
           return true;
         }
       } catch {
@@ -1049,19 +1044,22 @@ async function jsonWebKeySetHasUsableVerificationKey(
   return false;
 }
 
-function jsonWebKeyCanVerifyAlgorithm(jwk: JWK, algorithm: OidcIdTokenSigningAlgorithm): boolean {
-  if (
-    (typeof jwk.alg === "string" && jwk.alg !== algorithm) ||
-    (typeof jwk.use === "string" && jwk.use !== "sig") ||
-    (Array.isArray(jwk.key_ops) && !jwk.key_ops.includes("verify"))
-  ) {
+function isUsableVerificationKey(key: CryptoKey): boolean {
+  if (key.type !== "public" || !key.usages.includes("verify")) {
     return false;
   }
 
-  const expectedShape = verificationJwkShapeByAlgorithm[algorithm];
+  const algorithm = key.algorithm;
 
+  if (algorithm.name !== "RSA-PSS" && algorithm.name !== "RSASSA-PKCS1-v1_5") {
+    return true;
+  }
+
+  // JOSE imports shorter RSA keys but requires the JWA minimum when verifying.
   return (
-    jwk.kty === expectedShape.kty && (!("crv" in expectedShape) || jwk.crv === expectedShape.crv)
+    "modulusLength" in algorithm &&
+    typeof algorithm.modulusLength === "number" &&
+    algorithm.modulusLength >= 2048
   );
 }
 

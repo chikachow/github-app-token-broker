@@ -242,9 +242,50 @@ Each OpenID Provider Configuration and JWK Set request has one fixed broker-owne
 
 OpenID Provider Configuration transport failures, timeouts, and non-success responses mean github-app-token-broker cannot obtain Provider Metadata and return `503 {"error":"temporarily_unavailable"}`. A successfully retrieved Provider Configuration whose representation or consumed metadata is invalid instead makes the subject token unverifiable and returns `400 {"error":"invalid_request"}`. This includes unexpected media types, oversized responses, malformed JSON or shape, an issuer mismatch, an invalid `jwks_uri`, and no intersection between the provider's advertised algorithms and the registration's accepted algorithms.
 
-JWK Set network failures, timeouts, non-200 responses, unexpected media types, oversized responses, malformed JSON or shape, an empty or wholly incompatible JWK Set, or ambiguous provider key material mean github-app-token-broker cannot obtain a usable JWK Set and return `503 {"error":"temporarily_unavailable"}`. Every JWK consumed by the verifier must have a string `kty`; when present, `alg`, `kid`, and `use` must be strings and `key_ops` and `x5c` must be arrays of strings. Malformed member structure makes the provider JWK Set unavailable rather than silently filtering the malformed key. Cryptographic import still determines whether structurally valid key material is usable for an accepted algorithm.
+JWK Set network failures, timeouts, non-200 responses, unexpected media types, oversized responses, malformed JSON or shape, an empty or wholly incompatible JWK Set, or ambiguous provider key material mean github-app-token-broker cannot obtain a usable JWK Set and return `503 {"error":"temporarily_unavailable"}`. Every JWK consumed by the verifier must have a string `kty`; when present, `alg`, `kid`, and `use` must be strings, `key_ops` and `x5c` must be arrays of strings, and `ext` must be a boolean. Malformed member structure makes the provider JWK Set unavailable rather than silently filtering the malformed key.
+
+Cache admission and token verification require public verification keys usable
+for an accepted algorithm, including RSA moduli of at least 2048 bits. A
+structurally valid JWK Set containing both usable and unusable keys remains
+eligible for caching; its full membership is preserved so matching-key
+ambiguity is still rejected. If JOSE selects a matching key but importing it or
+enforcing verification-key requirements fails, authentication returns provider
+unavailability. Metadata that excludes a key from selection instead leaves the
+no-matching-key classification and controlled refresh described below. A wholly
+unusable refresh cannot replace last-known-good state.
 
 Bounded last-known-good OpenID Provider Metadata or a JWK Set may be used according to documented cache controls. Responses marked [`Cache-Control: no-cache`](https://www.rfc-editor.org/rfc/rfc9111#section-5.2.2.4) require successful revalidation before reuse and are never used as stale fallback after a failed revalidation. An ID Token whose protected header names a `kid` absent from an otherwise usable JWK Set triggers one controlled refresh. If that refresh fails while the original JWK Set is still fresh and cacheable, the refresh failure remains observable in operational diagnostics but the original no-matching-key classification remains a Client-presented subject-token rejection: `400 {"error":"invalid_request"}`. A non-cacheable JWK Set cannot be reused after failed refresh. If no usable JWK Set remains, the result is provider unavailability instead.
+
+### OIDC remote-document limits and caching
+
+The broker owns these fixed limits; Clients and deployment bindings cannot change them:
+
+| Limit                                                        | Value           |
+| ------------------------------------------------------------ | --------------- |
+| Provider Configuration response body                         | `64 KiB`        |
+| JWK Set response body                                        | `256 KiB`       |
+| Keys in one JWK Set                                          | `200`           |
+| Default freshness when no recognized `max-age` is supplied   | `300 seconds`   |
+| Maximum freshness                                            | `3,600 seconds` |
+| Additional stale allowance after freshness expires           | `3,600 seconds` |
+| Provider-document failure retry backoff                      | `10 seconds`    |
+| Unknown-key refresh cooldown for a cacheable JWK Set refresh | `10 seconds`    |
+
+Freshness uses the response's `Cache-Control` `max-age`, capped at the maximum
+above. Freshness, failure backoff, and refresh cooldown deadlines start from the
+fetching authentication operation's captured time.
+The implementation does not adjust that calculation using `Age`, `Date`, or
+`Expires` response headers. `no-cache` gives zero freshness and prohibits stale
+fallback; `must-revalidate` also prohibits stale fallback. `no-store` responses
+are not retained for later operations.
+
+Eligible cached documents may survive a provider outage for the additional stale
+allowance. Invalid Provider Configuration representations or consumed metadata
+do not permit fallback. A JWK Set may be reused only for the same validated
+`jwks_uri` and accepted signing-algorithm intersection. A JWK Set refresh joins
+the current in-flight refresh only when its identity matches. The unknown-key
+cooldown suppresses another forced refresh only while the cached JWK Set remains
+fresh; it does not extend freshness or stale eligibility.
 
 ### Supported OIDC Provider Registrations
 

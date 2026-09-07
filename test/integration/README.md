@@ -61,7 +61,7 @@ Compose health checks own readiness. The driver uses
 `docker compose up --no-deps --force-recreate --wait` when a scenario needs a fresh
 broker: cold OIDC retrieval failures, an absent test CA, a different compiled
 observation adapter, either body-limit check, or cache and rotation state. The
-scenario structure uses twelve broker starts per host. Ordinary protocol cases
+scenario structure uses fifteen broker starts per host. Ordinary protocol cases
 share one broker and use non-cacheable OIDC responses and distinct Worker client IPs.
 Cache and rotation checks deliberately retain one container throughout their
 state transitions. No broker reset route or custom process supervisor is needed.

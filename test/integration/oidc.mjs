@@ -70,11 +70,35 @@ async function protocol(request, response) {
       });
     if (mode === "malformed-jwks")
       return sendJson(response, 200, { keys: [{ kty: "RSA", n: 123 }] });
+    if (mode === "malformed-ext")
+      return sendJson(response, 200, { keys: [{ ...jwk("oidc"), ext: "invalid" }] });
+    if (mode === "deeply-nested-jwks") {
+      response.writeHead(200, {
+        "content-type": "application/json",
+        "cache-control": "no-cache",
+      });
+      // Construct JSON text without imposing a fixture serialization depth limit.
+      response.end(
+        '{"keys":[{"kty":"unsupported","additive":' +
+          "[".repeat(4000) +
+          "0" +
+          "]".repeat(4000) +
+          "}]}",
+      );
+      return;
+    }
     return sendJson(
       response,
       200,
       { keys: [jwk(mode === "rotated" ? "rotated" : "oidc")] },
-      { "cache-control": mode === "cache" || mode === "rotated" ? "max-age=300" : "no-cache" },
+      {
+        "cache-control":
+          mode === "cache" || mode === "rotated"
+            ? "max-age=300"
+            : mode === "stale-cache"
+              ? "max-age=0"
+              : "no-cache",
+      },
     );
   }
   throw new Error("unexpected upstream request");
@@ -91,10 +115,13 @@ async function controls(request, response) {
         "unavailable",
         "bad-issuer",
         "cache",
+        "stale-cache",
         "rotated",
         "padded-jwks",
         "oversized",
         "malformed-jwks",
+        "malformed-ext",
+        "deeply-nested-jwks",
       ].includes(input.mode),
     );
     mode = input.mode;

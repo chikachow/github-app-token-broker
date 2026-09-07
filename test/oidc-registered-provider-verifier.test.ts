@@ -1,9 +1,12 @@
 import { createPrivateKey } from "node:crypto";
 
-import { base64url } from "jose";
+import { base64url, exportJWK, generateKeyPair, SignJWT } from "jose";
 import { describe, expect, it, vi } from "vitest";
 
-import { type OidcIdTokenAuthenticationEvent } from "@github-app-token-broker/oidc/id-token-authenticator";
+import {
+  createOidcIdTokenAuthenticator,
+  type OidcIdTokenAuthenticationEvent,
+} from "@github-app-token-broker/oidc/id-token-authenticator";
 import {
   createOidcProviderRegistration,
   type OidcProviderRegistration,
@@ -25,6 +28,290 @@ import {
   successfulProviderFetch,
 } from "./support/oidc-id-token-authenticator-fixture.ts";
 import { testPrivateKeyPem, testPublicJwk } from "./support/rsa-test-key-pair.ts";
+import { weakRsaPublicJwk } from "./support/weak-rsa-public-jwk.ts";
+
+describe.each([
+  {
+    description: "malformed ext",
+    diagnosticCode: "ERR_OIDC_JWKS_INVALID",
+    jwk: { ...testPublicJwk, ext: "invalid" },
+  },
+  {
+    description: "weak RSA",
+    diagnosticCode: "ERR_OIDC_JWKS_NO_USABLE_VERIFICATION_KEY",
+    jwk: { ...weakRsaPublicJwk, kid: "test-key-1" },
+  },
+])("OIDC JWK Set admission through authentication: $description", ({ diagnosticCode, jwk }) => {
+  it.each(["cold", "warm"] as const)(
+    "rejects an unusable JWK Set before publishing with a %s cache",
+    async (cache) => {
+      let now = authenticationTestNow;
+      let malformed = cache === "cold";
+      const events: OidcIdTokenAuthenticationEvent[] = [];
+      const authenticator = testAuthenticator(
+        providerFetch({
+          jwksResponse: () =>
+            Response.json(
+              { keys: [malformed ? jwk : testPublicJwk] },
+              { headers: { "cache-control": "max-age=0" } },
+            ),
+        }),
+        () => now,
+      );
+      const subjectToken = await signedIdToken({ expiresInSeconds: 7_200 });
+      const observe = (event: OidcIdTokenAuthenticationEvent) => events.push(event);
+
+      if (cache === "warm") {
+        expect((await authenticator.authenticateIdToken(subjectToken)).ok).toBe(true);
+        now = new Date(now.getTime() + 1_000);
+        malformed = true;
+      }
+
+      const result = await authenticator.authenticateIdToken(subjectToken, observe);
+
+      if (cache === "cold") {
+        expect(result).toEqual(expectedFailure("provider_unavailable", diagnosticCode));
+      } else {
+        expect(result).toMatchObject({ ok: true });
+        expect(events).toContainEqual(
+          expect.objectContaining({
+            event: "oidc_remote_document_stale_used",
+            remoteDocumentKind: "jwk_set",
+          }),
+        );
+      }
+
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          diagnosticCode,
+          event: "oidc_remote_document_refresh_failed",
+          remoteDocumentKind: "jwk_set",
+        }),
+      );
+
+      if (cache === "warm") {
+        events.length = 0;
+        now = new Date(authenticationTestNow.getTime() + 3_600_000);
+
+        await expect(authenticator.authenticateIdToken(subjectToken, observe)).resolves.toEqual(
+          expectedFailure("provider_unavailable", diagnosticCode),
+        );
+        expect(events).not.toContainEqual(
+          expect.objectContaining({ event: "oidc_remote_document_stale_used" }),
+        );
+      }
+    },
+  );
+
+  it.each(["no-cache", "max-age=0, must-revalidate", "no-store"])(
+    "does not reuse a %s JWK Set after an unusable refresh",
+    async (cacheControl) => {
+      let refreshing = false;
+      const events: OidcIdTokenAuthenticationEvent[] = [];
+      const authenticator = testAuthenticator(
+        providerFetch({
+          jwksResponse: () =>
+            Response.json(
+              { keys: [refreshing ? jwk : testPublicJwk] },
+              { headers: { "cache-control": cacheControl } },
+            ),
+        }),
+      );
+      const subjectToken = await signedIdToken();
+
+      expect((await authenticator.authenticateIdToken(subjectToken)).ok).toBe(true);
+      refreshing = true;
+      await expect(
+        authenticator.authenticateIdToken(subjectToken, (event) => events.push(event)),
+      ).resolves.toEqual(expectedFailure("provider_unavailable", diagnosticCode));
+      expect(events).not.toContainEqual(
+        expect.objectContaining({ event: "oidc_remote_document_stale_used" }),
+      );
+    },
+  );
+});
+
+describe("OIDC JWK Sets with deeply nested additive data", () => {
+  const incompatibleJwk =
+    '{"kty":"unsupported","additive":' + "[".repeat(4_000) + "0" + "]".repeat(4_000) + "}";
+
+  it.each([
+    { description: "wholly incompatible", keys: [incompatibleJwk] },
+    { description: "usable key first", keys: [JSON.stringify(testPublicJwk), incompatibleJwk] },
+    { description: "usable key last", keys: [incompatibleJwk, JSON.stringify(testPublicJwk)] },
+  ])("classifies a $description set as provider unavailable", async ({ keys }) => {
+    const authenticator = testAuthenticator(
+      providerFetch({
+        jwksResponse: () =>
+          new Response(`{"keys":[${keys.join(",")}]}`, {
+            headers: { "content-type": "application/json" },
+          }),
+      }),
+    );
+
+    await expect(authenticator.authenticateIdToken(await signedIdToken())).resolves.toEqual(
+      expectedFailure("provider_unavailable", "ERR_OIDC_JWKS_INVALID"),
+    );
+  });
+
+  it.each(["max-age=0", "no-cache"])(
+    "preserves %s fallback rules after an invalid JWK Set refresh",
+    async (cacheControl) => {
+      let refreshing = false;
+      let now = authenticationTestNow;
+      const events: OidcIdTokenAuthenticationEvent[] = [];
+      const authenticator = testAuthenticator(
+        providerFetch({
+          jwksResponse: () =>
+            new Response(
+              `{"keys":[${refreshing ? incompatibleJwk : JSON.stringify(testPublicJwk)}]}`,
+              { headers: { "cache-control": cacheControl, "content-type": "application/json" } },
+            ),
+        }),
+        () => now,
+      );
+      const subjectToken = await signedIdToken();
+
+      expect((await authenticator.authenticateIdToken(subjectToken)).ok).toBe(true);
+      refreshing = true;
+      now = new Date(now.getTime() + 1_000);
+      const result = await authenticator.authenticateIdToken(subjectToken, (event) =>
+        events.push(event),
+      );
+
+      if (cacheControl === "max-age=0") {
+        expect(result).toMatchObject({ ok: true });
+      } else {
+        expect(result).toEqual(expectedFailure("provider_unavailable", "ERR_OIDC_JWKS_INVALID"));
+      }
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          diagnosticCode: "ERR_OIDC_JWKS_INVALID",
+          event: "oidc_remote_document_refresh_failed",
+          remoteDocumentKind: "jwk_set",
+        }),
+      );
+      expect(events.some((event) => event.event === "oidc_remote_document_stale_used")).toBe(
+        cacheControl === "max-age=0",
+      );
+      await expect(authenticator.authenticateIdToken(subjectToken)).resolves.toEqual(result);
+    },
+  );
+});
+
+describe("OIDC mixed JWK Set authentication", () => {
+  it("retains ambiguity when a weak key and a usable key match the same token", async () => {
+    const authenticator = testAuthenticator(
+      providerFetch({
+        jwksResponse: () =>
+          Response.json({ keys: [{ ...weakRsaPublicJwk, kid: "test-key-1" }, testPublicJwk] }),
+      }),
+    );
+
+    await expect(authenticator.authenticateIdToken(await signedIdToken())).resolves.toEqual(
+      expectedFailure("provider_unavailable", "ERR_OIDC_JWKS_KEY_INVALID"),
+    );
+  });
+
+  it("admits a refreshed mixed set while classifying a selected weak key as unavailable", async () => {
+    let now = authenticationTestNow;
+    let mixed = false;
+    const events: OidcIdTokenAuthenticationEvent[] = [];
+    const authenticator = testAuthenticator(
+      providerFetch({
+        jwksResponse: () =>
+          Response.json(
+            {
+              keys: mixed
+                ? [
+                    { ...weakRsaPublicJwk, kid: "test-key-1" },
+                    { ...testPublicJwk, kid: "healthy-key" },
+                  ]
+                : [testPublicJwk],
+            },
+            { headers: { "cache-control": "max-age=1" } },
+          ),
+      }),
+      () => now,
+    );
+    const subjectToken = await signedIdToken();
+    const observe = (event: OidcIdTokenAuthenticationEvent) => events.push(event);
+
+    expect((await authenticator.authenticateIdToken(subjectToken)).ok).toBe(true);
+    now = new Date(now.getTime() + 1_001);
+    mixed = true;
+
+    await expect(authenticator.authenticateIdToken(subjectToken, observe)).resolves.toEqual(
+      expectedFailure("provider_unavailable", "ERR_OIDC_JWKS_KEY_INVALID"),
+    );
+    await expect(
+      authenticator.authenticateIdToken(await signedIdToken({ kid: "healthy-key" }), observe),
+    ).resolves.toMatchObject({ ok: true, verificationEvidence: { resolvedKeyId: "healthy-key" } });
+    expect(events).not.toContainEqual(
+      expect.objectContaining({ event: "oidc_remote_document_stale_used" }),
+    );
+    expect(events).not.toContainEqual(
+      expect.objectContaining({ event: "oidc_remote_document_refresh_failed" }),
+    );
+  });
+});
+
+describe("OIDC admitted verification keys", () => {
+  it.each([undefined, true, false])("accepts valid ext metadata: %s", async (ext) => {
+    const authenticator = testAuthenticator(
+      providerFetch({
+        jwksResponse: () => Response.json({ keys: [{ ...testPublicJwk, ext }] }),
+      }),
+    );
+
+    await expect(authenticator.authenticateIdToken(await signedIdToken())).resolves.toMatchObject({
+      ok: true,
+    });
+  });
+
+  it.each([
+    "EdDSA",
+    "ES256",
+    "ES384",
+    "ES512",
+    "PS256",
+    "PS384",
+    "PS512",
+    "RS256",
+    "RS384",
+    "RS512",
+  ] as const)("authenticates a registered %s verification key", async (algorithm) => {
+    const { privateKey, publicKey } = await generateKeyPair(algorithm, { extractable: true });
+    const publicJwk = await exportJWK(publicKey);
+    const providerRegistration = createOidcProviderRegistration({
+      acceptedIdTokenSigningAlgorithms: [algorithm],
+      idTokenProfile: null,
+      issuer,
+    });
+    const authenticator = testAuthenticator(
+      providerFetch({
+        advertisedIdTokenSigningAlgorithms: ["RS256", algorithm],
+        jwksResponse: () => Response.json({ keys: [{ ...publicJwk, kid: "algorithm-key" }] }),
+      }),
+      undefined,
+      providerRegistration,
+    );
+    const issuedAt = Math.floor(authenticationTestNow.getTime() / 1_000);
+    const subjectToken = await new SignJWT({
+      aud: subjectTokenAudience,
+      exp: issuedAt + 300,
+      iat: issuedAt,
+      iss: issuer,
+      sub: "subject",
+    })
+      .setProtectedHeader({ alg: algorithm, kid: "algorithm-key" })
+      .sign(privateKey);
+
+    await expect(authenticator.authenticateIdToken(subjectToken)).resolves.toMatchObject({
+      ok: true,
+    });
+  });
+});
 
 describe("Registered OIDC Provider Verifier", () => {
   it("caches validated Provider Configuration and JWK Set documents", async () => {
@@ -1728,6 +2015,17 @@ async function beginCoalescedJwksRefreshFailure(
     results,
     subjectToken,
   };
+}
+
+function testAuthenticator(
+  fetchOidcRemoteDocumentResponse: typeof fetch,
+  now: () => Date = () => authenticationTestNow,
+  providerRegistration: OidcProviderRegistration = registration,
+) {
+  return createOidcIdTokenAuthenticator(
+    { providerRegistrations: [providerRegistration], subjectTokenAudience },
+    { fetch: fetchOidcRemoteDocumentResponse, now },
+  );
 }
 
 function testVerifier(
