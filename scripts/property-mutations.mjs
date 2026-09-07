@@ -6,7 +6,7 @@ const policySource = "packages/token-issuance-policy/src/token-issuance-policy.t
 const policyPropertyTest = "test/properties/token-issuance-policy.property.test.ts";
 const tokenExchangeSource = "packages/token-exchange/src/token-exchange.ts";
 const tokenExchangePropertyTest = "test/properties/token-exchange-form.property.test.ts";
-const ordinaryTestSuite = lane([], ["unit", "worker-integration"]);
+const ordinaryTestSuite = lane([], ["!property"]);
 
 const bodyTests = propertyTestLanes(bodyPropertyTest, "body");
 const githubPermissionTests = propertyTestLanes(

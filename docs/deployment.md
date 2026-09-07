@@ -80,6 +80,9 @@ not itself claim durable persistence. Optional OIDC diagnostic logging remains b
 composition. `pnpm run node-deploy:check` builds and production-deploys that fixture into a
 temporary directory, verifies package-root ESM and declarations without source aliases, starts it
 only on an ephemeral loopback socket, and then removes it.
+The check consumes the current worktree and its build outputs. It does not create
+a tracked-file source snapshot or enforce a clean checkout; release callers own
+that boundary through the [release checklist](release.md#source-tree).
 
 `test/deployment/integration-fastify` is the separate synthetic deployment for the
 [container integration suite](../test/integration/README.md). It bundles the
