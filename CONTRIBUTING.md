@@ -15,6 +15,10 @@ Routine dependency updates use a three-day release age: `minimumReleaseAge: 4320
 three-day cooldown. Keep these values aligned. This controls newly resolved
 versions; a frozen install of the reviewed lockfile is not a release-age audit.
 
+When updating the Codecov action, review its separate CLI `version` input in
+`.github/workflows/ci-test.yml` too; Dependabot does not maintain that input.
+Verify the OIDC upload and tokenless fork-PR upload paths for CLI updates.
+
 Shared exact dependency versions live in the default catalog in
 `pnpm-workspace.yaml`. Update the catalog entry to keep package and deployment
 fixture dependencies aligned. Public peer dependency ranges remain separate.
