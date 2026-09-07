@@ -35,6 +35,12 @@ jobs:
       id-token: write
     uses: ./.github/workflows/ci-test.yml
 
+  integration-fastify:
+    uses: ./.github/workflows/ci-integration-fastify.yml
+
+  integration-worker:
+    uses: ./.github/workflows/ci-integration-worker.yml
+
   artifact-check:
     uses: ./.github/workflows/ci-artifact-check.yml
 
@@ -54,6 +60,8 @@ jobs:
       - typecheck
       - knip
       - test
+      - integration-fastify
+      - integration-worker
       - artifact-check
       - node-deploy-check
       - deploy-dry-run

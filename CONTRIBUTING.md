@@ -34,7 +34,7 @@ binaries used by the validated builds and tests.
 Before opening or updating a pull request:
 
 1. Run `pnpm install --frozen-lockfile`.
-2. Run `node --run check`.
+2. Run `node --run check` and the [container integration suite](test/integration/README.md) for both Fastify and Worker. Follow its explicit Compose startup, test, and cleanup steps; both hosts are separate required CI lanes.
 3. Update `docs/service-contract.md` when externally observable behaviour changes.
 4. Update `docs/implementation.md` when package layout, Worker entrypoints, request flow, or bindings change.
 5. Update `docs/deployment.md` and `docs/release.md` when source/deployment ownership or publish-readiness checks change.

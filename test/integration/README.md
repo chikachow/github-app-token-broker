@@ -23,7 +23,7 @@ Linux containers; the host driver uses only Node built-ins and Docker CLI. Host
 `node_modules` and local credentials are excluded from the image. No GitHub or
 Cloudflare account is needed. The cleanup command removes the project's
 containers, network, and generated-key volume, retaining the image for reuse.
-Add `--rmi all` to remove that project's image too. Reusable Docker
+Add `--rmi all` to remove that project's image too, as CI does. Reusable Docker
 build cache remains. Container logs are capped at 5 MB per service.
 
 ## Deployment artifacts and services
@@ -128,6 +128,21 @@ The Node command reruns the suite. Finish with the cleanup command above. Never
 share mutable mock controls between concurrent test runs: use distinct Compose
 project names. Image tags also include that name, so separate checkouts cannot
 replace each other's image.
+
+## CI
+
+[Fastify](../../.github/workflows/ci-integration-fastify.yml) and
+[Worker](../../.github/workflows/ci-integration-worker.yml) have separate reusable
+workflows. Each sets up the pinned Node runtime, starts Compose fixtures, runs the
+Node driver, collects failure logs, and removes the stack with `always()`.
+The test step uses a Linux process group and shell traps to stop any surviving
+Docker command descendants before the cleanup step can remove their stack.
+[compose.yml](compose.yml) owns the shared build, service commands, readiness,
+network, and volume configuration for CI and local runs.
+
+Each job owns its image and stack; CI publishes no image and needs no registry
+write or OIDC-token permission. The aggregate `ci` job requires both workflows
+alongside existing checks; a failure in one host does not cancel the other.
 
 ## Extending the suite
 

@@ -57,7 +57,7 @@ own-zone routing, not local test CA configuration.
 ([versioned Workerd schema](https://github.com/cloudflare/workerd/blob/v1.20260826.1/src/workerd/server/workerd.capnp),
 [compatibility flag definition](https://github.com/cloudflare/workerd/blob/v1.20260826.1/src/workerd/io/compatibility-date.capnp))
 
-## Compose
+## Compose and CI
 
 One Compose file owns service commands, build, health checks, network, and generated
 keys. The host Node driver recreates the broker container when a scenario needs
@@ -97,6 +97,28 @@ no usable published port; a standard bridge returned HTTP `200`. The implemented
 bridge binds dynamic broker/control ports to `127.0.0.1` and permits outbound
 traffic. It does not provide egress denial.
 ([OrbStack Docker documentation](https://docs.orbstack.dev/docker/))
+
+Separate Fastify and Worker Actions workflows explicitly start fixtures, run the
+host Node driver, collect failure logs, and remove the stack with `always()`.
+They use the same Compose file as local runs. Building the checkout within each
+job avoids registry credentials and published fixture-image lifecycle. Native
+Actions services initialize before ordinary steps, so a same-job build cannot
+supply their declarative service image.
+([Actions service networking](https://docs.github.com/en/actions/tutorials/use-containerized-services/use-docker-service-containers),
+[runner initialization source](https://github.com/actions/runner/blob/main/src/Runner.Worker/JobExtension.cs))
+
+A cancellation experiment found that terminating `node --test` alone can leave
+its in-flight Docker CLI child running. CI starts the test command in a Linux
+process group; shell traps remove surviving command descendants before the next
+step removes the stack. A local Linux experiment exercised the workflow's trap
+sequence with the real Node test runner and an intentionally signal-resistant
+Docker stand-in. SIGINT and SIGTERM sent only to the parent shell each returned
+nonzero and left no surviving test worker or Docker child before cleanup. This
+is necessary because Actions can stop its cancellation sequence when the entry
+process exits, leaving no guarantee that an orphaned Docker command has stopped.
+Hosted cancellation has not been exercised. Local use has explicit startup,
+test, and cleanup commands; the test command does not own cleanup.
+([Actions cancellation sequence](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-cancellation))
 
 ## Protocol oracles and observed results
 
@@ -141,4 +163,5 @@ otherwise unclassified `500` mapping.
 The lane does not establish live provider issuance, GitHub installation grants,
 deployment-owned composition or credentials, Cloudflare edge routing, distributed
 admission, production header provenance, or durable console logging. Deadline
-checks also do not establish immediate cancellation of every remote socket.
+checks also do not establish immediate cancellation of every remote socket. Local
+runs do not constitute hosted Actions execution.
