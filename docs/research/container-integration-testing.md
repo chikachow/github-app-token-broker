@@ -29,7 +29,7 @@ the Dockerfile. Compose starts the emitted JavaScript with
 `wrangler dev --no-bundle`. Both commands use the source Wrangler configuration,
 retaining its compatibility settings, rate-limit binding, observation settings,
 and required secret declaration. Disposable App credentials are supplied
-separately at runtime. The fixture retains the named RPC export. The lane
+separately at runtime. Both variants retain the named RPC export. The lane
 exercises the HTTP adapter; the separate named-entrypoint test retains the trusted
 service-binding boundary.
 
@@ -64,8 +64,9 @@ keys. The host Node driver recreates the broker container when a scenario needs
 fresh process state and discovers its loopback port. This removes a custom
 supervisor and reset API while clearing broker caches and admission state at
 the boundaries that need it. Ordinary protocol cases share a broker and use
-non-cacheable OIDC responses. Cold OIDC failures, absent CA trust, and
-each body-limit case and cache/rotation checks retain separate broker lifetimes. The scenario structure uses eleven starts per host.
+non-cacheable OIDC responses. Cold OIDC failures, absent CA trust, the compiled
+observation-failure profile, each body-limit case, and cache/rotation checks retain
+separate broker lifetimes. The scenario structure uses twelve starts per host.
 The cache/rotation scenario intentionally retains one container
 throughout its transitions. Compose documents
 [health-based startup ordering](https://docs.docker.com/compose/how-tos/startup-order/).
@@ -107,6 +108,13 @@ These inputs follow GitHub's
 Every protocol case checks both the public outcome and material upstream requests.
 Failure ledgers omit assertion text, authorization headers, and signed tokens.
 
+The grouped suite passed all 33 Fastify and 34 Worker cases with no skips on
+OrbStack, using digest-pinned Node 24.18.0, Wrangler 4.129.1, and frozen repository
+dependencies. Each host used twelve broker starts and took about 53 seconds,
+excluding image build and cleanup. Ordinary protocol cases and recovery after
+GitHub failures share one broker; the body-limit cases retain the fresh-listener
+boundary described above.
+
 | Boundary                    | Observed evidence                                                                                                                                                              |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Signing and least privilege | Successful exchange required genuine RS256 ID Tokens, App JWT verification, and exact repository/permission mint parameters.                                                   |
@@ -114,6 +122,7 @@ Failure ledgers omit assertion text, authorization headers, and signed tokens.
 | Body limits                 | Fresh real listeners rejected known-length and chunked bodies above 64 KiB before upstream I/O; repeated oversized-request recovery is not established.                        |
 | Complete-response deadlines | Incomplete OIDC/GitHub HTTPS bodies produced failures at their owning five-/ten-second deadlines and reached the expected upstream stage.                                      |
 | Cache and rotation          | A subsequent exchange avoided OIDC fetches but minted a new token. Unknown-key refresh was suppressed during the cooldown; after 10.1 seconds one JWKS fetch enabled issuance. |
+| Observation failure         | Both adapters withheld exchange completion until the mock released authenticated revocation, then returned sanitized failure without the token.                                |
 | Local Worker admission      | Thirty requests from one fixture IP were admitted, the next received `429`, and a different IP remained admissible.                                                            |
 
 Earlier sensitivity experiments modified only disposable built artifacts. Changing

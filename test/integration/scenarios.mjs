@@ -157,10 +157,12 @@ before(() => {
 });
 
 void describe(host === "worker" ? "Workerd" : "Fastify", { concurrency: false }, () => {
-  function restartHost(trustTestCa = true) {
+  function restartHost(profile = "normal") {
     compose(["up", "--no-deps", "--force-recreate", "--wait", "--wait-timeout", "60", host], {
       ...process.env,
-      INTEGRATION_CA_FILE: trustTestCa ? "/app/test/integration/.generated/ca.pem" : "",
+      INTEGRATION_PROFILE: profile === "observation-failure" ? profile : "normal",
+      INTEGRATION_CA_FILE:
+        profile === "untrusted-ca" ? "" : "/app/test/integration/.generated/ca.pem",
     });
     broker = endpoint(host, 8080);
   }
@@ -187,9 +189,39 @@ void describe(host === "worker" ? "Workerd" : "Fastify", { concurrency: false },
   });
   void it("rejects the upstream TLS certificate without the test CA", async () => {
     await reset();
-    restartHost(false);
+    restartHost("untrusted-ca");
     failure(await exchange(), 503, "temporarily_unavailable");
     assert.deepEqual(await evidence(), [[], []], "TLS rejection must precede HTTP requests");
+  });
+  void it("withholds the token and awaits revocation after failed success observation", async () => {
+    await reset("normal", "revocation-gated");
+    restartHost("observation-failure");
+    let settled = false;
+    const pending = exchange().finally(() => {
+      settled = true;
+    });
+    try {
+      const deadline = Date.now() + 5000;
+      while (!(await control(github, "state")).events.some((event) => event.method === "DELETE")) {
+        assert.ok(Date.now() < deadline, "broker never attempted revocation");
+        await delay(25);
+      }
+      await delay(50);
+      assert.equal(settled, false, "broker must await the revocation response");
+    } finally {
+      await control(github, "release-revocation", {});
+    }
+    failure(await pending, 500, "server_error");
+    const [, events] = await evidence();
+    assert.deepEqual(
+      events.filter((event) => event.method).map((event) => [event.method, event.path]),
+      [
+        ["GET", "/repos/integration-owner/target/installation"],
+        ["POST", "/app/installations/12345/access_tokens"],
+        ["DELETE", "/installation/token"],
+      ],
+    );
+    assert.deepEqual(events.at(-1), { kind: "revoked" });
   });
   void describe("listener body limits", () => {
     // Wrangler's local proxy can lose the next request after an unread upload.

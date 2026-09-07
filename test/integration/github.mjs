@@ -11,6 +11,7 @@ import {
 const server = createMockServer("github");
 const appPublicKey = readFixture("app.public.pem");
 let mode = "normal";
+let releaseRevocation;
 
 function verifyApp(request) {
   assert.equal(request.headers.accept, "application/vnd.github+json");
@@ -39,6 +40,17 @@ function verifyApp(request) {
 
 async function protocol(request, response) {
   assert.equal(request.headers.host, "api.github.com");
+  if (request.url === "/installation/token") {
+    assert.equal(request.method, "DELETE");
+    assert.equal(request.headers.authorization, "Bearer ghs_disposable_integration_token");
+    assert.equal(mode, "revocation-gated");
+    await new Promise((resolve) => {
+      releaseRevocation = resolve;
+    });
+    server.record({ kind: "revoked" });
+    response.writeHead(204).end();
+    return;
+  }
   verifyApp(request);
   if (request.url === "/repos/integration-owner/target/installation") {
     assert.equal(request.method, "GET");
@@ -81,11 +93,17 @@ async function protocol(request, response) {
 }
 
 async function controls(request, response) {
+  if (request.method === "POST" && request.url === "/release-revocation") {
+    releaseRevocation?.();
+    releaseRevocation = undefined;
+    return sendJson(response, 200, { released: true });
+  }
   if (request.method === "POST" && request.url === "/scenario") {
     const input = await readJson(request);
     assert.ok(
       [
         "normal",
+        "revocation-gated",
         "redirect",
         "unavailable",
         "rate-limit",

@@ -71,7 +71,7 @@ services:
       GITHUB_APP_ID: "123456"
       GITHUB_APP_PRIVATE_KEY_FILE: /app/test/integration/.generated/app.pem
       TOKEN_BROKER_AUDIENCE: urn:integration:broker
-    command: ["node", "dist/normal.js"]
+    command: ["node", "dist/${INTEGRATION_PROFILE:-normal}.js"]
     ports: ["127.0.0.1::8080"]
     healthcheck: *broker-health
     depends_on:
@@ -86,12 +86,12 @@ services:
       - node
       - node_modules/wrangler/bin/wrangler.js
       - dev
-      - test/integration/dist/worker/normal/worker.js
+      - test/integration/dist/worker/${INTEGRATION_PROFILE:-normal}/worker.js
       - --config
       - workers/github-app-token-broker/wrangler.jsonc
       - --no-bundle
       - --name
-      - integration-worker-normal
+      - integration-worker-${INTEGRATION_PROFILE:-normal}
       - --var
       - GITHUB_APP_ID:123456
       - TOKEN_BROKER_AUDIENCE:urn:integration:broker
