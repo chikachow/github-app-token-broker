@@ -112,7 +112,8 @@ Detailed OpenID Provider Metadata and JWK Set cache limits, refresh behavior, st
 
 ## Validation
 
-Use Node 24 and pinned pnpm:
+Use Node 24 and pinned pnpm. Node declarations match this runtime; Dependabot
+leaves their major upgrades to the corresponding runtime upgrade.
 
 ```bash
 fnm exec --using=24 corepack pnpm run check
