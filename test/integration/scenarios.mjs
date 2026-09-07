@@ -360,6 +360,8 @@ void describe(host === "worker" ? "Workerd" : "Fastify", { concurrency: false },
       ["unavailable", 503, "temporarily_unavailable"],
       ["bad-issuer", 400, "invalid_request"],
       ["malformed-jwks", 503, "temporarily_unavailable"],
+      ["malformed-ext", 503, "temporarily_unavailable"],
+      ["deeply-nested-jwks", 503, "temporarily_unavailable"],
       ["oversized", 503, "temporarily_unavailable"],
     ])
       void it(`fails closed for OIDC ${mode}`, async () => {
@@ -368,7 +370,7 @@ void describe(host === "worker" ? "Workerd" : "Fastify", { concurrency: false },
         const [oidcEvents, githubEvents] = await evidence();
         assert.deepEqual(
           oidcEvents.map((event) => event.path),
-          ["malformed-jwks", "oversized"].includes(mode)
+          ["malformed-jwks", "malformed-ext", "deeply-nested-jwks", "oversized"].includes(mode)
             ? ["/.well-known/openid-configuration", "/jwks"]
             : ["/.well-known/openid-configuration"],
         );
@@ -381,6 +383,20 @@ void describe(host === "worker" ? "Workerd" : "Fastify", { concurrency: false },
         await assertResponseBodyDeadline("oidc", "stall", 4500);
       },
     );
+  });
+  void it("preserves a stale eligible JWK Set after a malformed ext refresh", async () => {
+    await reset("stale-cache");
+    restartHost();
+    success(await exchange());
+    await reset("malformed-ext");
+    success(await exchange());
+    const [oidcEvents, githubEvents] = await evidence();
+    assert.deepEqual(
+      oidcEvents.map((event) => event.path),
+      ["/.well-known/openid-configuration", "/jwks"],
+      "the malformed refresh must actually reach the provider",
+    );
+    assert.equal(githubEvents.filter((event) => event.kind === "mint").length, 1);
   });
   void it("reuses fresh OIDC documents then refreshes an unknown kid after key rotation", async () => {
     await reset("cache");

@@ -212,9 +212,20 @@ ceiling and likewise cannot authorize an algorithm for a provider.
 Every JWK in a consumed JWK Set is structurally validated before the set is
 made available to JOSE. `kty` is required and must be a string. Optional
 `alg`, `kid`, and `use` members must be strings; optional `key_ops` and `x5c`
-members must be arrays of strings. A malformed member invalidates the remote
-JWK Set rather than being silently ignored. Cryptographic import and
-algorithm/material compatibility remain separate usability checks.
+members must be arrays of strings; optional `ext` must be a boolean. A malformed
+member invalidates the remote JWK Set rather than being silently ignored.
+
+Cache admission and token verification use JOSE's local JWK Set resolver with
+the same public verification-key requirements, including RSA moduli of at least
+2048 bits. JOSE owns algorithm matching and cryptographic import. A structurally
+valid set is usable when at least one key can verify an accepted algorithm;
+unusable keys do not prevent another usable key from establishing this. The
+complete set remains intact, so duplicate matching keys remain ambiguous. If
+JOSE selects a matching key but importing it or enforcing verification-key
+requirements fails, authentication fails as provider unavailable. No matching
+key, including when metadata excludes a key from selection, retains the
+controlled-refresh and Client-rejection behavior below. A wholly unusable
+refresh cannot replace last-known-good state.
 
 The `jwks_uri` is allowed to use a different HTTPS origin from the Issuer
 Identifier. OpenID Connect does not impose a same-origin requirement, and
