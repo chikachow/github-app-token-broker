@@ -19,6 +19,11 @@ Shared exact dependency versions live in the default catalog in
 `pnpm-workspace.yaml`. Update the catalog entry to keep package and deployment
 fixture dependencies aligned. Public peer dependency ranges remain separate.
 
+Dependency build scripts require an explicit decision in `allowBuilds` in
+`pnpm-workspace.yaml`; `strictDepBuilds` rejects unreviewed scripts. The `esbuild`
+and `workerd` install scripts are disabled; their platform packages supply the
+binaries used by the validated builds and tests.
+
 Before opening or updating a pull request:
 
 1. Run `pnpm install --frozen-lockfile`.
