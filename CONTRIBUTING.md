@@ -9,6 +9,12 @@ their owning scripts, and inspect `git diff --check`, `git diff`, and
 [Implementation: Validation](docs/implementation.md#validation) for runtime and
 artifact checks. Documentation-only pull requests still require the gates below.
 
+Routine dependency updates use a three-day release age: `minimumReleaseAge: 4320` in
+`pnpm-workspace.yaml` applies to pnpm resolution, including the scheduled
+`pnpm-up` workflow, and the npm Dependabot configuration uses a matching
+three-day cooldown. Keep these values aligned. This controls newly resolved
+versions; a frozen install of the reviewed lockfile is not a release-age audit.
+
 Before opening or updating a pull request:
 
 1. Run `pnpm install --frozen-lockfile`.
