@@ -1,0 +1,117 @@
+x-runtime: &runtime
+  image: ${COMPOSE_PROJECT_NAME}-runtime
+  pull_policy: never
+  init: true
+  volumes:
+    - fixtures:/app/test/integration/.generated
+  networks: [integration]
+  logging:
+    driver: json-file
+    options:
+      max-size: 5m
+      max-file: "1"
+
+x-mock-health: &mock-health
+  test:
+    [
+      "CMD",
+      "node",
+      "-e",
+      "fetch('http://127.0.0.1:8081/health').then(r => process.exit(r.status === 200 ? 0 : 1)).catch(() => process.exit(1))",
+    ]
+  interval: 1s
+  timeout: 2s
+  retries: 45
+
+x-broker-health: &broker-health
+  test:
+    [
+      "CMD",
+      "node",
+      "-e",
+      "fetch('http://127.0.0.1:8080/token').then(r => process.exit(r.status === 400 ? 0 : 1)).catch(() => process.exit(1))",
+    ]
+  interval: 1s
+  timeout: 2s
+  retries: 45
+
+services:
+  prepare:
+    <<: *runtime
+    build:
+      context: ../..
+      dockerfile: test/integration/Dockerfile
+    command: node test/integration/prepare.mjs
+  oidc:
+    <<: *runtime
+    command: node test/integration/oidc.mjs
+    depends_on:
+      prepare: { condition: service_completed_successfully }
+    ports: ["127.0.0.1::8081"]
+    healthcheck: *mock-health
+    networks:
+      integration:
+        aliases: [token.actions.githubusercontent.com]
+  github:
+    <<: *runtime
+    command: node test/integration/github.mjs
+    depends_on:
+      prepare: { condition: service_completed_successfully }
+    ports: ["127.0.0.1::8081"]
+    healthcheck: *mock-health
+    networks:
+      integration:
+        aliases: [api.github.com]
+  fastify:
+    <<: *runtime
+    profiles: [fastify]
+    working_dir: /fastify
+    environment:
+      NODE_EXTRA_CA_CERTS: ${INTEGRATION_CA_FILE-/app/test/integration/.generated/ca.pem}
+      GITHUB_APP_ID: "123456"
+      GITHUB_APP_PRIVATE_KEY_FILE: /app/test/integration/.generated/app.pem
+      TOKEN_BROKER_AUDIENCE: urn:integration:broker
+    command: ["node", "dist/normal.js"]
+    ports: ["127.0.0.1::8080"]
+    healthcheck: *broker-health
+    depends_on:
+      prepare: { condition: service_completed_successfully }
+  worker:
+    <<: *runtime
+    profiles: [worker]
+    working_dir: /app
+    environment:
+      NODE_EXTRA_CA_CERTS: ${INTEGRATION_CA_FILE-/app/test/integration/.generated/ca.pem}
+    command:
+      - node
+      - node_modules/wrangler/bin/wrangler.js
+      - dev
+      - test/integration/dist/worker/normal/worker.js
+      - --config
+      - workers/github-app-token-broker/wrangler.jsonc
+      - --no-bundle
+      - --name
+      - integration-worker-normal
+      - --var
+      - GITHUB_APP_ID:123456
+      - TOKEN_BROKER_AUDIENCE:urn:integration:broker
+      - --env-file
+      - /app/test/integration/.generated/.env
+      - --local
+      - --ip
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --inspector-port
+      - "0"
+      - --log-level
+      - warn
+    ports: ["127.0.0.1::8080"]
+    healthcheck: *broker-health
+    depends_on:
+      prepare: { condition: service_completed_successfully }
+
+volumes:
+  fixtures:
+networks:
+  integration:
