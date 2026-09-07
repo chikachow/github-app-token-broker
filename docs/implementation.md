@@ -115,6 +115,11 @@ Successful GitHub responses are bounded and schema-validated. The GitHub API des
 
 The [service contract's OIDC limits and caching section](service-contract.md#oidc-remote-document-limits-and-caching) owns the numeric cache and response limits. The [OIDC authentication decision](decisions/oidc-id-token-authentication.md#cache-identity-and-availability) owns the cache identity and availability rationale; the service contract owns public error mappings.
 
+The GitHub transport retains received response status across body failures and
+starts cancellation of unused bodies, including late responses, without awaiting
+cleanup. Its cleanup cannot delay or change the classified result; required token
+revocation remains a separate awaited operation.
+
 ## Validation
 
 Use Node 24 and pinned pnpm. Node declarations match this runtime; Dependabot

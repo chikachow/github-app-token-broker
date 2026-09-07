@@ -42,9 +42,12 @@ export class GitHubApiError extends Error {
 }
 
 export class GitHubApiTransportError extends Error {
-  public constructor(message: string) {
+  public readonly upstreamStatus: number | undefined;
+
+  public constructor(message: string, upstreamStatus?: number) {
     super(message);
     this.name = "GitHubApiTransportError";
+    this.upstreamStatus = upstreamStatus;
   }
 }
 
@@ -148,33 +151,61 @@ async function requestGitHubApi<Value>(
     init?.signal === undefined || init.signal === null
       ? deadlineSignal
       : AbortSignal.any([deadlineSignal, init.signal]);
+  let response: Response | undefined;
 
   try {
-    const response = await awaitWithAbortSignal(
-      dependencies.fetch(requestUrl, {
-        ...init,
-        headers: requestHeaders,
-        redirect: "manual",
-        signal: requestSignal,
-      }),
+    const receivedResponse = await awaitWithAbortSignal(
+      dependencies
+        .fetch(requestUrl, {
+          ...init,
+          headers: requestHeaders,
+          redirect: "manual",
+          signal: requestSignal,
+        })
+        .then((received) => {
+          if (requestSignal.aborted) {
+            discardGitHubResponseBody(received);
+          } else {
+            response = received;
+          }
+
+          return received;
+        }),
       requestSignal,
     );
     throwIfAborted(requestSignal);
 
-    if (!response.ok) {
-      const rateLimited = await githubResponseIsRateLimited(response, requestSignal);
+    if (!receivedResponse.ok) {
+      const rateLimited = await githubResponseIsRateLimited(receivedResponse, requestSignal);
       throwIfAborted(requestSignal);
 
-      throw new GitHubApiError(response.status, `GitHub API request failed: ${path}`, rateLimited);
+      throw new GitHubApiError(
+        receivedResponse.status,
+        `GitHub API request failed: ${path}`,
+        rateLimited,
+      );
     }
 
-    return await readSuccessfulResponse(response, requestSignal);
+    return await readSuccessfulResponse(receivedResponse, requestSignal);
   } catch (error) {
     if (error instanceof GitHubApiError) {
       throw error;
     }
 
-    throw new GitHubApiTransportError(`GitHub API request failed: ${path}`);
+    throw new GitHubApiTransportError(`GitHub API request failed: ${path}`, response?.status);
+  } finally {
+    discardGitHubResponseBody(response);
+  }
+}
+
+function discardGitHubResponseBody(response: Response | undefined): void {
+  try {
+    const body = response?.body;
+    if (body !== null && body !== undefined && !body.locked) {
+      void body.cancel().catch(() => undefined);
+    }
+  } catch {
+    // Discarding a response must not change its already selected outcome.
   }
 }
 

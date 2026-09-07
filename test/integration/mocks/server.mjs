@@ -25,8 +25,8 @@ export async function readJson(request) {
   return JSON.parse(Buffer.concat(chunks).toString() || "{}");
 }
 
-export function stallResponse(response) {
-  response.writeHead(200, { "content-type": "application/json" });
+export function stallResponse(response, status = 200) {
+  response.writeHead(status, { "content-type": "application/json" });
   response.write('{"incomplete":');
   const timeout = setTimeout(() => response.end(), 20000);
   response.once("close", () => clearTimeout(timeout));
@@ -49,6 +49,10 @@ export function createMockServer(name) {
   };
   return {
     record,
+    recordResponseClose(response) {
+      const requestEvents = events;
+      response.once("close", () => requestEvents.push({ kind: "body-closed" }));
+    },
     reset() {
       events = [];
       failures = [];

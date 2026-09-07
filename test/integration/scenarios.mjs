@@ -347,6 +347,26 @@ void describe(host === "worker" ? "Workerd" : "Fastify", { concurrency: false },
         await assertResponseBodyDeadline("github", "stall-mint", 9500);
       },
     );
+    void it("closes an unused GitHub error body without awaiting its completion", async () => {
+      await reset("normal", "unavailable-body");
+      const start = performance.now();
+      failure(await exchange(), 503, "temporarily_unavailable");
+      assert.ok(performance.now() - start < 5000, "classification must not wait for the body");
+      const deadline = Date.now() + 2000;
+      while (true) {
+        const [, events] = await evidence();
+        assert.ok(Date.now() < deadline, "the upstream must observe prompt body cancellation");
+        if (events.some((event) => event.kind === "body-closed")) {
+          assert.deepEqual(
+            events.filter((event) => event.method).map((event) => [event.method, event.path]),
+            [["GET", "/repos/integration-owner/target/installation"]],
+          );
+          assert.equal(events.filter((event) => event.kind === "mint").length, 0);
+          break;
+        }
+        await delay(25);
+      }
+    });
     void it("recovers after ordinary failures and the stalled GitHub response", async () => {
       await reset();
       await assertSuccessfulExchange();

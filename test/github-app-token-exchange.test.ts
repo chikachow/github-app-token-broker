@@ -300,6 +300,61 @@ describe("GitHub App Token Exchange public interface", () => {
     ]);
   });
 
+  it.each([
+    { installationId: undefined, method: "GET", upstreamStatus: 200 },
+    { installationId: testInstallationId, method: "POST", upstreamStatus: 201 },
+  ])(
+    "observes the received GitHub $upstreamStatus when the $method response body fails",
+    async ({ installationId, method, upstreamStatus }) => {
+      const observations: TokenExchangeObservation[] = [];
+      const tokenExchange = createGitHubAppTokenExchange(configuration, {
+        fetch: async (input, init) => {
+          const request = new Request(input, init);
+
+          if (new URL(request.url).hostname === "api.github.com" && request.method === method) {
+            return new Response(
+              new ReadableStream<Uint8Array>({
+                start(controller) {
+                  controller.error(new Error("private GitHub response stream failure"));
+                },
+              }),
+              { status: upstreamStatus },
+            );
+          }
+
+          return fetchExternal(request);
+        },
+        now: () => testNow,
+      });
+      const response = await tokenExchange(await tokenRequest(), {
+        observe: async (observation) => {
+          observations.push(observation);
+        },
+      });
+
+      expect(response.status).toBe(503);
+      await expect(response.json()).resolves.toEqual({ error: "temporarily_unavailable" });
+      expect(observations.at(-1)).toEqual({
+        fields: {
+          error: {
+            message: `GitHub API request failed: ${
+              method === "GET"
+                ? `/repos/${testRepository}/installation`
+                : `/app/installations/${testInstallationId}/access_tokens`
+            }`,
+            name: "GitHubApiTransportError",
+            status: undefined,
+            upstream_status: upstreamStatus,
+          },
+          event: "installation_access_token_issuance_failed",
+          ...expectedIssuanceObservationFields({ outcome: "permitted" }),
+          target_installation: { id: installationId },
+        },
+        level: "error",
+      });
+    },
+  );
+
   it("retains the resolved installation in an observed mint failure", async () => {
     const observations: TokenExchangeObservation[] = [];
     const tokenExchange = createGitHubAppTokenExchange(configuration, {
@@ -692,6 +747,17 @@ describe("GitHub App Token Exchange public interface", () => {
     const observerFailure = "private post-mint observer failure";
     const githubRequests: Request[] = [];
     const observedEvents: unknown[] = [];
+    const cancellation = Promise.withResolvers<void>();
+    const cancel = vi.fn(() => cancellation.promise);
+    const revocationResponse = new Response(
+      new ReadableStream<Uint8Array>({
+        cancel,
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("private revocation response"));
+        },
+      }),
+      { status: 503 },
+    );
     const tokenExchange = createGitHubAppTokenExchange(configuration, {
       fetch: (input, init) => {
         const request = new Request(input, init);
@@ -704,7 +770,7 @@ describe("GitHub App Token Exchange public interface", () => {
 
         return request.method === "DELETE" &&
           new URL(request.url).pathname === "/installation/token"
-          ? Promise.resolve(new Response("private revocation response", { status: 503 }))
+          ? Promise.resolve(revocationResponse)
           : fetchGitHubTestDouble(request);
       },
       now: () => testNow,
@@ -737,11 +803,14 @@ describe("GitHub App Token Exchange public interface", () => {
       );
       expect(revocationRequests).toHaveLength(1);
       expect(revocationRequests[0]?.headers.get("authorization")).toBe("Bearer ghs_test_token");
+      expect(cancel).toHaveBeenCalledOnce();
       const serializedLog = JSON.stringify(consoleError.mock.calls);
       expect(serializedLog).not.toContain(observerFailure);
       expect(serializedLog).not.toContain("private revocation response");
       expect(serializedLog).not.toContain("ghs_test_token");
     } finally {
+      cancellation.resolve();
+      await revocationResponse.body?.cancel();
       consoleError.mockRestore();
     }
   });

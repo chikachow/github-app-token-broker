@@ -75,6 +75,14 @@ complete bounded response body. A caller abort is composed with, rather than
 replacing, this deadline. Deadline expiry and other transport failures use the
 `upstream_unavailable` classification.
 
+When a response body is no longer needed, the transport starts cancellation
+immediately and absorbs cleanup failures without awaiting completion. This
+includes responses that arrive after the request deadline. A synchronous
+cancellation error, rejected promise, or cancellation that never settles cannot
+replace or delay an established result. This resource cleanup is separate from
+token revocation: when issuance requires revoking a minted token, the broker
+still awaits that revocation request before returning its failure.
+
 ### Rate-limit evidence
 
 GitHub documents primary and secondary rate limits as `403` or `429` responses.
@@ -97,7 +105,8 @@ does not expose GitHub response bodies, GitHub credentials, installation access
 tokens, network exception messages, or installation identifiers that were not
 yet resolved.
 Operational logs retain the sanitized GitHub request path, actual upstream
-status in `error.upstream_status` when available, the broker's separately
+status in `error.upstream_status` when response headers were received, including
+when subsequent body consumption fails or times out, the broker's separately
 labelled status in `error.status`, the Token Issuance Policy outcome, and a
 target installation ID only after resolution succeeds. That resolved ID
 remains in the log context if the subsequent token-minting request fails. A
