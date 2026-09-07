@@ -129,6 +129,11 @@ builds its own prerequisites. The test lane alone receives `id-token: write` for
 upload. The required `ci` result aggregates all nine lanes and fails when any lane fails, is
 cancelled, or is skipped.
 
+New PR CI runs cancel older runs for the same PR. Main-branch runs have separate
+concurrency groups, preserving each successful run for the deployment handoff.
+The `pnpm-up` workflow serializes updates to its shared `deps/pnpm-up` branch
+without cancelling a running update.
+
 Coverage explicitly includes package and Worker source files, including files
 not imported by tests, and excludes declarations. Vitest 4 otherwise reports
 only loaded files, which can hide untested source files from the coverage
