@@ -27,7 +27,7 @@ updates:
     groups:
       cloudflare-workers-sdk:
         patterns:
-          - "@cloudflare/vitest-pool-workers"
+          - "@cloudflare/vitest-plugin"
           - "@cloudflare/workers-types"
           - wrangler
       vitest:

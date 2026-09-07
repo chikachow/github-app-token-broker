@@ -36,8 +36,8 @@
     "jose": "6.2.10"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "0.22.0",
-    "@cloudflare/workers-types": "5.20260827.1",
+    "@cloudflare/vitest-plugin": "1.1.5",
+    "@cloudflare/workers-types": "5.20260907.1",
     "@fast-check/vitest": "0.4.1",
     "@github-app-token-broker/fastify": "workspace:*",
     "@github-app-token-broker/github": "workspace:*",
@@ -59,7 +59,7 @@
     "tsdown": "0.22.14",
     "typescript": "7.0.2",
     "vitest": "4.1.11",
-    "wrangler": "4.127.0"
+    "wrangler": "4.129.1"
   },
   "engines": {
     "node": "24"
