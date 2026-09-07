@@ -129,6 +129,11 @@ builds its own prerequisites. The test lane alone receives `id-token: write` for
 upload. The required `ci` result aggregates all nine lanes and fails when any lane fails, is
 cancelled, or is skipped.
 
+Coverage explicitly includes package and Worker source files, including files
+not imported by tests, and excludes declarations. Vitest 4 otherwise reports
+only loaded files, which can hide untested source files from the coverage
+thresholds.
+
 The `node` Vitest project exclusively owns `test/node/**/*.test.ts`; the Workerd `unit` project excludes that directory, making the selected runtime explicit for those behavioral tests.
 
 The Workerd projects use the `cloudflareTest()` plugin from
