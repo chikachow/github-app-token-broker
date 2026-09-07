@@ -41,8 +41,9 @@ upstream failures from its bundled deployment.
 The Dockerfile emits the Worker through `wrangler deploy --dry-run`. Its container
 runs Wrangler/Workerd directly with `--no-bundle` against that emitted JavaScript.
 Both commands use the source Wrangler configuration, preserving its compatibility
-settings and bindings; the compiled fixture retains the named RPC export.
-Both hosts receive disposable App credentials at runtime.
+settings and bindings; both compiled variants retain the named RPC export.
+Both hosts receive disposable App credentials at runtime. Separate build outputs
+provide the deliberately failing observation adapters.
 
 | Component            | Responsibility                                                                                                         |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------- |
@@ -58,9 +59,9 @@ and sanitized evidence collection. The driver and mocks import no broker helpers
 
 Compose health checks own readiness. The driver uses
 `docker compose up --no-deps --force-recreate --wait` when a scenario needs a fresh
-broker: cold OIDC retrieval failures, an absent test CA, either body-limit check,
-or cache and rotation state. The
-scenario structure uses eleven broker starts per host. Ordinary protocol cases
+broker: cold OIDC retrieval failures, an absent test CA, a different compiled
+observation adapter, either body-limit check, or cache and rotation state. The
+scenario structure uses twelve broker starts per host. Ordinary protocol cases
 share one broker and use non-cacheable OIDC responses and distinct Worker client IPs.
 Cache and rotation checks deliberately retain one container throughout their
 state transitions. No broker reset route or custom process supervisor is needed.
@@ -96,6 +97,11 @@ redirects, installation-owner mismatch, rate-limit/unavailable responses, reject
 or malformed mint responses, real response-body deadlines, document reuse, and
 unknown-key refresh cooldown followed by rotation. Worker-specific coverage
 exercises its local admission binding.
+
+A separate failing logger/observer proves that post-mint observation failure
+withholds the token and awaits authenticated revocation. The GitHub mock holds
+the revocation response until the driver releases it. All other cases use the
+normal deployment artifacts.
 
 Error expectations follow [the service contract](../../docs/service-contract.md),
 including invalid discovery metadata (`400`), unusable JWKS (`503`), rejected

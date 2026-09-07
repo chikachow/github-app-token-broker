@@ -11,7 +11,7 @@ export default defineConfig({
       "zod",
     ],
   },
-  entry: ["src/normal.ts"],
+  entry: ["src/normal.ts", "src/observation-failure.ts"],
   fixedExtension: false,
   format: "esm",
   platform: "node",

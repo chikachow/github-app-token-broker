@@ -50,7 +50,8 @@ lane establishes fixture routing and protocol evidence, not egress isolation.
 
 The driver recreates the broker container when a scenario requires fresh process
 state and waits for its health check. Cold OIDC retrieval failures, absent CA
-trust, body-limit cases, and cache/rotation checks require separate lifetimes. Ordinary protocol cases share a broker, use non-cacheable
+trust, the observation-failure artifact, body-limit cases, and cache/rotation
+checks require separate lifetimes. Ordinary protocol cases share a broker, use non-cacheable
 OIDC responses, reset the mock ledgers, and choose distinct Worker client IPs.
 Resetting only mock responses cannot clear broker negative caches or refresh
 cooldowns. Stateful scenarios deliberately keep one container and require both
@@ -64,6 +65,14 @@ the broker is not required to trigger it. Separate lifetimes preserve the real
 request-size assertions while keeping this lane's claim limited to rejection
 from a fresh listener. They do not establish recovery after repeated oversized
 requests or behavior at the production Cloudflare edge.
+
+Separate compiled observation-failure artifacts exercise the existing adapter
+seams. Fastify uses a synchronously failing logger stream; Worker uses its
+observer interface. GitHub gates the authenticated revocation response so the
+driver can require that exchange completion remains pending, then receives a
+sanitized failure without a token. This enforces the
+[mandatory observation decision](fail-closed-token-exchange-observability.md)
+without claiming durable storage from default console logging.
 
 Use actual incomplete HTTPS bodies for deadline checks and chunked uploads for
 request-size checks. Require the owning deadline with scheduling tolerance and
@@ -87,7 +96,7 @@ local lifecycle wrapper is needed.
 - The local Worker binding is exercised. The fixture's client-IP header is test
   input and cannot establish production header provenance.
 - Grouping compatible protocol cases reduces startup cost while separate
-  lifetimes preserve cold-state boundaries. Compose owns
+  lifetimes preserve cold-state and compiled-profile boundaries. Compose owns
   lifecycle and readiness. Exhaustive clock/cache combinations stay in focused tests.
 - The host needs the pinned Node runtime and Docker Compose. Integration remains
   separate from `node --run check`.
