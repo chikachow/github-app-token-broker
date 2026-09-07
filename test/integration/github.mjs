@@ -64,6 +64,10 @@ async function protocol(request, response) {
         { "x-ratelimit-remaining": "0" },
       );
     if (mode === "unavailable") return sendJson(response, 503, { message: "must-not-escape" });
+    if (mode === "unavailable-body") {
+      server.recordResponseClose(response);
+      return stallResponse(response, 503);
+    }
     return sendJson(response, 200, {
       id: 12345,
       account: { login: mode === "wrong-owner" ? "another-owner" : "Integration-Owner" },
@@ -106,6 +110,7 @@ async function controls(request, response) {
         "revocation-gated",
         "redirect",
         "unavailable",
+        "unavailable-body",
         "rate-limit",
         "wrong-owner",
         "rejected-mint",

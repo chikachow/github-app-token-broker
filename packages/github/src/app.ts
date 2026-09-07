@@ -181,7 +181,7 @@ function installationAccessTokenIssuanceErrorFields(
       message: error.message,
       name: "GitHubApiTransportError",
       status: undefined,
-      upstreamStatus: undefined,
+      upstreamStatus: error.upstreamStatus,
     };
   }
 
