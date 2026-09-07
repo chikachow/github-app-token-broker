@@ -14,11 +14,11 @@
   "dependencies": {
     "@github-app-token-broker/fastify": "workspace:*",
     "@github-app-token-broker/token-exchange": "workspace:*",
-    "fastify": "5.12.3"
+    "fastify": "catalog:"
   },
   "devDependencies": {
-    "@types/node": "24.13.3",
-    "tsdown": "0.23.0",
-    "typescript": "7.0.2"
+    "@types/node": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:"
   }
 }

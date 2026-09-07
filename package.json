@@ -33,7 +33,7 @@
     "wrangler:whoami": "WRANGLER_LOG=none WRANGLER_LOG_PATH=.wrangler/logs WRANGLER_REGISTRY_PATH=.wrangler/registry wrangler whoami"
   },
   "dependencies": {
-    "jose": "6.2.11"
+    "jose": "catalog:"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.1.5",
@@ -48,16 +48,16 @@
     "@github-app-token-broker/token-issuance-policy": "workspace:*",
     "@github-app-token-broker/worker": "workspace:*",
     "@tsconfig/strictest": "2.0.8",
-    "@types/node": "24.13.3",
+    "@types/node": "catalog:",
     "@vitest/coverage-istanbul": "4.1.11",
     "fast-check": "4.9.0",
-    "fastify": "5.12.3",
+    "fastify": "catalog:",
     "knip": "6.34.0",
     "oxfmt": "0.65.0",
     "oxlint": "1.80.0",
     "oxlint-tsgolint": "7.0.2001",
-    "tsdown": "0.23.0",
-    "typescript": "7.0.2",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
     "vitest": "4.1.11",
     "wrangler": "4.129.1"
   },

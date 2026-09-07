@@ -5,12 +5,33 @@ settings:
   excludeLinksFromLockfile: false
   injectWorkspacePackages: true
 
+catalogs:
+  default:
+    '@types/node':
+      specifier: 24.13.3
+      version: 24.13.3
+    fastify:
+      specifier: 5.12.3
+      version: 5.12.3
+    jose:
+      specifier: 6.2.11
+      version: 6.2.11
+    tsdown:
+      specifier: 0.23.0
+      version: 0.23.0
+    typescript:
+      specifier: 7.0.2
+      version: 7.0.2
+    zod:
+      specifier: 4.5.4
+      version: 4.5.4
+
 importers:
 
   .:
     dependencies:
       jose:
-        specifier: 6.2.11
+        specifier: 'catalog:'
         version: 6.2.11
     devDependencies:
       '@cloudflare/vitest-plugin':
@@ -50,7 +71,7 @@ importers:
         specifier: 2.0.8
         version: 2.0.8
       '@types/node':
-        specifier: 24.13.3
+        specifier: 'catalog:'
         version: 24.13.3
       '@vitest/coverage-istanbul':
         specifier: 4.1.11
@@ -59,7 +80,7 @@ importers:
         specifier: 4.9.0
         version: 4.9.0
       fastify:
-        specifier: 5.12.3
+        specifier: 'catalog:'
         version: 5.12.3
       knip:
         specifier: 6.34.0
@@ -74,10 +95,10 @@ importers:
         specifier: 7.0.2001
         version: 7.0.2001
       tsdown:
-        specifier: 0.23.0
+        specifier: 'catalog:'
         version: 0.23.0(oxc-resolver@11.24.2)(typescript@7.0.2)
       typescript:
-        specifier: 7.0.2
+        specifier: 'catalog:'
         version: 7.0.2
       vitest:
         specifier: 4.1.11
@@ -98,10 +119,10 @@ importers:
         specifier: workspace:*
         version: link:../http
       jose:
-        specifier: 6.2.11
+        specifier: 'catalog:'
         version: 6.2.11
       zod:
-        specifier: 4.5.4
+        specifier: 'catalog:'
         version: 4.5.4
 
   packages/http: {}
@@ -112,10 +133,10 @@ importers:
         specifier: workspace:*
         version: link:../http
       jose:
-        specifier: 6.2.11
+        specifier: 'catalog:'
         version: 6.2.11
       zod:
-        specifier: 4.5.4
+        specifier: 'catalog:'
         version: 4.5.4
 
   packages/oidc-provider-fly:
@@ -151,10 +172,10 @@ importers:
         specifier: workspace:*
         version: link:../token-issuance-policy
       jose:
-        specifier: 6.2.11
+        specifier: 'catalog:'
         version: 6.2.11
       zod:
-        specifier: 4.5.4
+        specifier: 'catalog:'
         version: 4.5.4
 
   packages/token-issuance-policy:
@@ -175,17 +196,17 @@ importers:
         specifier: workspace:*
         version: link:../../../packages/token-exchange
       fastify:
-        specifier: 5.12.3
+        specifier: 'catalog:'
         version: 5.12.3
     devDependencies:
       '@types/node':
-        specifier: 24.13.3
+        specifier: 'catalog:'
         version: 24.13.3
       tsdown:
-        specifier: 0.23.0
+        specifier: 'catalog:'
         version: 0.23.0(oxc-resolver@11.24.2)(typescript@7.0.2)
       typescript:
-        specifier: 7.0.2
+        specifier: 'catalog:'
         version: 7.0.2
 
   workers/github-app-token-broker:

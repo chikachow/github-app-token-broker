@@ -15,6 +15,10 @@ Routine dependency updates use a three-day release age: `minimumReleaseAge: 4320
 three-day cooldown. Keep these values aligned. This controls newly resolved
 versions; a frozen install of the reviewed lockfile is not a release-age audit.
 
+Shared exact dependency versions live in the default catalog in
+`pnpm-workspace.yaml`. Update the catalog entry to keep package and deployment
+fixture dependencies aligned. Public peer dependency ranges remain separate.
+
 Before opening or updating a pull request:
 
 1. Run `pnpm install --frozen-lockfile`.

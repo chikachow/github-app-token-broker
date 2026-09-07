@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@github-app-token-broker/http": "workspace:*",
-    "jose": "6.2.11",
-    "zod": "4.5.4"
+    "jose": "catalog:",
+    "zod": "catalog:"
   }
 }
