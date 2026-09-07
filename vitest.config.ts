@@ -18,7 +18,8 @@ const fastifySourceAlias = {
 export default defineConfig({
   test: {
     coverage: {
-      exclude: ["**/*.test.ts", "packages/*/dist/**", "test/**", "worker-configuration.d.ts"],
+      exclude: ["**/*.d.ts"],
+      include: ["packages/*/src/**/*.ts", "workers/*/src/**/*.ts"],
       provider: "istanbul",
       reporter: ["text", "lcov"],
       thresholds: {
