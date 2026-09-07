@@ -8,6 +8,3 @@ engineStrict: true
 injectWorkspacePackages: true
 syncInjectedDepsAfterScripts:
   - build
-
-overrides:
-  "esbuild@>=0.17.0 <0.28.1": "0.28.1"
