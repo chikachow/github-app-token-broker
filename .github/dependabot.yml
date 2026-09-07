@@ -21,6 +21,9 @@ updates:
       prefix: chore(deps)
       prefix-development: chore(deps-dev)
     open-pull-requests-limit: 10
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       cloudflare-workers-sdk:
         patterns:
