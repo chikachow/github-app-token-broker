@@ -14,7 +14,7 @@
   "dependencies": {
     "@github-app-token-broker/fastify": "workspace:*",
     "@github-app-token-broker/token-exchange": "workspace:*",
-    "fastify": "5.12.1"
+    "fastify": "5.12.3"
   },
   "devDependencies": {
     "@types/node": "24.13.3",
