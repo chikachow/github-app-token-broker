@@ -129,6 +129,13 @@ builds its own prerequisites. The test lane alone receives `id-token: write` for
 upload. The required `ci` result aggregates all nine lanes and fails when any lane fails, is
 cancelled, or is skipped.
 
+The lint lane also checks GitHub Actions workflows with the official Actionlint
+image pinned by digest in `.github/workflows/ci-lint.yml`, including its
+ShellCheck and Pyflakes tools. This additional check runs in CI, separately
+from `node --run lint`. For local workflow checks, use Actionlint or run the same
+image with the repository mounted as its working directory, following the
+[Actionlint Docker instructions](https://github.com/rhysd/actionlint/blob/main/docs/usage.md#docker-image).
+
 Coverage explicitly includes package and Worker source files, including files
 not imported by tests, and excludes declarations. Vitest 4 otherwise reports
 only loaded files, which can hide untested source files from the coverage
