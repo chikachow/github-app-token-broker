@@ -33,7 +33,7 @@
     "wrangler:whoami": "WRANGLER_LOG=none WRANGLER_LOG_PATH=.wrangler/logs WRANGLER_REGISTRY_PATH=.wrangler/registry wrangler whoami"
   },
   "dependencies": {
-    "jose": "6.2.10"
+    "jose": "6.2.11"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.1.5",
