@@ -1,0 +1,22 @@
+{
+  "name": "@github-app-token-broker/integration-fastify",
+  "version": "0.0.1",
+  "private": true,
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "scripts": {
+    "build": "tsdown --config tsdown.config.ts"
+  },
+  "dependencies": {
+    "fastify": "catalog:"
+  },
+  "devDependencies": {
+    "@github-app-token-broker/fastify": "workspace:*",
+    "@github-app-token-broker/token-exchange": "workspace:*",
+    "@types/node": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:"
+  }
+}

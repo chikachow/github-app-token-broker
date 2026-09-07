@@ -12,7 +12,7 @@
 - `packages/http`: abort-aware asynchronous waiting, bounded body readers, and HTTP/problem-response helpers
 - `packages/token-exchange`: the runtime-neutral deep module behind the Token Endpoint, including protocol validation, authentication orchestration, policy-controlled issuance, observations, and OAuth response mapping
 - `packages/fastify`: the Node 24/Fastify 5 adapter for mounting a prebuilt runtime-neutral handler
-- `test`: behavioral unit tests for the Token Endpoint, Fastify adapter, and domain packages; a production-deployed Fastify consumer fixture; and a real Workerd integration project for the GitHub App Information RPC entrypoint
+- `test`: behavioral unit tests for the Token Endpoint, Fastify adapter, and domain packages; production-pruned Fastify fixtures; container HTTP integration against built Fastify and Worker deployments; and a real Workerd integration project for the GitHub App Information RPC entrypoint
 
 There is no webhook runtime, deployment endpoint, dynamic issuer registry, App selector, or multi-key service.
 
@@ -150,3 +150,29 @@ The Workerd projects use the `cloudflareTest()` plugin from
 new Vitest major.
 
 The aggregate check builds once, then reuses that artifact for the artifact, typecheck, test, Node production-consumer, and deployment lanes. Standalone `artifact:check`, `typecheck`, `test`, `node-deploy:check`, and `deploy:dry-run` commands build their prerequisites first. Workspace builds synchronize injected package copies, so those standalone commands also work after a frozen clean install with no pre-existing `dist`. The artifact check imports the built Token Exchange ESM directly under Node and typechecks a self-importing consumer through the package's exports and bundled declarations; no source alias participates. The Node deployment check production-deploys a Fastify host fixture, imports the deployed package roots, typechecks the public adapter options, and exercises a real loopback listener with GET and form POST requests. The POST reaches the built Token Exchange handler and checks its `unsupported_grant_type` response. The Fastify host fixture permits `@github-app-token-broker/fastify`, `@github-app-token-broker/token-exchange`, `jose`, and `zod` when tsdown bundles dependencies during that fixture build. Other dependencies encountered at that stage fail the build. This guard cannot identify dependencies already embedded in consumed package artifacts. The root Wrangler file is a unit-test harness. It intentionally repeats the package Worker's compatibility flags and binding shapes so Workerd unit tests execute under the production runtime constraints; `env-types:check`, the GitHub App Information Workerd integration project, and the package dry-run validate the deployable config. The package Wrangler file is a public-safe dry-run template; deployment-owned identifiers and routes are supplied by the external deployment system.
+
+### Container integration
+
+The [suite guide](../test/integration/README.md) owns the explicit Compose startup,
+host-driver, and cleanup commands. Run them for both Fastify and Wrangler/Workerd
+with separate project names. The driver requires the pinned Node 24 runtime and
+a running Docker engine with Compose (including OrbStack); it needs no
+host-installed packages or vendor credentials. The image uses the repository's
+frozen pnpm tree and Node 24. Local cleanup removes the project's containers,
+network, and generated-key volume. Image removal is optional; reusable Docker
+build cache remains.
+
+Fastify runs a bundled synthetic deployment from a separate `pnpm deploy --prod`
+directory. Worker runs emitted `wrangler deploy --dry-run` output with
+`wrangler dev --no-bundle`, preserving the source runtime configuration. Both use
+native outbound Fetch and runtime-provided credentials. Separate Node HTTPS mocks
+verify protocol behavior at the fixed production origins through network aliases.
+A host Node driver reaches dynamically assigned loopback ports and asks Compose
+to recreate the broker when a scenario requires fresh process state. Ordinary
+protocol cases share a broker with non-cacheable OIDC responses. The standard
+bridge network permits outbound access; it is not an egress-isolation boundary.
+
+The [container integration decision](decisions/container-integration-testing.md)
+owns isolation and oracle boundaries. [Running and extending the
+suite](../test/integration/README.md) documents services, scenarios, and debugging. The [experiment record](research/container-integration-testing.md)
+separates observed results from vendor and deployment limitations.

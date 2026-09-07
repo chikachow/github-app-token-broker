@@ -5,6 +5,10 @@
   "workspaces": {
     "packages/token-exchange": {
       "entry": ["artifact/consumer.ts"]
+    },
+    ".": {
+      "entry": ["test/integration/*.mjs", "test/integration/worker.ts"]
     }
-  }
+  },
+  "ignoreBinaries": ["openssl"]
 }

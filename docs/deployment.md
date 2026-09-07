@@ -81,6 +81,12 @@ composition. `pnpm run node-deploy:check` builds and production-deploys that fix
 temporary directory, verifies package-root ESM and declarations without source aliases, starts it
 only on an ephemeral loopback socket, and then removes it.
 
+`test/deployment/integration-fastify` is the separate synthetic deployment for the
+[container integration suite](../test/integration/README.md). It bundles the
+composition and broker code, then runs from a production-pruned directory. Its
+signed issuance and upstream-failure checks complement the package-root consumer
+contract above.
+
 ## External Cloudflare Worker deployment contract
 
 The deployment system is maintained outside this repository. It must:
@@ -106,7 +112,12 @@ Source maintenance workflows pin an immutable external action release and use it
 Source CI runs nine granular validation lanes in parallel. Dedicated `artifact:check` and
 `node-deploy:check` lanes independently validate the source-owned built Token Exchange artifact
 and production-pruned Fastify consumer contracts, while the Worker dry-run lane validates the
-public-safe template. Successful source CI does not validate a deployment-owned composition,
+public-safe template. Local container integration runs Fastify from a
+bundled, production-pruned deployment and Worker from its emitted Wrangler dry-run
+bundle with `--no-bundle`. Both artifacts compile a synthetic composition and
+receive disposable credentials at runtime. Native outbound Fetch reaches separate
+HTTPS OIDC and GitHub mocks at the fixed production origins through network aliases. Successful source CI does not validate
+a deployment-owned composition,
 credentials, routes, or post-deployment smoke tests; the external deployment system retains those
 responsibilities.
 

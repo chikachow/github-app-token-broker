@@ -209,6 +209,28 @@ importers:
         specifier: 'catalog:'
         version: 7.0.2
 
+  test/deployment/integration-fastify:
+    dependencies:
+      fastify:
+        specifier: 'catalog:'
+        version: 5.12.3
+    devDependencies:
+      '@github-app-token-broker/fastify':
+        specifier: workspace:*
+        version: file:packages/fastify(fastify@5.12.3)
+      '@github-app-token-broker/token-exchange':
+        specifier: workspace:*
+        version: link:../../../packages/token-exchange
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.13.3
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.0(oxc-resolver@11.24.2)(typescript@7.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+
   workers/github-app-token-broker:
     dependencies:
       '@github-app-token-broker/github':
