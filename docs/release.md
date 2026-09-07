@@ -24,7 +24,9 @@ Run this checklist before making the repository public or tagging a release.
 - The Worker package exposes the named composition Interface and no default production composition.
 - The Fastify package exposes only the named handler-only plugin contract.
 - `node-deploy:check` verifies the Fastify package's built ESM and declarations through a
-  production-pruned external consumer built from tracked clean source.
+  production-pruned external consumer built from the current worktree. Run release
+  validation from the tracked-file source tree required above; this check does not
+  enforce source cleanliness or provenance.
 - The Fastify deployment fixture remains deny-all and is not a production composition; Node host
   lifecycle, admission, and composition remain externally owned.
 - Deployment-owned entrypoints re-export `GitHubAppInformationEntrypoint` and
