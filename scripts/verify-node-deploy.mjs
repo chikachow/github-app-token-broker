@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -64,6 +65,15 @@ if (typeof createGitHubAppTokenExchange !== "function") {
     if (response.headers.get("cache-control") !== "no-store") {
       throw new Error("deployed Fastify host omitted the non-cacheable OAuth response contract");
     }
+
+    const postResponse = await fetch(`${address}/automation/token`, {
+      body: new URLSearchParams({ grant_type: "unsupported" }),
+      method: "POST",
+    });
+
+    assert.equal(postResponse.status, 400);
+    assert.deepEqual(await postResponse.json(), { error: "unsupported_grant_type" });
+    assert.equal(postResponse.headers.get("cache-control"), "no-store");
   } finally {
     await app.close();
   }
