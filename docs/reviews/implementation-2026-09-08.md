@@ -345,5 +345,76 @@ separate OIDC and GitHub mocks and Compose-owned host recreation. The older
 combined upstream mock and host lifecycle implementation are not reintroduced.
 
 The commit sequence separates OIDC admission and classification, GitHub
-transport status and cleanup, and mutation comparison with documentation.
+transport status and cleanup, and mutation comparison with documentation. A
+fourth commit aligns the integration fixture's Node declarations with Node 24.
 Earlier measurements above remain tied to their recorded snapshots.
+
+A temporary merge with current main
+`c8cf2b25b497b87e4633b4ea63122acff836e206` exposed a dependency mismatch: the
+integration fixture requested Node 26 declarations removed from main's lockfile.
+The fixture now pins `@types/node` 24.13.3. Pinned pnpm regenerates the combined
+lockfile from the merged manifests; relative to main, that lockfile adds only the
+integration fixture's importer. Frozen installation and the complete check pass
+on both the PR branch and this resolved temporary merge. When incorporating
+main into the stack, regenerate its lockfile from the merged manifests.
+
+Actual mutation-lane discovery on the PR branch selects all 26 ordinary test
+files across `unit`, `worker-integration`, `node`, and `fastify`. Independent
+review of the four-file integration port found no unresolved findings.
+
+The final PR branch passes the frozen install and complete check with Node
+24.18.0, pnpm 10.33.0, and `VITEST_MAX_WORKERS=2`: all 30 files and 585 tests,
+built package consumers, production-pruned Node deployment, and Worker dry run.
+The final container run passes 36 Fastify and 37 Workerd cases. Both hosts cover
+malformed `ext`, deep additive JSON, stale-cache retention, and prompt GitHub
+body cancellation with exact lookup and zero-mint evidence. Compose cleanup
+completed and no owned containers remained.
+
+Coverage on the resolved current-main merge also passes all 585 tests and the
+configured gates: 99.29% lines, 97.24% branches, 99.56% functions, and 99.22%
+statements. This run uses main's updated Cloudflare Vitest plugin and explicit
+runtime-source inclusion. An initial two-worker coverage run during concurrent
+machine load timed out in the existing form property (seed `385850665`); the
+final run uses `VITEST_MAX_WORKERS=1` and `--no-file-parallelism` after the
+container run. No test budget or timeout changes are committed.
+
+## Rebase onto current main — 2026-09-08
+
+The stack is rebased onto main `592808896150cc0e62bcbde3ec2867e8a70d41c3`.
+PR #67 now ends at `6e2c5507a95d7387ed5b31daf5498d0b20222692`; only the
+remediation commits above the older `78c5a9f` harness are transplanted onto it.
+The earlier preparation and measurements remain historical snapshots.
+
+The integration fixture consumes the shared catalog, including Node 24
+declarations, so the former declaration-fix commit now retains only its
+historical validation record. Upstream strict peer and dependency-build policies,
+built Node GET and POST checks, shipped declaration validation, Codecov CLI pin,
+and workflow concurrency remain intact. No production fix or source regression
+changes relative to the original remediation head `c850d22`.
+
+Integration cases follow the simplified harness lifecycle: malformed `ext` and
+deep additive JSON use fresh OIDC state; the stale-cache case explicitly starts
+a fresh broker; unused GitHub body cancellation runs in the ordinary deployment
+group before positive recovery. There are fifteen broker starts per host.
+
+Rebased validation uses Node 24.18.0 and pnpm 10.34.5:
+
+- Frozen installation and `node --run check` pass with `VITEST_MAX_WORKERS=2`,
+  including all 585 tests, shipped declarations, production-pruned Node POST,
+  and Worker dry run.
+- Both Linux container suites pass: 37 Fastify and 38 Worker cases, with no
+  failures, cancellations, or skips. Compose removes all owned stack resources.
+- Serial coverage with `VITEST_MAX_WORKERS=1` and `--no-file-parallelism` passes:
+  99.29% lines, 97.24% branches, 99.56% functions, and 99.22% statements.
+- Mutation comparison discovery still selects all 26 ordinary files across
+  `unit`, `worker-integration`, `node`, and `fastify`. The curated mutation matrix
+  is not rerun for this rebase; its earlier results remain snapshot-bound.
+- Post-rebase range and semantic review finds no unresolved issues. Runtime
+  implementations and source regressions are byte-identical to the original
+  remediation head; integration expectations and failure evidence are retained.
+
+A reused local dependency tree reported ignored build scripts after the policy
+change. A fresh frozen install passed without changing dependency policy, and
+fresh Linux image builds passed with both install scripts disabled. The separate
+remediation checkout initially selected Node 26; its final required checks and
+both final integration drivers explicitly use Node 24.
