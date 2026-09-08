@@ -4,6 +4,7 @@ packages:
   - "workers/*"
 
 autoInstallPeers: false
+strictPeerDependencies: true
 engineStrict: true
 minimumReleaseAge: 4320
 injectWorkspacePackages: true
