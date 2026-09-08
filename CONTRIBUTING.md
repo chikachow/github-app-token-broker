@@ -23,6 +23,9 @@ Shared exact dependency versions live in the default catalog in
 `pnpm-workspace.yaml`. Update the catalog entry to keep package and deployment
 fixture dependencies aligned. Public peer dependency ranges remain separate.
 
+Dependency resolution rejects missing or incompatible peer dependencies through
+`strictPeerDependencies`; `autoInstallPeers: false` keeps peer dependencies explicit.
+
 Dependency build scripts require an explicit decision in `allowBuilds` in
 `pnpm-workspace.yaml`; `strictDepBuilds` rejects unreviewed scripts. The `esbuild`
 and `workerd` install scripts are disabled; their platform packages supply the
