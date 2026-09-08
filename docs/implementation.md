@@ -129,6 +129,9 @@ builds its own prerequisites. The test lane alone receives `id-token: write` for
 upload. The required `ci` result aggregates all nine lanes and fails when any lane fails, is
 cancelled, or is skipped.
 
+The built Token Exchange artifact and Node production-consumer checks both validate
+imported declaration files with `skipLibCheck: false`.
+
 New PR CI runs cancel older runs for the same PR. Main-branch runs have separate
 concurrency groups, preserving each successful run for the deployment handoff.
 The `pnpm-up` workflow serializes updates to its shared `deps/pnpm-up` branch

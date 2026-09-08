@@ -121,7 +121,7 @@ await app.close();
           module: "NodeNext",
           moduleResolution: "NodeNext",
           noEmit: true,
-          skipLibCheck: true,
+          skipLibCheck: false,
           strict: true,
           target: "ES2024",
           typeRoots: [join(process.cwd(), "node_modules/@types")],
