@@ -10,6 +10,7 @@
 - [Fail-closed Token Exchange observability decision](decisions/fail-closed-token-exchange-observability.md): mandatory acknowledgement, optional diagnostics, and revocation after failed success acknowledgement.
 - [GitHub App Information research](research/github-app-information.md) and [TypeScript property-based testing survey](research/property-based-testing-2026-08.md): dated source-backed findings.
 - [Implementation review, 2026-09-08](reviews/implementation-2026-09-08.md): pinned origin findings, local remediation, and validation evidence, with the pre-existing integration commits distinguished.
+- [Buildkite OIDC research](research/buildkite-oidc.md) and [composition recipe](../examples/buildkite/README.md): provider evidence, authorization assumptions, deployment wiring, and a request-only job snippet.
 
 Decision records may describe source-supported capabilities. The service contract is authoritative for public behavior and security semantics. Each external deployment's reviewed TypeScript composition is authoritative for the OIDC Provider Registrations and Permit Statements compiled into its artifact.
 

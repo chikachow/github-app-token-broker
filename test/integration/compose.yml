@@ -54,6 +54,7 @@ services:
         aliases:
           [
             token.actions.githubusercontent.com,
+            agent.buildkite.com,
             accounts.google.com,
             www.googleapis.com,
             oidc.fly.io,

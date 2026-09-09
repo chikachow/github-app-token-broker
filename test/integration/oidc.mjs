@@ -16,6 +16,15 @@ const providerFixtures = {
     signingKeyName: "github-actions",
     claims: { repository: "integration-owner/source", ref: "refs/heads/main" },
   },
+  buildkite: {
+    issuer: "https://agent.buildkite.com",
+    jwksUri: "https://agent.buildkite.com/.well-known/jwks",
+    signingKeyName: "buildkite",
+    claims: {
+      pipeline_id: "55555555-5555-4555-8555-555555555555",
+      azp: "context-with-no-profile-relationship",
+    },
+  },
   "google-service-account": {
     issuer: "https://accounts.google.com",
     jwksUri: "https://www.googleapis.com/oauth2/v3/certs",
@@ -36,7 +45,7 @@ const providerFixtures = {
   },
 };
 const keys = Object.fromEntries(
-  ["github-actions", "google", "fly", "rotated", "untrusted"].map((name) => [
+  ["github-actions", "buildkite", "google", "fly", "rotated", "untrusted"].map((name) => [
     name,
     readFixture(`${name}.pem`),
   ]),

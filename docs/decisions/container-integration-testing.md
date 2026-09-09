@@ -23,6 +23,10 @@ startup. A Node driver on the host uses Docker CLI and native
 HTTP requests. It needs no dependencies, Docker socket inside a container, custom
 process supervisor, or broker lifecycle API.
 
+The shared provider/host fixture owns its synthetic OIDC Provider Registrations
+and Permit Statements independently of instructional examples. Dedicated example
+tests exercise those compositions through the public composition Interface.
+
 Fastify's fixture bundles its compiled composition and broker implementation,
 then `pnpm deploy --prod` creates an independent runtime directory with only
 production dependencies. Worker artifacts come from `wrangler deploy --dry-run`;

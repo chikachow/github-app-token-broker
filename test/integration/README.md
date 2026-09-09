@@ -45,18 +45,18 @@ settings and bindings; both compiled variants retain the named RPC export.
 Both hosts receive disposable App credentials at runtime. Separate build outputs
 provide the deliberately failing observation adapters.
 
-| Component            | Responsibility                                                                                                                         |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `prepare`            | Generates fresh signing keys, CA, and hostname-specific TLS certificates in a disposable volume.                                       |
-| `oidc`               | Serves discovery and JWKS over HTTPS and signs synthetic GitHub Actions, Google service-account, and Fly ID Tokens with separate keys. |
-| `github`             | Verifies App JWTs and literal repository/permission narrowing before minting disposable tokens over HTTPS.                             |
-| `fastify` / `worker` | Starts the selected deployment artifact with its native outbound Fetch implementation.                                                 |
-| Host Node driver     | Recreates the selected broker container, sends HTTP requests, and checks responses plus independent upstream evidence.                 |
+| Component            | Responsibility                                                                                                                                    |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `prepare`            | Generates fresh signing keys, CA, and hostname-specific TLS certificates in a disposable volume.                                                  |
+| `oidc`               | Serves discovery and JWKS over HTTPS and signs synthetic GitHub Actions, Google service-account, Fly, and Buildkite ID Tokens with separate keys. |
+| `github`             | Verifies App JWTs and literal repository/permission narrowing before minting disposable tokens over HTTPS.                                        |
+| `fastify` / `worker` | Starts the selected deployment artifact with its native outbound Fetch implementation.                                                            |
+| Host Node driver     | Recreates the selected broker container, sends HTTP requests, and checks responses plus independent upstream evidence.                            |
 
 `oidc.mjs` and `github.mjs` own their respective protocol responses and scenario
 controls. `mocks/server.mjs` shares only transport, readiness, bounded JSON reading,
 and sanitized evidence collection. Subject-token controls require an explicit
-`providerFixtureId`: `github-actions`, `google-service-account`, or `fly-example-org`.
+`providerFixtureId`: `github-actions`, `google-service-account`, `fly-example-org`, or `buildkite`.
 These select synthetic provider fixtures whose issuer and document URLs remain
 explicit literals. Optional `claimOverrides` merge into the selected fixture payload;
 `signingKeyName` selects signing key material independently of the emitted `kid`
@@ -84,7 +84,7 @@ edge behavior.
 ## Network and trust
 
 The broker and mocks share a standard bridge network. DNS aliases route
-`api.github.com`, `token.actions.githubusercontent.com`,
+`api.github.com`, `token.actions.githubusercontent.com`, `agent.buildkite.com`,
 `accounts.google.com`, `www.googleapis.com`, and `oidc.fly.io` to the HTTPS mocks,
 preserving production origin and hostname checks. Only broker processes receive
 `NODE_EXTRA_CA_CERTS`; the suite requires TLS failure when that CA is absent.
@@ -98,15 +98,25 @@ listeners are test infrastructure and never part of the broker's public routes.
 ## Scenarios and evidence
 
 One provider matrix verifies signed issuance, exact repository/permission narrowing,
-and denial of Installation Access Token Issuance when selected Claims do not match policy before GitHub I/O for GitHub Actions, Google service
-accounts, and Fly on each built host. Google uses the cross-host JWK Set
-URL in its [discovery document](https://accounts.google.com/.well-known/openid-configuration).
-Fly uses organization-scoped discovery paths and rejects a token asserting an unregistered Fly organization issuer
-before I/O. Both non-null profiles have a signed rejection case; Fly accepts
-unrelated `azp` context because its profile is explicitly null.
+and denial of Installation Access Token Issuance when selected Claims do not match
+policy before GitHub I/O for GitHub Actions, Google service accounts, Fly, and
+Buildkite on each built host. Google uses the cross-host JWK Set URL in its
+[discovery document](https://accounts.google.com/.well-known/openid-configuration).
+Fly uses organization-scoped discovery paths and rejects a token asserting an
+unregistered Fly organization issuer before I/O. Both non-null profiles have a
+signed rejection case; Fly and Buildkite accept unrelated `azp` context because
+their profiles are explicitly null.
+
+The synthetic composition directly registers Buildkite and owns a Permit Statement
+selecting a pipeline UUID. Its matrix row verifies issuance and pipeline denial.
+Buildkite's distinct test repository keeps the two cross-issuer cases meaningful:
+valid native Claims must not authorize the other issuer's target. Both cases
+retain policy isolation with GitHub Actions. The [composition recipe](../../examples/buildkite/README.md)
+has separate focused tests for its four selected Claims and requested authority;
+the shared container fixture does not consume its policy or identifiers.
 
 Driver expectations, mock Claims, and compiled policy are independently authored.
-Each matrix policy-denial case also requires one new mandatory issuance-failure
+Each matrix and issuer-isolation policy-denial case requires one new mandatory issuance-failure
 observation with the expected issuer and `subject_token_unacceptable` policy
 outcome. The driver reads complete JSON records from the selected container's
 logs, comparing counts before and after the request with a bounded flush wait.
