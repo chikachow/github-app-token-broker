@@ -579,7 +579,7 @@ void describe(host === "worker" ? "Workerd" : "Fastify", { concurrency: false },
       while (true) {
         const [, events] = await evidence();
         assert.ok(Date.now() < deadline, "the upstream must observe prompt body cancellation");
-        if (events.some((event) => event.kind === "body-closed")) {
+        if (events.some((event) => event.kind === "response-closed")) {
           assert.deepEqual(
             events.filter((event) => event.method).map((event) => [event.method, event.path]),
             [["GET", "/repos/integration-owner/target/installation"]],
