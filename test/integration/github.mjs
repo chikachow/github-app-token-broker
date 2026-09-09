@@ -62,9 +62,12 @@ async function protocol(request, response) {
   if (request.url === "/app/installations/67890/access_tokens") {
     assert.equal(request.method, "POST");
     assert.equal(request.headers["content-type"], "application/json");
-    const mint = await readJson(request);
-    assert.deepEqual(mint, { repositories: ["target"], permissions: { contents: "write" } });
-    server.record({ kind: "mint", body: mint });
+    const mintRequestBody = await readJson(request);
+    assert.deepEqual(mintRequestBody, {
+      repositories: ["target"],
+      permissions: { contents: "write" },
+    });
+    server.record({ kind: "mint", body: mintRequestBody });
     return sendJson(response, 201, {
       token: "ghs_disposable_integration_token",
       expires_at: new Date(Date.now() + 3600000).toISOString(),
@@ -95,13 +98,13 @@ async function protocol(request, response) {
   if (request.url === "/app/installations/12345/access_tokens") {
     assert.equal(request.method, "POST");
     assert.equal(request.headers["content-type"], "application/json");
-    const mint = await readJson(request);
+    const mintRequestBody = await readJson(request);
     // Independent oracle: never import the policy or production request parser here.
-    assert.deepEqual(mint, {
+    assert.deepEqual(mintRequestBody, {
       repositories: ["target"],
       permissions: { contents: "read", pull_requests: "write" },
     });
-    server.record({ kind: "mint", body: mint });
+    server.record({ kind: "mint", body: mintRequestBody });
     if (mode === "rejected-mint") return sendJson(response, 422, { message: "must-not-escape" });
     if (mode === "stall-mint") return stallResponse(response);
     if (mode === "malformed-mint")
