@@ -209,7 +209,7 @@ export function createGitHubAppInformation(
       const parsedInput = parseInput(installationInputSchema, input);
 
       return requestGitHubAppInformation(configuration, dependencies, {
-        notFound: true,
+        mapNotFoundResponse: true,
         path: `/app/installations/${parsedInput.installation_id}`,
         responseSchema: githubInstallationSchema,
       });
@@ -219,7 +219,7 @@ export function createGitHubAppInformation(
       const parsedInput = parseInput(repositoryInstallationInputSchema, input);
 
       return requestGitHubAppInformation(configuration, dependencies, {
-        notFound: true,
+        mapNotFoundResponse: true,
         path: `/repos/${encodeURIComponent(parsedInput.owner)}/${encodeURIComponent(parsedInput.repo)}/installation`,
         responseSchema: githubInstallationSchema,
       });
@@ -231,12 +231,12 @@ async function requestGitHubAppInformation<Schema extends z.ZodType>(
   configuration: GitHubAppConfiguration,
   dependencies: GitHubAppDependencies,
   {
-    notFound = false,
+    mapNotFoundResponse = false,
     maxResponseBodyBytes,
     path,
     responseSchema,
   }: {
-    notFound?: boolean;
+    mapNotFoundResponse?: boolean;
     maxResponseBodyBytes?: number;
     path: string;
     responseSchema: Schema;
@@ -250,11 +250,11 @@ async function requestGitHubAppInformation<Schema extends z.ZodType>(
       responseSchema,
     });
   } catch (error) {
-    throw normalizeGitHubAppInformationError(error, notFound);
+    throw normalizeGitHubAppInformationError(error, mapNotFoundResponse);
   }
 }
 
-function normalizeGitHubAppInformationError(error: unknown, notFound: boolean): Error {
+function normalizeGitHubAppInformationError(error: unknown, mapNotFoundResponse: boolean): Error {
   if (error instanceof GitHubAppConfigurationError) {
     return error;
   }
@@ -268,7 +268,7 @@ function normalizeGitHubAppInformationError(error: unknown, notFound: boolean): 
       return new GitHubAppConfigurationError();
     }
 
-    if (notFound && error.upstreamStatus === 404) {
+    if (mapNotFoundResponse && error.upstreamStatus === 404) {
       return new GitHubAppNotFoundError();
     }
 
