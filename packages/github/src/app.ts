@@ -14,7 +14,7 @@ import {
 import type { InstallationAccessTokenRequest } from "./installation-access-token-request.ts";
 import { resolveSecretText, type SecretTextBinding } from "./secrets.ts";
 
-const githubJwtLifetimeSeconds = 9 * 60;
+const githubAppJwtExpirationOffsetSeconds = 9 * 60;
 
 let cachedPrivateKey:
   | {
@@ -237,7 +237,7 @@ async function createGitHubAppJwt(
   return new SignJWT({})
     .setProtectedHeader({ alg: "RS256" })
     .setIssuedAt(nowSeconds - 60)
-    .setExpirationTime(nowSeconds + githubJwtLifetimeSeconds)
+    .setExpirationTime(nowSeconds + githubAppJwtExpirationOffsetSeconds)
     .setIssuer(configuration.appId)
     .sign(privateKey);
 }
