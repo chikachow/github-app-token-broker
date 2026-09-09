@@ -25,7 +25,7 @@ import {
   type OidcProviderRegistration,
 } from "./provider-registration.ts";
 import type {
-  OidcIdTokenAuthenticationEvent,
+  OidcDiagnosticEvent,
   OidcIdTokenAuthenticationResult,
 } from "./id-token-authenticator.ts";
 import type { SubjectTokenAudience } from "./subject-token-audience.ts";
@@ -64,7 +64,7 @@ interface RegisteredOidcProviderVerifierDependencies {
 export interface RegisteredOidcProviderVerifier {
   verifyIdToken(
     idToken: string,
-    observe?: (event: OidcIdTokenAuthenticationEvent) => void,
+    observe?: (event: OidcDiagnosticEvent) => void,
   ): Promise<OidcIdTokenAuthenticationResult>;
 }
 
@@ -89,7 +89,7 @@ interface ProviderState {
 
 interface JwksRefresh {
   failureDiagnosticAttempted: boolean;
-  readonly failureDiagnosticObserver: ((event: OidcIdTokenAuthenticationEvent) => void) | undefined;
+  readonly failureDiagnosticObserver: ((event: OidcDiagnosticEvent) => void) | undefined;
   readonly identity: JwksResolutionIdentity;
   readonly result: Promise<CacheEntry<CachedJwks>>;
 }
@@ -131,7 +131,7 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
 
   public async verifyIdToken(
     idToken: string,
-    observe?: (event: OidcIdTokenAuthenticationEvent) => void,
+    observe?: (event: OidcDiagnosticEvent) => void,
   ): Promise<OidcIdTokenAuthenticationResult> {
     try {
       const operationDate = new Date(this.#dependencies.now().getTime());
@@ -209,7 +209,7 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
 
   async #providerMetadata(
     now: number,
-    observe: ((event: OidcIdTokenAuthenticationEvent) => void) | undefined,
+    observe: ((event: OidcDiagnosticEvent) => void) | undefined,
   ): Promise<ValidatedOidcProviderMetadata> {
     if (this.#state.metadata !== undefined && now < this.#state.metadata.freshUntil) {
       return this.#state.metadata.value;
@@ -264,7 +264,7 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
 
   async #refreshAndPublishProviderMetadata(
     now: number,
-    observe: ((event: OidcIdTokenAuthenticationEvent) => void) | undefined,
+    observe: ((event: OidcDiagnosticEvent) => void) | undefined,
   ): Promise<ValidatedOidcProviderMetadata> {
     try {
       const refreshed = await this.#fetchAndValidateProviderMetadata(now);
@@ -355,7 +355,7 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
     providerMetadata: ValidatedOidcProviderMetadata,
     forceRefresh: boolean,
     now: number,
-    observe: ((event: OidcIdTokenAuthenticationEvent) => void) | undefined,
+    observe: ((event: OidcDiagnosticEvent) => void) | undefined,
   ): Promise<CachedJwks> {
     const current = this.#state.jwks;
     const identity = createJwksResolutionIdentity(
@@ -587,8 +587,8 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
   }
 
   #observe(
-    event: OidcIdTokenAuthenticationEvent,
-    observe: ((event: OidcIdTokenAuthenticationEvent) => void) | undefined,
+    event: OidcDiagnosticEvent,
+    observe: ((event: OidcDiagnosticEvent) => void) | undefined,
   ): void {
     try {
       observe?.(event);
@@ -603,7 +603,7 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
     error: unknown,
     current: CacheEntry<unknown> | undefined,
     metadataGeneration: number | undefined,
-    observe: ((event: OidcIdTokenAuthenticationEvent) => void) | undefined,
+    observe: ((event: OidcDiagnosticEvent) => void) | undefined,
   ): void {
     const diagnosticCode = diagnosticCodeOf(error);
     const providerHttpStatus = providerHttpStatusOf(error);
@@ -629,7 +629,7 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
     remoteDocumentKind: "jwk_set" | "provider_configuration",
     current: CacheEntry<unknown>,
     metadataGeneration: number,
-    observe: ((event: OidcIdTokenAuthenticationEvent) => void) | undefined,
+    observe: ((event: OidcDiagnosticEvent) => void) | undefined,
   ): void {
     this.#observe(
       {

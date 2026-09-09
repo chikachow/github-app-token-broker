@@ -72,17 +72,17 @@ export type OidcIdTokenAuthenticationResult =
 export interface OidcIdTokenAuthenticator {
   authenticateIdToken(
     idToken: string,
-    observe?: (event: OidcIdTokenAuthenticationEvent) => void,
+    observe?: (event: OidcDiagnosticEvent) => void,
   ): Promise<OidcIdTokenAuthenticationResult>;
 }
 
 export interface OidcIdTokenAuthenticatorDependencies {
   readonly fetch: typeof fetch;
   readonly now: () => Date;
-  readonly observe?: ((event: OidcIdTokenAuthenticationEvent) => void) | undefined;
+  readonly observe?: ((event: OidcDiagnosticEvent) => void) | undefined;
 }
 
-export type OidcIdTokenAuthenticationEvent =
+export type OidcDiagnosticEvent =
   | {
       readonly freshUntil: string;
       readonly metadataGeneration?: number;
@@ -124,7 +124,7 @@ export type OidcIdTokenAuthenticationEvent =
     };
 
 class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator {
-  readonly #defaultObserve: ((event: OidcIdTokenAuthenticationEvent) => void) | undefined;
+  readonly #defaultObserve: ((event: OidcDiagnosticEvent) => void) | undefined;
   readonly #verifierByIssuer: ReadonlyMap<OidcIssuerIdentifier, RegisteredOidcProviderVerifier>;
 
   public constructor(
@@ -155,7 +155,7 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
 
   public async authenticateIdToken(
     idToken: string,
-    observe: ((event: OidcIdTokenAuthenticationEvent) => void) | undefined = this.#defaultObserve,
+    observe: ((event: OidcDiagnosticEvent) => void) | undefined = this.#defaultObserve,
   ): Promise<OidcIdTokenAuthenticationResult> {
     const unverifiedIssuer = issuerClaimWithoutVerification(idToken);
 

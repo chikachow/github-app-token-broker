@@ -178,7 +178,8 @@ The aggregate check builds once, then reuses that artifact for the artifact, typ
 
 OIDC verification evidence exposes the verified token header's optional `kid` as
 `idTokenHeaderKeyId`; Token Exchange observations serialize it as
-`subject_token.id_token_header_key_id`. The [release migration](release.md#oidc-terminology-migration)
+`subject_token.id_token_header_key_id`. `OidcDiagnosticEvent` names the separate optional
+remote-document/cache diagnostic union. The [release migration](release.md#oidc-terminology-migration)
 records the source and observation consumer updates.
 
 ### OIDC test ownership

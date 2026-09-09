@@ -99,7 +99,9 @@ GitHub credential issuance remain outside this boundary.
 The exported verification evidence field `idTokenHeaderKeyId` reports the
 verified ID Token protected header's `kid`, or `null` when absent. The mandatory
 observation field is `subject_token.id_token_header_key_id`. Neither field claims to identify
-the selected JWK.
+the selected JWK. Optional cache and remote-document events use the exported
+`OidcDiagnosticEvent` type; they remain separate from mandatory Token Exchange
+observations.
 
 ### Configuration ownership
 
