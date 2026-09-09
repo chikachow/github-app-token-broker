@@ -28,7 +28,7 @@ then `pnpm deploy --prod` creates an independent runtime directory with only
 production dependencies. Worker artifacts come from `wrangler deploy --dry-run`;
 Wrangler/Workerd runs their emitted JavaScript with `--no-bundle`. The Worker
 fixture preserves the source compatibility date, flags, rate-limit binding,
-observation settings, required secrets, and named RPC export. Both hosts receive
+mandatory observation semantics, required secrets, and named RPC export. Both hosts receive
 credentials at startup; provider trust and issuance policy remain compiled into
 the artifacts. Neither host replaces Fetch.
 
@@ -73,6 +73,14 @@ driver can require that exchange completion remains pending, then receives a
 sanitized failure without a token. This enforces the
 [mandatory observation decision](fail-closed-token-exchange-observability.md)
 without claiming durable storage from default console logging.
+
+Policy-denial scenarios require a new issuer-qualified mandatory observation
+with the expected policy outcome, in addition to the public error and upstream
+ledger. The driver reads complete JSON records through Docker Compose logs.
+Fastify uses its native structured logger; the normal Worker fixture supplies a
+JSON console observer through its existing runtime seam. This proves that the
+request reached policy evaluation without replacing Fetch or adding a broker
+control route, and makes no claim about production logging durability.
 
 Use actual incomplete HTTPS bodies for deadline checks and chunked uploads for
 request-size checks. Require the owning deadline with scheduling tolerance and

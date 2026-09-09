@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 
 const directory = "test/integration/.generated";
 mkdirSync(directory, { recursive: true });
-for (const name of ["app", "oidc", "rotated", "untrusted"]) {
+for (const name of ["app", "github-actions", "google", "fly", "rotated", "untrusted"]) {
   const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
   writeFileSync(`${directory}/${name}.pem`, privateKey.export({ type: "pkcs8", format: "pem" }), {
     mode: 0o600,
@@ -39,9 +39,17 @@ execFileSync(
   ],
   { stdio: "ignore" },
 );
-for (const [name, hostname] of [
-  ["oidc", "token.actions.githubusercontent.com"],
-  ["github", "api.github.com"],
+for (const { name, hostnames } of [
+  {
+    name: "oidc",
+    hostnames: [
+      "token.actions.githubusercontent.com",
+      "accounts.google.com",
+      "www.googleapis.com",
+      "oidc.fly.io",
+    ],
+  },
+  { name: "github", hostnames: ["api.github.com"] },
 ]) {
   execFileSync(
     "openssl",
@@ -51,7 +59,7 @@ for (const [name, hostname] of [
       "rsa:2048",
       "-nodes",
       "-subj",
-      `/CN=${hostname}`,
+      `/CN=${hostnames[0]}`,
       "-keyout",
       `${directory}/${name}.tls.key`,
       "-out",
@@ -61,7 +69,7 @@ for (const [name, hostname] of [
   );
   writeFileSync(
     `${directory}/${name}.ext`,
-    `subjectAltName=DNS:${hostname}\nextendedKeyUsage=serverAuth\n`,
+    `subjectAltName=${hostnames.map((hostname) => `DNS:${hostname}`).join(",")}\nextendedKeyUsage=serverAuth\n`,
   );
   execFileSync(
     "openssl",
