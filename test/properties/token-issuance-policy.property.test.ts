@@ -70,8 +70,8 @@ const sameOwnerOtherResource = {
   repository: "other-target-repository",
 } as const;
 const otherResource = { owner: "other-owner", repository: "other-repository" } as const;
-const targetOwnerResource = { owner: "target-owner", repository: null } as const;
-const otherOwnerResource = { owner: "other-owner", repository: null } as const;
+const targetOwnerResourceConstraint = { owner: "target-owner", repository: null } as const;
+const otherOwnerResourceConstraint = { owner: "other-owner", repository: null } as const;
 
 const permissionNameArbitrary = fc.oneof(
   {
@@ -164,10 +164,10 @@ const mixedPolicyScenarioArbitrary: fc.Arbitrary<PolicyScenario> = claimEntriesA
         predicates: predicateArbitrary,
         resource: fc.constantFrom(
           targetResource,
-          targetOwnerResource,
+          targetOwnerResourceConstraint,
           sameOwnerOtherResource,
           otherResource,
-          otherOwnerResource,
+          otherOwnerResourceConstraint,
         ),
       })
       .map(({ issuer, permissions, predicates, resource }) =>
@@ -205,7 +205,11 @@ const singleStatementPermitArbitrary: fc.Arbitrary<TaggedPolicyScenario> = fc
     taggedScenario(
       "single-statement-permit",
       scenario(
-        [statement(permissions, { resource: ownerWide ? targetOwnerResource : targetResource })],
+        [
+          statement(permissions, {
+            resource: ownerWide ? targetOwnerResourceConstraint : targetResource,
+          }),
+        ],
         permissions,
       ),
     ),
@@ -213,20 +217,20 @@ const singleStatementPermitArbitrary: fc.Arbitrary<TaggedPolicyScenario> = fc
 
 const multiStatementCompositionArbitrary: fc.Arbitrary<TaggedPolicyScenario> =
   multiPermissionEntriesArbitrary.chain((entries) =>
-    fc
-      .integer({ max: entries.length - 1, min: 1 })
-      .map((splitAt) =>
-        taggedScenario(
-          "multi-statement-composition",
-          scenario(
-            [
-              statement(permissionMap(entries.slice(0, splitAt))),
-              statement(permissionMap(entries.slice(splitAt)), { resource: targetOwnerResource }),
-            ],
-            permissionMap(entries),
-          ),
+    fc.integer({ max: entries.length - 1, min: 1 }).map((splitAt) =>
+      taggedScenario(
+        "multi-statement-composition",
+        scenario(
+          [
+            statement(permissionMap(entries.slice(0, splitAt))),
+            statement(permissionMap(entries.slice(splitAt)), {
+              resource: targetOwnerResourceConstraint,
+            }),
+          ],
+          permissionMap(entries),
         ),
       ),
+    ),
   );
 
 const twoPermissionEntriesArbitrary = fc.uniqueArray(
@@ -259,7 +263,7 @@ const crossContributionArbitrary: fc.Arbitrary<TaggedPolicyScenario> = fc
 const targetUnsupportedArbitrary: fc.Arbitrary<TaggedPolicyScenario> = fc
   .tuple(
     permissionMapArbitrary,
-    fc.constantFrom(sameOwnerOtherResource, otherResource, otherOwnerResource),
+    fc.constantFrom(sameOwnerOtherResource, otherResource, otherOwnerResourceConstraint),
   )
   .map(([permissions, resource]) =>
     taggedScenario(
@@ -390,7 +394,7 @@ const semanticExamples: readonly TaggedPolicyScenario[] = [
   taggedScenario(
     "mixed-policy",
     scenario(
-      [statement({ contents: "write" }, { resource: targetOwnerResource })],
+      [statement({ contents: "write" }, { resource: targetOwnerResourceConstraint })],
       { contents: "read" },
       claimsRecord([]),
       sameOwnerOtherResource,
