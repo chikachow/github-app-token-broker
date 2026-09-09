@@ -564,7 +564,7 @@ void describe(host === "worker" ? "Workerd" : "Fastify", { concurrency: false },
         );
       });
     void it(
-      "bounds github response-body consumption with the real clock",
+      "bounds GitHub response-body consumption with the real clock",
       { timeout: 20000 },
       async () => {
         await assertGitHubActionsExchangeResponseBodyDeadline("github", "stall-mint", 9500);
@@ -620,7 +620,7 @@ void describe(host === "worker" ? "Workerd" : "Fastify", { concurrency: false },
         assert.deepEqual(githubEvents, []);
       });
     void it(
-      "bounds oidc response-body consumption with the real clock",
+      "bounds OIDC response-body consumption with the real clock",
       { timeout: 20000 },
       async () => {
         await assertGitHubActionsExchangeResponseBodyDeadline("oidc", "stall", 4500);
