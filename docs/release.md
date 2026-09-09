@@ -43,6 +43,19 @@ Run this checklist before making the repository public or tagging a release.
 - Deployment remains outside this codebase.
 - Source workflows do not hard-code deployment-owned audience or route values; any Token Exchange Endpoint override comes from repository configuration.
 
+## OIDC terminology migration
+
+Consumers of the OIDC package use `idTokenHeaderKeyId` in
+`OidcVerificationEvidence` and `VerifiedOidcIdToken`, replacing `resolvedKeyId`.
+Observation consumers use `subject_token.id_token_header_key_id`, replacing
+`subject_token.resolved_key_id`.
+The value is unchanged: it is the verified token header's `kid`, or `null` when
+absent, including when a singleton JWK Set supplies a verification key.
+Update structured-log queries, dashboards, and observation adapters when adopting
+this revision. The old field is not emitted alongside the new field.
+
+Rebuild source consumers against the renamed exports before deployment.
+
 ## Repository Settings
 
 Enable these settings after publication:

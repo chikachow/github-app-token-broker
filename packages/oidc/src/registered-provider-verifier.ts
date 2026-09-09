@@ -195,7 +195,7 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
       return {
         ok: true,
         verificationEvidence: {
-          resolvedKeyId: verifiedIdToken.resolvedKeyId,
+          idTokenHeaderKeyId: verifiedIdToken.idTokenHeaderKeyId,
         },
         verifiedSubjectToken: {
           claims: verifiedIdToken.claims,
@@ -681,7 +681,7 @@ async function verifyIdToken(input: {
   return {
     claims,
     issuer: input.providerRegistration.issuer,
-    resolvedKeyId: typeof protectedHeader.kid === "string" ? protectedHeader.kid : null,
+    idTokenHeaderKeyId: typeof protectedHeader.kid === "string" ? protectedHeader.kid : null,
   };
 }
 

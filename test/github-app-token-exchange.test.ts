@@ -1006,7 +1006,7 @@ function expectedIssuanceObservationFields({
     installation_access_token_request: installationAccessTokenRequest,
     subject_token: {
       issuer: "https://token.actions.githubusercontent.com",
-      resolved_key_id: "test-key-1",
+      id_token_header_key_id: "test-key-1",
       sub: "repo:fixture-owner/fixture-source-repository:ref:refs/heads/fixture-base-branch",
       subject_token_kind: "id_token",
     },

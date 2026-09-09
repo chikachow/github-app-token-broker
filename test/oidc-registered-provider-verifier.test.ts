@@ -246,7 +246,10 @@ describe("OIDC mixed JWK Set authentication", () => {
     );
     await expect(
       authenticator.authenticateIdToken(await signedIdToken({ kid: "healthy-key" }), observe),
-    ).resolves.toMatchObject({ ok: true, verificationEvidence: { resolvedKeyId: "healthy-key" } });
+    ).resolves.toMatchObject({
+      ok: true,
+      verificationEvidence: { idTokenHeaderKeyId: "healthy-key" },
+    });
     expect(events).not.toContainEqual(
       expect.objectContaining({ event: "oidc_remote_document_stale_used" }),
     );
@@ -335,7 +338,7 @@ describe("Registered OIDC Provider Verifier", () => {
       testVerifier(successfulProviderFetch).verifyIdToken(await signedIdToken({ kid: null })),
     ).resolves.toMatchObject({
       ok: true,
-      verificationEvidence: { resolvedKeyId: null },
+      verificationEvidence: { idTokenHeaderKeyId: null },
     });
   });
 

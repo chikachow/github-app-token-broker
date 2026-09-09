@@ -158,7 +158,7 @@ function subjectTokenLogFields(
 ): Record<string, unknown> {
   return {
     issuer: authenticationContext.verifiedSubjectToken.issuer,
-    resolved_key_id: authenticationContext.verificationEvidence.resolvedKeyId,
+    id_token_header_key_id: authenticationContext.verificationEvidence.idTokenHeaderKeyId,
     sub: authenticationContext.verifiedSubjectToken.claims.sub,
     subject_token_kind: "id_token",
   };
