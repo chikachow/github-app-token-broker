@@ -23,7 +23,8 @@ export interface VerifiedSubjectToken {
 }
 
 export interface OidcVerificationEvidence {
-  readonly resolvedKeyId: string | null;
+  /** Verified ID Token protected-header kid, or null when absent; not the selected JWK identity. */
+  readonly idTokenHeaderKeyId: string | null;
 }
 
 interface OidcIdTokenAuthenticationSuccess {

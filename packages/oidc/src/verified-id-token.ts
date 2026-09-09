@@ -23,5 +23,6 @@ export type VerifiedOidcIdTokenClaims = ReadonlyJsonObject & {
 export interface VerifiedOidcIdToken {
   readonly claims: VerifiedOidcIdTokenClaims;
   readonly issuer: OidcIssuerIdentifier;
-  readonly resolvedKeyId: string | null;
+  /** Verified ID Token protected-header kid, or null when absent; not the selected JWK identity. */
+  readonly idTokenHeaderKeyId: string | null;
 }

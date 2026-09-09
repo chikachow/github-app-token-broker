@@ -96,6 +96,11 @@ are verification evidence for diagnostics, not identity or policy inputs.
 HTTP request handling, OAuth responses, request logging, Token Policy, and
 GitHub credential issuance remain outside this boundary.
 
+The exported verification evidence field `idTokenHeaderKeyId` reports the
+verified ID Token protected header's `kid`, or `null` when absent. The mandatory
+observation field is `subject_token.id_token_header_key_id`. Neither field claims to identify
+the selected JWK.
+
 ### Configuration ownership
 
 Configuration is placed at the narrowest stable owner that determines its

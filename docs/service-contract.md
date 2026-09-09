@@ -213,6 +213,11 @@ acknowledgement replaces the otherwise applicable response with non-cacheable
 `500 {"error":"server_error"}`. The response and fallback log contain neither the observation
 failure detail nor a subject or access token.
 
+Authenticated Token Exchange observations include `subject_token.id_token_header_key_id`: the
+verified ID Token protected header's `kid`, or `null` when the header omits it.
+This does not identify the selected verification JWK; a token without `kid` can
+verify against a singleton JWK Set. This evidence is never a policy input.
+
 If acknowledgement of the success observation fails after GitHub has returned an Installation
 Access Token, the broker awaits one best-effort request to GitHub's
 [`DELETE /installation/token`](https://docs.github.com/en/rest/apps/installations#revoke-an-installation-access-token),

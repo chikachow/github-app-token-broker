@@ -101,7 +101,7 @@ describe("OIDC ID Token Authenticator", () => {
   it("routes an exact registered issuer to its verifier result", async () => {
     const fetchOidcRemoteDocumentResponse = vi.fn(successfulProviderFetch);
     const authenticator = testAuthenticator(fetchOidcRemoteDocumentResponse);
-    const verificationEvidence: OidcVerificationEvidence = { resolvedKeyId: "test-key-1" };
+    const verificationEvidence: OidcVerificationEvidence = { idTokenHeaderKeyId: "test-key-1" };
     const verifiedSubjectToken: Pick<VerifiedSubjectToken, "issuer"> = {
       issuer: registration.issuer,
     };
