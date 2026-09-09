@@ -950,7 +950,7 @@ describe("Token Issuance Policy evaluation", () => {
     ).toEqual([true, true, true, true]);
   });
 
-  it("copies compiled input before evaluation", () => {
+  it("snapshots authoring definitions during policy compilation", () => {
     const permissions = { contents: "read" } as { contents: "read" | "write" };
     const expectedValues = ["production"];
     const statement = {
