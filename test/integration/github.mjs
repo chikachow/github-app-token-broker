@@ -13,7 +13,7 @@ const appPublicKey = readFixture("app.public.pem");
 let mode = "normal";
 let releaseRevocation;
 
-function verifyApp(request) {
+function assertGitHubAppRequest(request) {
   assert.equal(request.headers.accept, "application/vnd.github+json");
   assert.equal(request.headers["x-github-api-version"], "2022-11-28");
   assert.equal(request.headers["user-agent"], "github-app-token-broker");
@@ -51,7 +51,7 @@ async function protocol(request, response) {
     response.writeHead(204).end();
     return;
   }
-  verifyApp(request);
+  assertGitHubAppRequest(request);
   if (request.url === "/repos/integration-buildkite-owner/target/installation") {
     assert.equal(request.method, "GET");
     return sendJson(response, 200, {
