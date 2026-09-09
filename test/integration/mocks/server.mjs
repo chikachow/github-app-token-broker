@@ -51,7 +51,7 @@ export function createMockServer(name) {
     record,
     recordResponseClose(response) {
       const requestEvents = events;
-      response.once("close", () => requestEvents.push({ kind: "body-closed" }));
+      response.once("close", () => requestEvents.push({ kind: "response-closed" }));
     },
     reset() {
       events = [];
