@@ -365,7 +365,7 @@ describe("GitHub installation scope properties", () => {
     examples: scopeScenarioExamples,
     numRuns: generatedRunBudget + scopeScenarioExamples.length,
   })(
-    "normalizes valid scopes and rejects conflicting or whitespace-separated scopes",
+    "normalizes valid scopes and rejects conflicting levels or tab/newline separators",
     (scenario) => {
       const result = normalizeInstallationAccessTokenRequest({
         resource: repositoryResource,

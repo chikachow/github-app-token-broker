@@ -17,7 +17,7 @@ const githubPermissionTests = propertyTestLanes(
 const githubScopeTests = propertyTestLanes(
   githubPropertyTest,
   "github-scope",
-  "normalizes valid scopes and rejects conflicting or whitespace-separated scopes",
+  "normalizes valid scopes and rejects conflicting levels or tab/newline separators",
 );
 const githubResourceTests = propertyTestLanes(
   githubPropertyTest,
