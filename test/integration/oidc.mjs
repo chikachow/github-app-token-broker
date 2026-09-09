@@ -9,9 +9,37 @@ import {
 } from "./mocks/server.mjs";
 
 const server = createMockServer("oidc");
-const issuer = "https://token.actions.githubusercontent.com";
+const providerFixtures = {
+  "github-actions": {
+    issuer: "https://token.actions.githubusercontent.com",
+    jwksUri: "https://token.actions.githubusercontent.com/jwks",
+    signingKeyName: "github-actions",
+    claims: { repository: "integration-owner/source", ref: "refs/heads/main" },
+  },
+  "google-service-account": {
+    issuer: "https://accounts.google.com",
+    jwksUri: "https://www.googleapis.com/oauth2/v3/certs",
+    signingKeyName: "google",
+    claims: { sub: "107517467455664443765", azp: "107517467455664443765" },
+  },
+  "fly-example-org": {
+    issuer: "https://oidc.fly.io/example-org",
+    jwksUri: "https://oidc.fly.io/example-org/.well-known/jwks",
+    signingKeyName: "fly",
+    claims: {
+      sub: "custom-machine-subject",
+      app_name: "integration-app",
+      machine_name: null,
+      org_name: "different-org",
+      azp: "context-with-no-profile-relationship",
+    },
+  },
+};
 const keys = Object.fromEntries(
-  ["oidc", "rotated", "untrusted"].map((name) => [name, readFixture(`${name}.pem`)]),
+  ["github-actions", "google", "fly", "rotated", "untrusted"].map((name) => [
+    name,
+    readFixture(`${name}.pem`),
+  ]),
 );
 const jwk = (name) => ({
   ...createPublicKey(keys[name]).export({ format: "jwk" }),
@@ -21,31 +49,43 @@ const jwk = (name) => ({
 });
 let mode = "normal";
 
-function jwt(claims, key = "oidc") {
+function createProviderIdToken(
+  providerFixture,
+  claimOverrides,
+  signingKeyName = providerFixture.signingKeyName,
+) {
   const now = Math.floor(Date.now() / 1000);
   const header = Buffer.from(
-    JSON.stringify({ alg: "RS256", kid: key === "untrusted" ? "oidc" : key }),
+    JSON.stringify({
+      alg: "RS256",
+      kid: signingKeyName === "untrusted" ? providerFixture.signingKeyName : signingKeyName,
+    }),
   ).toString("base64url");
   const payload = Buffer.from(
     JSON.stringify({
-      iss: issuer,
+      iss: providerFixture.issuer,
       sub: "integration-subject",
       aud: "urn:integration:broker",
       iat: now,
       exp: now + 300,
-      repository: "integration-owner/source",
-      ref: "refs/heads/main",
-      ...claims,
+      ...providerFixture.claims,
+      ...claimOverrides,
     }),
   ).toString("base64url");
   const data = `${header}.${payload}`;
-  return `${data}.${sign("RSA-SHA256", Buffer.from(data), keys[key]).toString("base64url")}`;
+  return `${data}.${sign("RSA-SHA256", Buffer.from(data), keys[signingKeyName]).toString("base64url")}`;
 }
 
 async function protocol(request, response) {
-  assert.equal(request.headers.host, "token.actions.githubusercontent.com");
+  const url = `https://${request.headers.host}${request.url}`;
+  const providerFixture = Object.values(providerFixtures).find(
+    (candidate) =>
+      url === `${candidate.issuer}/.well-known/openid-configuration` || url === candidate.jwksUri,
+  );
+  assert.ok(providerFixture, "unexpected provider URL");
+  const { issuer } = providerFixture;
   assert.equal(request.method, "GET");
-  if (request.url === "/.well-known/openid-configuration") {
+  if (url === `${issuer}/.well-known/openid-configuration`) {
     if (mode === "redirect")
       return sendJson(response, 302, {}, { location: `${issuer}/redirect-target` });
     if (mode === "stall") return stallResponse(response);
@@ -56,22 +96,24 @@ async function protocol(request, response) {
       200,
       {
         issuer: mode === "bad-issuer" ? "https://untrusted.example" : issuer,
-        jwks_uri: `${issuer}/jwks`,
+        jwks_uri: providerFixture.jwksUri,
         id_token_signing_alg_values_supported: ["RS256"],
       },
       { "cache-control": mode === "cache" || mode === "rotated" ? "max-age=300" : "no-cache" },
     );
   }
-  if (request.url === "/jwks") {
+  if (url === providerFixture.jwksUri) {
     if (mode === "padded-jwks" || mode === "oversized")
       return sendJson(response, 200, {
-        keys: [jwk("oidc")],
+        keys: [jwk(providerFixture.signingKeyName)],
         padding: "x".repeat(mode === "oversized" ? 1024 * 1024 : 32 * 1024),
       });
     if (mode === "malformed-jwks")
       return sendJson(response, 200, { keys: [{ kty: "RSA", n: 123 }] });
     if (mode === "malformed-ext")
-      return sendJson(response, 200, { keys: [{ ...jwk("oidc"), ext: "invalid" }] });
+      return sendJson(response, 200, {
+        keys: [{ ...jwk(providerFixture.signingKeyName), ext: "invalid" }],
+      });
     if (mode === "deeply-nested-jwks") {
       response.writeHead(200, {
         "content-type": "application/json",
@@ -90,7 +132,7 @@ async function protocol(request, response) {
     return sendJson(
       response,
       200,
-      { keys: [jwk(mode === "rotated" ? "rotated" : "oidc")] },
+      { keys: [jwk(mode === "rotated" ? "rotated" : providerFixture.signingKeyName)] },
       {
         "cache-control":
           mode === "cache" || mode === "rotated"
@@ -130,8 +172,16 @@ async function controls(request, response) {
   }
   if (request.method === "POST" && request.url === "/subject") {
     const input = await readJson(request);
-    assert.ok(input.key === undefined || Object.hasOwn(keys, input.key));
-    return sendJson(response, 200, { token: jwt(input.claims ?? {}, input.key) });
+    assert.ok(input.signingKeyName === undefined || Object.hasOwn(keys, input.signingKeyName));
+    const providerFixtureId = input.providerFixtureId;
+    assert.ok(Object.hasOwn(providerFixtures, providerFixtureId));
+    return sendJson(response, 200, {
+      token: createProviderIdToken(
+        providerFixtures[providerFixtureId],
+        input.claimOverrides ?? {},
+        input.signingKeyName,
+      ),
+    });
   }
   sendJson(response, 404, { error: "not_found" });
 }

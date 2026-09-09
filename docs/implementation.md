@@ -164,7 +164,28 @@ new Vitest major.
 
 The aggregate check builds once, then reuses that artifact for the artifact, typecheck, test, Node production-consumer, and deployment lanes. Standalone `artifact:check`, `typecheck`, `test`, `node-deploy:check`, and `deploy:dry-run` commands build their prerequisites first. Workspace builds synchronize injected package copies, so those standalone commands also work after a frozen clean install with no pre-existing `dist`. The artifact check imports the built Token Exchange ESM directly under Node and typechecks a self-importing consumer through the package's exports and bundled declarations; no source alias participates. The Node deployment check production-deploys a Fastify host fixture, imports the deployed package roots, typechecks the public adapter options, and exercises a real loopback listener with GET and form POST requests. The POST reaches the built Token Exchange handler and checks its `unsupported_grant_type` response. The Fastify host fixture permits `@github-app-token-broker/fastify`, `@github-app-token-broker/token-exchange`, `jose`, and `zod` when tsdown bundles dependencies during that fixture build. Other dependencies encountered at that stage fail the build. This guard cannot identify dependencies already embedded in consumed package artifacts. The root Wrangler file is a unit-test harness. It intentionally repeats the package Worker's compatibility flags and binding shapes so Workerd unit tests execute under the production runtime constraints; `env-types:check`, the GitHub App Information Workerd integration project, and the package dry-run validate the deployable config. The package Wrangler file is a public-safe dry-run template; deployment-owned identifiers and routes are supplied by the external deployment system.
 
-### OIDC test fixtures
+### OIDC test ownership
+
+Provider variation is tested where registration, authentication, or policy routing
+can change the outcome. The suites divide responsibility to avoid repeating the
+same protocol matrix for each provider:
+
+| Concern                                                                                                                                                                                                  | Owning coverage                                                                                                                       |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Exact registrations, provider profile mappings, Fly slug validation                                                                                                                                      | Provider package tests                                                                                                                |
+| Signed registration/profile wiring, exact Claims, discovery/JWKS routing, issuer-scoped caches                                                                                                           | `test/oidc-provider-conformance.test.ts`, with all three providers and two Fly organizations using distinct keys with the same key ID |
+| Cryptographic validation, scalar audience, expiry, remote-document failures, refresh and cache transitions                                                                                               | Synthetic-issuer authenticator and verifier suites                                                                                    |
+| Built-host issuance and denial of Installation Access Token Issuance when selected Claims do not match policy for each provider, profile rejection, path-scoped Fly discovery and Google cross-host JWKS | Both container integration hosts                                                                                                      |
+| Form grammar, request limits, observations/revocation, GitHub failures, and host admission                                                                                                               | Existing public-handler, property, adapter, and container scenarios with one representative provider where identity is incidental     |
+
+The remaining named GitHub Actions fixtures in generic exchange and Worker tests
+provide a valid identity to reach the behavior under test. Those matrices are not
+multiplied by provider. Provider conformance and container tests supply the signed
+provider variation independently of those fixtures. Container policy-denial cases
+require a new mandatory observation with the expected issuer and policy outcome,
+so an earlier authentication failure cannot satisfy the denial assertion. Tokens
+and deployment grants are synthetic; these checks do not establish live provider
+or deployment behavior.
 
 Shared GitHub Actions payload, remote-document, policy, exchange, and Worker
 fixtures identify their provider in their exported names. `test/support/jwt.ts`

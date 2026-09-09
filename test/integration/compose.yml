@@ -51,7 +51,13 @@ services:
     healthcheck: *mock-health
     networks:
       integration:
-        aliases: [token.actions.githubusercontent.com]
+        aliases:
+          [
+            token.actions.githubusercontent.com,
+            accounts.google.com,
+            www.googleapis.com,
+            oidc.fly.io,
+          ]
   github:
     <<: *runtime
     command: node test/integration/github.mjs
@@ -105,7 +111,7 @@ services:
       - --inspector-port
       - "0"
       - --log-level
-      - warn
+      - log
     ports: ["127.0.0.1::8080"]
     healthcheck: *broker-health
     depends_on:
