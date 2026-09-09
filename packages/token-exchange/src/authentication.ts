@@ -6,7 +6,7 @@ import type {
 } from "@github-app-token-broker/oidc/id-token-authenticator";
 import type { ObserveOidcDiagnostic, ObserveTokenExchange } from "./events.ts";
 
-export interface AuthenticatedContext {
+export interface SubjectTokenAuthenticationContext {
   readonly verificationEvidence: OidcVerificationEvidence;
   readonly verifiedSubjectToken: VerifiedSubjectToken;
 }
@@ -16,17 +16,19 @@ export type OidcAuthenticationFailureReason =
   | "oidc_internal_failure"
   | "oidc_provider_failure";
 
-interface AuthenticateRequestFailure {
+interface AuthenticateOidcIdTokenFailure {
   ok: false;
   reason: OidcAuthenticationFailureReason;
 }
 
-interface AuthenticateRequestSuccess {
-  context: AuthenticatedContext;
+interface AuthenticateOidcIdTokenSuccess {
+  context: SubjectTokenAuthenticationContext;
   ok: true;
 }
 
-export type AuthenticateRequestResult = AuthenticateRequestFailure | AuthenticateRequestSuccess;
+export type AuthenticateOidcIdTokenResult =
+  | AuthenticateOidcIdTokenFailure
+  | AuthenticateOidcIdTokenSuccess;
 
 export async function authenticateOidcIdToken(
   subjectToken: string,
@@ -34,7 +36,7 @@ export async function authenticateOidcIdToken(
   authenticator: OidcIdTokenAuthenticator,
   observe: ObserveTokenExchange,
   observeOidcDiagnostic?: ObserveOidcDiagnostic,
-): Promise<AuthenticateRequestResult> {
+): Promise<AuthenticateOidcIdTokenResult> {
   const authentication = await authenticator.authenticateIdToken(subjectToken, (event) => {
     try {
       observeOidcDiagnostic?.({ fields: event, level: "warn" });
