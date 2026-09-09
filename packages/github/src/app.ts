@@ -210,7 +210,7 @@ export async function githubAppAuthenticationHeaders(
   configuration: GitHubAppConfiguration,
   dependencies: GitHubAppDependencies,
 ): Promise<HeadersInit> {
-  assertValidGitHubAppConfiguration(configuration);
+  assertValidGitHubAppIdFormat(configuration);
   const jwt = await createGitHubAppJwt(configuration, () => dependencies.now());
 
   return {
@@ -221,7 +221,7 @@ export async function githubAppAuthenticationHeaders(
   };
 }
 
-function assertValidGitHubAppConfiguration(configuration: GitHubAppConfiguration): void {
+function assertValidGitHubAppIdFormat(configuration: GitHubAppConfiguration): void {
   if (!/^[1-9][0-9]*$/u.test(configuration.appId)) {
     throw new GitHubAppConfigurationError();
   }
