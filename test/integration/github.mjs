@@ -52,6 +52,25 @@ async function protocol(request, response) {
     return;
   }
   verifyApp(request);
+  if (request.url === "/repos/integration-buildkite-owner/target/installation") {
+    assert.equal(request.method, "GET");
+    return sendJson(response, 200, {
+      id: 67890,
+      account: { login: "integration-buildkite-owner" },
+    });
+  }
+  if (request.url === "/app/installations/67890/access_tokens") {
+    assert.equal(request.method, "POST");
+    assert.equal(request.headers["content-type"], "application/json");
+    const mint = await readJson(request);
+    assert.deepEqual(mint, { repositories: ["target"], permissions: { contents: "write" } });
+    server.record({ kind: "mint", body: mint });
+    return sendJson(response, 201, {
+      token: "ghs_disposable_integration_token",
+      expires_at: new Date(Date.now() + 3600000).toISOString(),
+      permissions: { contents: "write" },
+    });
+  }
   if (request.url === "/repos/integration-owner/target/installation") {
     assert.equal(request.method, "GET");
     if (mode === "redirect")

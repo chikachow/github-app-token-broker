@@ -55,6 +55,9 @@ importers:
       '@github-app-token-broker/oidc':
         specifier: workspace:*
         version: link:packages/oidc
+      '@github-app-token-broker/oidc-provider-buildkite':
+        specifier: workspace:*
+        version: link:packages/oidc-provider-buildkite
       '@github-app-token-broker/oidc-provider-github-actions':
         specifier: workspace:*
         version: link:packages/oidc-provider-github-actions
@@ -138,6 +141,12 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 4.5.4
+
+  packages/oidc-provider-buildkite:
+    dependencies:
+      '@github-app-token-broker/oidc':
+        specifier: workspace:*
+        version: link:../oidc
 
   packages/oidc-provider-fly:
     dependencies:

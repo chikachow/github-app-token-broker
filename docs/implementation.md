@@ -7,6 +7,8 @@
 - `packages/oidc-provider-fly`: source-supported exact Fly organization-scoped OIDC Provider Registration construction with an explicit null OIDC ID Token Profile
 - `packages/oidc-provider-github-actions`: GitHub Actions OIDC Provider Registration and ID Token profile
 - `packages/oidc-provider-google-service-account`: Google service-account OIDC Provider Registration and ID Token profile
+- `packages/oidc-provider-buildkite`: Buildkite OIDC Provider Registration with an explicit null ID Token profile
+- `examples/buildkite`: tested composition recipe, deployment wiring, and a request-only job snippet
 - `packages/github`: Installation Access Token Request normalization, the Repository Resource-oriented issuance capability, GitHub App JWT authentication, owner binding, installation-token minting, and GitHub App Information queries
 - `packages/token-issuance-policy`: structural Permit Statement compilation, validation, and evaluation
 - `packages/http`: abort-aware asynchronous waiting, bounded body readers, and HTTP/problem-response helpers
@@ -109,6 +111,16 @@ The source supports constructing a Fly registration for one canonical organizati
 
 Provider packages similarly export reviewed GitHub Actions and Google service-account registrations. Package availability is capability, not configured trust or authorization. Each deployment's entrypoint and tests are authoritative for the inventory compiled into its artifact.
 
+The Buildkite registration likewise uses central OIDC validation without a
+provider-specific profile. Its [composition recipe](../examples/buildkite/README.md)
+is exercised by focused example tests. The container deployment owns a separate
+synthetic Buildkite registration and Permit Statement selecting a pipeline UUID.
+Its distinct target keeps the two issuer-isolation cases meaningful even when
+the tokens retain valid Claims for their own issuers. The driver and mocks keep independent literal
+expectations. The container OIDC mock serves the configured issuers with separate
+signing keys and a certificate covering their discovery and JWKS hosts; it does
+not import provider registrations or policy as its oracle.
+
 ## GitHub security boundary
 
 Successful GitHub responses are bounded and schema-validated. The GitHub API destination is fixed to `https://api.github.com`; redirect responses are rejected before any follow-up request, and each request has a fixed 10-second deadline spanning response headers and complete bounded body consumption. Installation resolution also requires case-insensitive equality between the requested repository owner and the returned installation `account.login`. A mismatch stops before token minting. Once resolution succeeds, the deep issuance capability retains the installation ID for operational context even when the subsequent mint request fails. The broker sends no temporary stateful-token override and treats returned Installation Access Token values as opaque, accepting both legacy opaque and JWT-shaped installation-token formats. If mandatory success observation fails, the issued token's bound revocation capability uses the token itself for one fixed-origin, redirect-rejecting, deadline-bounded `DELETE /installation/token` request. The GitHub issuance boundary classifies transport, rate-limit, upstream, and configuration failures before returning sanitized evidence; Token Exchange retains only the reason-to-OAuth mapping and observation formatting.
@@ -170,13 +182,14 @@ Provider variation is tested where registration, authentication, or policy routi
 can change the outcome. The suites divide responsibility to avoid repeating the
 same protocol matrix for each provider:
 
-| Concern                                                                                                                                                                                                  | Owning coverage                                                                                                                       |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| Exact registrations, provider profile mappings, Fly slug validation                                                                                                                                      | Provider package tests                                                                                                                |
-| Signed registration/profile wiring, exact Claims, discovery/JWKS routing, issuer-scoped caches                                                                                                           | `test/oidc-provider-conformance.test.ts`, with all three providers and two Fly organizations using distinct keys with the same key ID |
-| Cryptographic validation, scalar audience, expiry, remote-document failures, refresh and cache transitions                                                                                               | Synthetic-issuer authenticator and verifier suites                                                                                    |
-| Built-host issuance and denial of Installation Access Token Issuance when selected Claims do not match policy for each provider, profile rejection, path-scoped Fly discovery and Google cross-host JWKS | Both container integration hosts                                                                                                      |
-| Form grammar, request limits, observations/revocation, GitHub failures, and host admission                                                                                                               | Existing public-handler, property, adapter, and container scenarios with one representative provider where identity is incidental     |
+| Concern                                                                                                                                                                                                  | Owning coverage                                                                                                                      |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Exact registrations, provider profile mappings, Fly slug validation                                                                                                                                      | Provider package tests                                                                                                               |
+| Signed registration/profile wiring, exact Claims, discovery/JWKS routing, issuer-scoped caches                                                                                                           | `test/oidc-provider-conformance.test.ts`, with all four providers and two Fly organizations using distinct keys with the same key ID |
+| Cryptographic validation, scalar audience, expiry, remote-document failures, refresh and cache transitions                                                                                               | Synthetic-issuer authenticator and verifier suites                                                                                   |
+| Built-host issuance and denial of Installation Access Token Issuance when selected Claims do not match policy for each provider, profile rejection, path-scoped Fly discovery and Google cross-host JWKS | Both container integration hosts                                                                                                     |
+| Buildkite example's material Claim predicates, permitted authority, and unselected context                                                                                                               | `test/buildkite-composition-example.test.ts`                                                                                         |
+| Form grammar, request limits, observations/revocation, GitHub failures, and host admission                                                                                                               | Existing public-handler, property, adapter, and container scenarios with one representative provider where identity is incidental    |
 
 The remaining named GitHub Actions fixtures in generic exchange and Worker tests
 provide a valid identity to reach the behavior under test. Those matrices are not

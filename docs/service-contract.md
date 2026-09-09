@@ -293,6 +293,7 @@ fresh; it does not extend freshness or stale eligibility.
 | -------------------------------- | --------------------------------------------- | -------------------------------------------------------------- |
 | GitHub Actions                   | `https://token.actions.githubusercontent.com` | validates that `azp` is absent or equals the exact `aud` value |
 | Google service account ID Tokens | `https://accounts.google.com`                 | validates that `azp` equals `sub`                              |
+| Buildkite                        | `https://agent.buildkite.com`                 | explicit null profile; central OIDC validation is sufficient   |
 
 Provider packages expose these reviewed registrations for deployment composition. Their availability does not register them in an artifact or create a Permit Statement. Every request still requires the Client to supply an explicit repository `resource`.
 
@@ -322,6 +323,29 @@ Content-Type: application/json
 ```
 
 Fly returns the serialized ID Token as the response body. The workload sends that value as this service's RFC 8693 `subject_token` and sends the broker request to the deployment's Token Exchange Endpoint. The broker still accepts it only when the built artifact contains both the exact Fly organization registration and a Permit Statement that covers the token's signed Claims, requested Repository Resource, and Requested Permissions.
+
+#### Source-supported Buildkite OIDC registration
+
+The Buildkite provider package exports `buildkiteOidcProviderRegistration` for
+`https://agent.buildkite.com`, accepting RS256 with an explicit null OIDC ID Token
+Profile. It uses the same validated discovery, signature, audience, and time
+checks as other registrations. The broker treats `sub` as opaque and imposes no
+Buildkite contextual Claim relationships during authentication.
+
+A deployment must independently register the issuer and configure Permit
+Statements. The [composition recipe](../examples/buildkite/README.md) selects
+organization and pipeline UUIDs plus branch and step context. Its optional UUID
+Claims must be requested when obtaining the ID Token. Missing, null, or wrongly
+typed selected Claims do not match its predicates; an otherwise valid token can
+authenticate without those Claims. Unselected Claims impose no restrictions.
+
+The example assumes a trusted pipeline with controlled editing, build creation,
+fork handling, and agent execution. Branch and step Claims do not establish code
+provenance or independently exclude tag builds or trigger sources. Repository
+Resource and Requested Permissions remain explicit and independent of Buildkite
+Claims. Existing observations identify issuer and Subject but do not expose
+individual failed predicates. See the [Buildkite research](research/buildkite-oidc.md)
+for primary sources and the live-verification boundary.
 
 ### Token Issuance Policy
 

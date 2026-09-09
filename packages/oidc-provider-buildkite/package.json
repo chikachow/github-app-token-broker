@@ -1,0 +1,12 @@
+{
+  "name": "@github-app-token-broker/oidc-provider-buildkite",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/provider-registration.ts"
+  },
+  "dependencies": {
+    "@github-app-token-broker/oidc": "workspace:*"
+  }
+}

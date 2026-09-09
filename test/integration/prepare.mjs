@@ -4,7 +4,15 @@ import { mkdirSync, writeFileSync } from "node:fs";
 
 const directory = "test/integration/.generated";
 mkdirSync(directory, { recursive: true });
-for (const name of ["app", "github-actions", "google", "fly", "rotated", "untrusted"]) {
+for (const name of [
+  "app",
+  "github-actions",
+  "buildkite",
+  "google",
+  "fly",
+  "rotated",
+  "untrusted",
+]) {
   const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
   writeFileSync(`${directory}/${name}.pem`, privateKey.export({ type: "pkcs8", format: "pem" }), {
     mode: 0o600,
@@ -44,6 +52,7 @@ for (const { name, hostnames } of [
     name: "oidc",
     hostnames: [
       "token.actions.githubusercontent.com",
+      "agent.buildkite.com",
       "accounts.google.com",
       "www.googleapis.com",
       "oidc.fly.io",

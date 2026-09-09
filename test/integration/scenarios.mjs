@@ -313,6 +313,18 @@ void describe(host === "worker" ? "Workerd" : "Fastify", { concurrency: false },
         permissions: { contents: "read", pull_requests: "write" },
       },
       {
+        name: "Buildkite",
+        providerFixtureId: "buildkite",
+        issuer: "https://agent.buildkite.com",
+        paths: ["/.well-known/openid-configuration", "/.well-known/jwks"],
+        resource: "https://api.github.com/repos/integration-buildkite-owner/target",
+        scope: "contents:write",
+        nonMatchingClaimOverrides: { pipeline_id: "33333333-3333-4333-8333-333333333333" },
+        repository: "integration-buildkite-owner/target",
+        installationId: 67890,
+        permissions: { contents: "write" },
+      },
+      {
         name: "Google service account",
         providerFixtureId: "google-service-account",
         issuer: "https://accounts.google.com",
@@ -408,6 +420,44 @@ void describe(host === "worker" ? "Workerd" : "Fastify", { concurrency: false },
       );
       assert.deepEqual(await evidence(), [[], []]);
     });
+    for (const [name, options, jwksPath, issuer] of [
+      [
+        "cannot use GitHub-issued Buildkite claims for a Buildkite permit",
+        {
+          providerFixtureId: "github-actions",
+          claimOverrides: {
+            pipeline_id: "55555555-5555-4555-8555-555555555555",
+          },
+          formOverrides: {
+            resource: "https://api.github.com/repos/integration-buildkite-owner/target",
+            scope: "contents:write",
+          },
+        },
+        "/jwks",
+        "https://token.actions.githubusercontent.com",
+      ],
+      [
+        "cannot use Buildkite-issued GitHub claims for a GitHub permit",
+        {
+          providerFixtureId: "buildkite",
+          claimOverrides: { repository: "integration-owner/source", ref: "refs/heads/main" },
+        },
+        "/.well-known/jwks",
+        "https://agent.buildkite.com",
+      ],
+    ])
+      void it(name, async () => {
+        await reset();
+        const previousPolicyDenials = policyDenialObservationCount(issuer);
+        failure(await exchange(options), 400, "invalid_request");
+        const [oidcEvents, githubEvents] = await evidence();
+        assert.deepEqual(
+          oidcEvents.map((event) => event.path),
+          ["/.well-known/openid-configuration", jwksPath],
+        );
+        assert.deepEqual(githubEvents, [], "denial must stop before GitHub I/O");
+        await assertPolicyDenialObserved(issuer, previousPolicyDenials);
+      });
     void it("accepts valid JWKS with additive padding below the response limit", async () => {
       await reset("padded-jwks");
       await assertSuccessfulGitHubActionsExchange();

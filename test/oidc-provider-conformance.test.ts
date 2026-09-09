@@ -1,6 +1,7 @@
 import { generateKeyPairSync } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
+import { buildkiteOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-buildkite";
 import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-github-actions";
 import { createFlyOidcProviderRegistration } from "../packages/oidc-provider-fly/src/provider-registration.ts";
 import { googleServiceAccountOidcProviderRegistration } from "../packages/oidc-provider-google-service-account/src/provider-registration.ts";
@@ -62,6 +63,22 @@ const providers: ProviderFixture[] = [
       org_name: "different-org",
       app_name: "selected-app",
       machine_name: null,
+    },
+  },
+  {
+    registration: buildkiteOidcProviderRegistration,
+    discoveryUrl: "https://agent.buildkite.com/.well-known/openid-configuration",
+    jwksUrl: "https://agent.buildkite.com/.well-known/jwks",
+    payload: {
+      iss: "https://agent.buildkite.com",
+      sub: "custom-job-subject",
+      azp: "unselected-authorized-party",
+      aud: "https://broker.example",
+      iat: 1779580790,
+      exp: 1779581100,
+      organization_slug: "example",
+      pipeline_slug: "release",
+      step_key: null,
     },
   },
   {
