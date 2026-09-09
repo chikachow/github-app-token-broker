@@ -49,9 +49,9 @@ describe("Token Issuance Policy authoring factories", () => {
   it("creates recursively immutable definitions", () => {
     const equals = claimEquals("trusted", true);
     const oneOf = claimOneOf("event_name", ["push", "workflow_dispatch"]);
-    const subjectToken = oidcSubjectTokenConstraint(issuer, equals, oneOf);
-    const resource = githubRepositoryResourceConstraint("Owner.Name", "Repository_Name");
-    const ownerResource = githubRepositoryOwnerResourceConstraint("Owner.Name");
+    const subjectTokenConstraint = oidcSubjectTokenConstraint(issuer, equals, oneOf);
+    const resourceConstraint = githubRepositoryResourceConstraint("Owner.Name", "Repository_Name");
+    const ownerResourceConstraint = githubRepositoryOwnerResourceConstraint("Owner.Name");
 
     if (oneOf.kind !== "claim-one-of") {
       throw new Error("unexpected Claim predicate kind");
@@ -63,16 +63,16 @@ describe("Token Issuance Policy authoring factories", () => {
       expectedValues: ["push", "workflow_dispatch"],
       kind: "claim-one-of",
     });
-    expect(subjectToken).toEqual({ claimPredicates: [equals, oneOf], issuer });
-    expect(resource).toEqual({ owner: "Owner.Name", repository: "Repository_Name" });
-    expect(ownerResource).toEqual({ owner: "Owner.Name", repository: null });
+    expect(subjectTokenConstraint).toEqual({ claimPredicates: [equals, oneOf], issuer });
+    expect(resourceConstraint).toEqual({ owner: "Owner.Name", repository: "Repository_Name" });
+    expect(ownerResourceConstraint).toEqual({ owner: "Owner.Name", repository: null });
     expect(Object.isFrozen(equals)).toBe(true);
     expect(Object.isFrozen(oneOf)).toBe(true);
     expect(Object.isFrozen(oneOf.expectedValues)).toBe(true);
-    expect(Object.isFrozen(subjectToken)).toBe(true);
-    expect(Object.isFrozen(subjectToken.claimPredicates)).toBe(true);
-    expect(Object.isFrozen(resource)).toBe(true);
-    expect(Object.isFrozen(ownerResource)).toBe(true);
+    expect(Object.isFrozen(subjectTokenConstraint)).toBe(true);
+    expect(Object.isFrozen(subjectTokenConstraint.claimPredicates)).toBe(true);
+    expect(Object.isFrozen(resourceConstraint)).toBe(true);
+    expect(Object.isFrozen(ownerResourceConstraint)).toBe(true);
   });
 
   it("accepts issuer-only constraints and unusual Claim Names", () => {
