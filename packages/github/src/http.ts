@@ -7,7 +7,7 @@ export const githubApiVersion = "2022-11-28";
 const maxGitHubErrorBodyBytes = 16 * 1024;
 // Installation resolution and token responses are small, fixed-shape documents.
 // Larger bounded endpoints can override this default explicitly.
-const maxGitHubSuccessfulBodyBytes = 64 * 1024;
+const defaultMaxGitHubSuccessfulBodyBytes = 64 * 1024;
 const githubErrorResponseSchema = z.object({ message: z.string() });
 const githubApiBaseUrl = new URL("https://api.github.com/");
 
@@ -56,7 +56,7 @@ export async function fetchGitHubApiJson<Schema extends z.ZodType>(
   {
     headers,
     init,
-    maxResponseBodyBytes = maxGitHubSuccessfulBodyBytes,
+    maxResponseBodyBytes = defaultMaxGitHubSuccessfulBodyBytes,
     path,
     responseSchema,
   }: {
