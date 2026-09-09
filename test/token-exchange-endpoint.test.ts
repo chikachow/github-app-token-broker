@@ -53,7 +53,7 @@ describe("Token Exchange Endpoint public handler", () => {
     ["Basic dW5zdXBwb3J0ZWQ=", 'Basic realm="github-app-token-broker"'],
     ["Bearer subject-token", 'Bearer realm="github-app-token-broker"'],
     ["1invalid credentials", 'Basic realm="github-app-token-broker"'],
-  ])("rejects client authentication using the %s challenge", async (authorization, challenge) => {
+  ])("rejects client authentication %s with challenge %s", async (authorization, challenge) => {
     const fetchExternal = vi.fn<typeof fetch>();
     const tokenExchange = createGitHubAppTokenExchange(
       testGitHubActionsTokenExchangeConfiguration,
