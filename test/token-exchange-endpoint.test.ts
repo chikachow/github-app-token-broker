@@ -199,7 +199,7 @@ describe("Token Exchange Endpoint public handler", () => {
         now: () => testNow,
       },
     );
-    const form = validForm();
+    const form = structurallyValidTokenExchangeForm();
 
     for (const field of [
       "actor_token",
@@ -236,13 +236,13 @@ describe("Token Exchange Endpoint public handler", () => {
         now: () => testNow,
       },
     );
-    const rejectedForm = validForm();
+    const rejectedForm = structurallyValidTokenExchangeForm();
     rejectedForm.append("scope", "contents:read");
     const rejectedObserve = vi.fn(async () => undefined);
     const rejected = await tokenExchange(formRequest({}, rejectedForm), {
       observe: rejectedObserve,
     });
-    const acceptedForm = validForm();
+    const acceptedForm = structurallyValidTokenExchangeForm();
     acceptedForm.append("scope", "");
     acceptedForm.append("resource", "");
     const acceptedObserve = vi.fn(async () => undefined);
@@ -312,7 +312,10 @@ describe("Token Exchange Endpoint public handler", () => {
   });
 });
 
-function validForm(overrides: Record<string, string | null> = {}): URLSearchParams {
+// Form parsing succeeds with the default fields; authentication rejects the malformed token.
+function structurallyValidTokenExchangeForm(
+  overrides: Record<string, string | null> = {},
+): URLSearchParams {
   const form = new URLSearchParams({
     grant_type: tokenExchangeGrantType,
     requested_token_type: accessTokenType,
@@ -335,7 +338,7 @@ function validForm(overrides: Record<string, string | null> = {}): URLSearchPara
 
 function formRequest(
   overrides: Record<string, string | null> = {},
-  form: URLSearchParams = validForm(overrides),
+  form: URLSearchParams = structurallyValidTokenExchangeForm(overrides),
 ): Request {
   return new Request("https://broker.example/token", {
     body: form,
