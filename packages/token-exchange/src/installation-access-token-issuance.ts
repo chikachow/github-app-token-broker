@@ -4,7 +4,7 @@ import type {
   GitHubAppDependencies,
   GitHubInstallationAccessTokenIssuanceFailureReason,
 } from "@github-app-token-broker/github/app";
-import type { AuthenticatedContext } from "./authentication.ts";
+import type { SubjectTokenAuthenticationContext } from "./authentication.ts";
 import type { InstallationAccessTokenRequest } from "@github-app-token-broker/github/installation-access-token-request";
 import type { TokenIssuancePolicy } from "@github-app-token-broker/token-issuance-policy";
 import { evaluateTokenIssuancePolicy } from "@github-app-token-broker/token-issuance-policy";
@@ -21,7 +21,7 @@ export type InstallationAccessTokenIssuanceResult =
   | { ok: false; reason: InstallationAccessTokenIssuanceFailureReason };
 
 interface InstallationAccessTokenIssuanceInput {
-  readonly authenticationContext: AuthenticatedContext;
+  readonly authenticationContext: SubjectTokenAuthenticationContext;
   readonly dependencies: GitHubAppDependencies;
   readonly githubApp: GitHubAppConfiguration;
   readonly installationAccessTokenRequest: InstallationAccessTokenRequest;
@@ -154,7 +154,7 @@ export async function issueInstallationAccessTokenForContext(
 }
 
 function subjectTokenLogFields(
-  authenticationContext: AuthenticatedContext,
+  authenticationContext: SubjectTokenAuthenticationContext,
 ): Record<string, unknown> {
   return {
     issuer: authenticationContext.verifiedSubjectToken.issuer,
