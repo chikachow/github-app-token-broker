@@ -2,12 +2,12 @@ import { createGitHubAppTokenExchange } from "@github-app-token-broker/token-exc
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  testGitHubAppTokenExchangeConfiguration as configuration,
-  tokenExchangeRequest as tokenRequest,
-} from "../support/github-app-token-exchange.ts";
+  testGitHubActionsTokenExchangeConfiguration,
+  githubActionsTokenExchangeRequest,
+} from "../support/github-actions-token-exchange.ts";
 import { testInstallationId, testNow, testRepository } from "../support/constants.ts";
 import { fetchGitHubTestDouble } from "../support/github-api.ts";
-import { fetchOidcRemoteDocumentResponseTestDouble } from "../support/oidc.ts";
+import { fetchGitHubActionsOidcRemoteDocumentTestDouble } from "../support/github-actions-oidc.ts";
 
 describe("GitHub App Token Exchange Node runtime", () => {
   it("awaits successful revocation before failing closed on a post-mint observation failure", async () => {
@@ -22,34 +22,37 @@ describe("GitHub App Token Exchange Node runtime", () => {
     const revocationStarted = new Promise<void>((resolve) => {
       markRevocationStarted = resolve;
     });
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: (input, init) => {
-        const request = new Request(input, init);
+    const tokenExchange = createGitHubAppTokenExchange(
+      testGitHubActionsTokenExchangeConfiguration,
+      {
+        fetch: (input, init) => {
+          const request = new Request(input, init);
 
-        if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
-          return fetchOidcRemoteDocumentResponseTestDouble(request);
-        }
+          if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
+            return fetchGitHubActionsOidcRemoteDocumentTestDouble(request);
+          }
 
-        githubRequests.push(request);
+          githubRequests.push(request);
 
-        if (
-          request.method === "DELETE" &&
-          new URL(request.url).pathname === "/installation/token"
-        ) {
-          markRevocationStarted();
+          if (
+            request.method === "DELETE" &&
+            new URL(request.url).pathname === "/installation/token"
+          ) {
+            markRevocationStarted();
 
-          return revocation;
-        }
+            return revocation;
+          }
 
-        return fetchGitHubTestDouble(request);
+          return fetchGitHubTestDouble(request);
+        },
+        now: () => testNow,
       },
-      now: () => testNow,
-    });
+    );
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     try {
       let responseSettled = false;
-      const responsePromise = tokenExchange(await tokenRequest(), {
+      const responsePromise = tokenExchange(await githubActionsTokenExchangeRequest(), {
         observe: async (observation) => {
           const event = observation.fields["event"];
           observedEvents.push(event);

@@ -4,48 +4,45 @@ import {
   type TokenExchangeWorkerEnv,
   type TokenExchangeWorkerRuntimeDependencies,
 } from "@github-app-token-broker/worker";
-import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-github-actions";
+import {
+  testGitHubActionsTokenExchangeConfiguration,
+  fetchGitHubActionsTokenExchangeExternalTestDouble,
+} from "./github-actions-token-exchange.ts";
 
 import { testNow } from "./constants.ts";
-import { fetchGitHubTestDouble } from "./github-api.ts";
-import { fetchOidcRemoteDocumentResponseTestDouble } from "./oidc.ts";
-import { testTokenIssuancePolicy } from "./token-issuance-policy.ts";
 import { testEnv } from "./worker-env.ts";
 
-export { authorizationHeaders, tokenExchangeRequestBody } from "./oidc.ts";
 export { testEnv };
 
 type TestEnv = TokenExchangeWorkerEnv;
 
-export const testTokenExchangeComposition = {
-  oidcProviderRegistrations: [githubActionsOidcProviderRegistration],
-  tokenIssuancePolicy: testTokenIssuancePolicy,
-} satisfies TokenExchangeComposition;
+export const testGitHubActionsTokenExchangeComposition =
+  testGitHubActionsTokenExchangeConfiguration.composition satisfies TokenExchangeComposition;
 
-export const testTokenExchangeWorkerRuntimeDependencies = {
-  fetch: fetchTokenExchangeExternalTestDouble,
+export const testGitHubActionsTokenExchangeWorkerRuntimeDependencies = {
+  fetch: fetchGitHubActionsTokenExchangeExternalTestDouble,
   now: () => testNow,
   observe: async () => undefined,
 } satisfies TokenExchangeWorkerRuntimeDependencies;
 
-const tokenExchangeApp = createTokenExchangeWorker(
-  testTokenExchangeComposition,
-  testTokenExchangeWorkerRuntimeDependencies,
+const githubActionsTokenExchangeWorker = createTokenExchangeWorker(
+  testGitHubActionsTokenExchangeComposition,
+  testGitHubActionsTokenExchangeWorkerRuntimeDependencies,
 );
 
-export function fetchTokenExchange(
+export function fetchGitHubActionsTokenExchange(
   input: RequestInfo | URL,
   init?: RequestInit,
 ): Promise<Response> {
-  return fetchWorkerWithApp(tokenExchangeApp, input, init);
+  return fetchWorkerWithApp(githubActionsTokenExchangeWorker, input, init);
 }
 
-export function fetchTokenExchangeWithEnv(
+export function fetchGitHubActionsTokenExchangeWithEnv(
   input: RequestInfo | URL,
   init: RequestInit | undefined,
   env: TestEnv,
 ): Promise<Response> {
-  return fetchWorkerWithApp(tokenExchangeApp, input, init, env);
+  return fetchWorkerWithApp(githubActionsTokenExchangeWorker, input, init, env);
 }
 
 function fetchWorkerWithApp(
@@ -64,17 +61,3 @@ function fetchWorkerWithApp(
     handler(new Request(input, init) as Parameters<typeof handler>[0], env, {} as ExecutionContext),
   );
 }
-
-function fetchTokenExchangeExternalTestDouble(
-  input: RequestInfo | URL,
-  init?: RequestInit,
-): Promise<Response> {
-  const request = new Request(input, init);
-  const hostname = new URL(request.url).hostname;
-
-  return oidcProviderHostnames.has(hostname)
-    ? fetchOidcRemoteDocumentResponseTestDouble(request)
-    : fetchGitHubTestDouble(request);
-}
-
-const oidcProviderHostnames = new Set(["token.actions.githubusercontent.com"]);

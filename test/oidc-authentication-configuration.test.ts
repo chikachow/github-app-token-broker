@@ -12,9 +12,11 @@ import {
   oidcSubjectTokenConstraint,
   evaluateTokenIssuancePolicy,
 } from "@github-app-token-broker/token-issuance-policy";
-import { fetchOidcRemoteDocumentResponseTestDouble } from "./support/oidc.ts";
-import { createOidcToken } from "./support/oidc-token.ts";
-import { testPrivateKeyPem } from "./support/rsa-test-key-pair.ts";
+import { fetchGitHubActionsOidcRemoteDocumentTestDouble } from "./support/github-actions-oidc.ts";
+import { signRs256Jwt } from "./support/jwt.ts";
+import { githubActionsIdTokenPayload } from "./support/github-actions.ts";
+import { testNow } from "./support/constants.ts";
+import { testPrivateKeyPem, testPublicJwk } from "./support/rsa-test-key-pair.ts";
 
 describe("OIDC ID Token authentication configuration", () => {
   it("authenticates only the deployment-composed subject-token audience", async () => {
@@ -25,20 +27,15 @@ describe("OIDC ID Token authentication configuration", () => {
         subjectTokenAudience: parseSubjectTokenAudience("https://broker.example"),
       },
       {
-        fetch: fetchOidcRemoteDocumentResponseTestDouble,
-        now: () => new Date(),
+        fetch: fetchGitHubActionsOidcRemoteDocumentTestDouble,
+        now: () => testNow,
       },
     );
-    const acceptedToken = await createOidcToken(
-      testPrivateKeyPem,
-      {},
-      { audience: "https://broker.example", issuer: registration.issuer },
-    );
-    const rejectedToken = await createOidcToken(
-      testPrivateKeyPem,
-      {},
-      { audience: "different-audience", issuer: registration.issuer },
-    );
+    const acceptedToken = await signRs256Jwt(testPrivateKeyPem, githubActionsIdTokenPayload);
+    const rejectedToken = await signRs256Jwt(testPrivateKeyPem, {
+      ...githubActionsIdTokenPayload,
+      aud: "different-audience",
+    });
 
     await expect(authenticator.authenticateIdToken(acceptedToken)).resolves.toMatchObject({
       ok: true,
@@ -59,8 +56,8 @@ describe("OIDC ID Token authentication configuration", () => {
           subjectTokenAudience: parseSubjectTokenAudience("github-app-token-broker"),
         },
         {
-          fetch: fetchOidcRemoteDocumentResponseTestDouble,
-          now: () => new Date(),
+          fetch: fetchGitHubActionsOidcRemoteDocumentTestDouble,
+          now: () => testNow,
         },
       ),
     ).toThrow("duplicate OIDC Provider Registration issuer");
@@ -74,20 +71,34 @@ describe("OIDC ID Token authentication configuration", () => {
         subjectTokenAudience: parseSubjectTokenAudience("github-app-token-broker"),
       },
       {
-        fetch: fetchOidcRemoteDocumentResponseTestDouble,
-        now: () => new Date(),
+        fetch: async (input) => {
+          const request = new Request(input);
+          if (request.method !== "GET") return new Response(null, { status: 404 });
+          if (request.url === "https://oidc.fly.io/example-org/.well-known/openid-configuration") {
+            return Response.json({
+              issuer: "https://oidc.fly.io/example-org",
+              jwks_uri: "https://oidc.fly.io/example-org/.well-known/jwks",
+              id_token_signing_alg_values_supported: ["RS256"],
+            });
+          }
+          if (request.url === "https://oidc.fly.io/example-org/.well-known/jwks") {
+            return Response.json({ keys: [testPublicJwk] });
+          }
+          return new Response(null, { status: 404 });
+        },
+        now: () => testNow,
       },
     );
-    const token = await createOidcToken(
-      testPrivateKeyPem,
-      {
-        app_name: "selected-app",
-        machine_name: null,
-        org_name: "different-org",
-        sub: "custom-subject",
-      },
-      { audience: "github-app-token-broker", issuer: registration.issuer },
-    );
+    const token = await signRs256Jwt(testPrivateKeyPem, {
+      iss: "https://oidc.fly.io/example-org",
+      aud: "github-app-token-broker",
+      iat: 1779580790,
+      exp: 1779581100,
+      app_name: "selected-app",
+      machine_name: null,
+      org_name: "different-org",
+      sub: "custom-subject",
+    });
     const authentication = await authenticator.authenticateIdToken(token);
 
     expect(authentication.ok).toBe(true);

@@ -1,3 +1,4 @@
+import { githubActionsTokenExchangeRequestBody } from "./support/github-actions-token-exchange.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -9,16 +10,14 @@ import { decodeJwt } from "jose";
 
 import { testNow } from "./support/constants.ts";
 import { fetchGitHubTestDouble } from "./support/github-api.ts";
-import { fetchOidcRemoteDocumentResponseTestDouble } from "./support/oidc.ts";
-import { testTokenIssuancePolicy } from "./support/token-issuance-policy.ts";
+import { fetchGitHubActionsOidcRemoteDocumentTestDouble } from "./support/github-actions-oidc.ts";
+import { testGitHubActionsTokenIssuancePolicy } from "./support/github-actions-token-issuance-policy.ts";
 import {
-  authorizationHeaders,
-  fetchTokenExchange,
-  fetchTokenExchangeWithEnv,
+  fetchGitHubActionsTokenExchange,
+  fetchGitHubActionsTokenExchangeWithEnv,
   testEnv,
-  testTokenExchangeComposition,
-  testTokenExchangeWorkerRuntimeDependencies,
-  tokenExchangeRequestBody,
+  testGitHubActionsTokenExchangeComposition,
+  testGitHubActionsTokenExchangeWorkerRuntimeDependencies,
 } from "./support/worker.ts";
 describe("Token Exchange Worker boundary", () => {
   beforeEach(() => {
@@ -32,8 +31,8 @@ describe("Token Exchange Worker boundary", () => {
   it.each(["/github/claims", "/github/installations/token"])(
     "does not expose the removed %s endpoint",
     async (pathname) => {
-      const response = await fetchTokenExchange(`https://example.test${pathname}`, {
-        headers: await authorizationHeaders(),
+      const response = await fetchGitHubActionsTokenExchange(`https://example.test${pathname}`, {
+        headers: { authorization: "Bearer rejected-credential" },
         method: "POST",
       });
 
@@ -48,8 +47,8 @@ describe("Token Exchange Worker boundary", () => {
   );
 
   it("rejects non-POST requests at the Token Endpoint boundary", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody(),
+    const response = await fetchGitHubActionsTokenExchange("https://example.test/token", {
+      body: await githubActionsTokenExchangeRequestBody(),
       headers: { "content-type": "application/x-www-form-urlencoded" },
       method: "PUT",
     });
@@ -79,11 +78,11 @@ describe("Token Exchange Worker boundary", () => {
   ])("$scenario for admission and returns a 429 denial", async ({ expectedKey, headers }) => {
     const limit = vi.fn(async () => ({ success: false }));
     const fetchExternal = vi.fn<typeof fetch>();
-    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
-      ...testTokenExchangeWorkerRuntimeDependencies,
+    const worker = createTokenExchangeWorker(testGitHubActionsTokenExchangeComposition, {
+      ...testGitHubActionsTokenExchangeWorkerRuntimeDependencies,
       fetch: fetchExternal,
     });
-    const response = await invokeWorker(worker, await tokenRequest(headers), {
+    const response = await invokeWorker(worker, await githubActionsTokenExchangeRequest(headers), {
       ...testEnv,
       TOKEN_EXCHANGE_RATE_LIMIT: { limit },
     });
@@ -110,7 +109,7 @@ describe("Token Exchange Worker boundary", () => {
     const limit = vi.fn(async () => ({ success: false }));
     const fetchExternal = vi.fn<typeof fetch>();
     const observe = vi.fn(async () => undefined);
-    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
+    const worker = createTokenExchangeWorker(testGitHubActionsTokenExchangeComposition, {
       fetch: fetchExternal,
       now: () => testNow,
       observe,
@@ -137,8 +136,8 @@ describe("Token Exchange Worker boundary", () => {
   });
 
   it("wires a representative valid request through OIDC authentication, policy, and GitHub issuance", async () => {
-    const response = await fetchTokenExchange("https://example.test/token", {
-      body: await tokenExchangeRequestBody(),
+    const response = await fetchGitHubActionsTokenExchange("https://example.test/token", {
+      body: await githubActionsTokenExchangeRequestBody(),
       headers: { "content-type": "application/x-www-form-urlencoded" },
       method: "POST",
     });
@@ -158,13 +157,13 @@ describe("Token Exchange Worker boundary", () => {
     const observeOidcDiagnostic = vi.fn(() => {
       throw new Error("optional OIDC diagnostic failure");
     });
-    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
-      fetch: testTokenExchangeWorkerRuntimeDependencies.fetch,
+    const worker = createTokenExchangeWorker(testGitHubActionsTokenExchangeComposition, {
+      fetch: testGitHubActionsTokenExchangeWorkerRuntimeDependencies.fetch,
       now: () => testNow,
       observe: async () => undefined,
       observeOidcDiagnostic,
     });
-    const response = await invokeWorker(worker, await tokenRequest());
+    const response = await invokeWorker(worker, await githubActionsTokenExchangeRequest());
 
     expect(response.status).toBe(200);
     expect(observeOidcDiagnostic).toHaveBeenCalled();
@@ -177,7 +176,7 @@ describe("Token Exchange Worker boundary", () => {
       const request = new Request(input, init);
 
       if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
-        return fetchOidcRemoteDocumentResponseTestDouble(request);
+        return fetchGitHubActionsOidcRemoteDocumentTestDouble(request);
       }
 
       githubRequests.push(request);
@@ -185,7 +184,7 @@ describe("Token Exchange Worker boundary", () => {
       return fetchGitHubTestDouble(request);
     });
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
+    const worker = createTokenExchangeWorker(testGitHubActionsTokenExchangeComposition, {
       fetch: fetchExternal,
       now: () => testNow,
       observe: async (observation) => {
@@ -197,7 +196,7 @@ describe("Token Exchange Worker boundary", () => {
     });
 
     try {
-      const response = await invokeWorker(worker, await tokenRequest());
+      const response = await invokeWorker(worker, await githubActionsTokenExchangeRequest());
 
       await expectSanitizedServerError(response);
       expect(githubRequests).toEqual([]);
@@ -208,14 +207,14 @@ describe("Token Exchange Worker boundary", () => {
   });
 
   it("rejects a malformed subject token without provider or GitHub I/O", async () => {
-    const body = new URLSearchParams(await tokenExchangeRequestBody());
+    const body = new URLSearchParams(await githubActionsTokenExchangeRequestBody());
     body.set("subject_token", "not-a-jwt");
     const fetchExternal = vi.fn<typeof fetch>();
     const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     vi.stubGlobal("fetch", fetchExternal);
 
     try {
-      const worker = createTokenExchangeWorker(testTokenExchangeComposition);
+      const worker = createTokenExchangeWorker(testGitHubActionsTokenExchangeComposition);
       const response = await invokeWorker(
         worker,
         new Request("https://example.test/token", {
@@ -248,10 +247,10 @@ describe("Token Exchange Worker boundary", () => {
 
   it("accepts a structural GitHub App private-key binding", async () => {
     const getPrivateKey = vi.fn(async () => testEnv.GITHUB_APP_PRIVATE_KEY);
-    const response = await fetchTokenExchangeWithEnv(
+    const response = await fetchGitHubActionsTokenExchangeWithEnv(
       "https://example.test/token",
       {
-        body: await tokenExchangeRequestBody(),
+        body: await githubActionsTokenExchangeRequestBody(),
         headers: { "content-type": "application/x-www-form-urlencoded" },
         method: "POST",
       },
@@ -267,17 +266,21 @@ describe("Token Exchange Worker boundary", () => {
       const url = new Request(input).url;
 
       return url.startsWith("https://token.actions.githubusercontent.com/")
-        ? fetchOidcRemoteDocumentResponseTestDouble(input)
+        ? fetchGitHubActionsOidcRemoteDocumentTestDouble(input)
         : fetchGitHubTestDouble(input, init);
     });
-    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
+    const worker = createTokenExchangeWorker(testGitHubActionsTokenExchangeComposition, {
       fetch: sharedFetch,
       now: () => testNow,
       observe: async () => undefined,
     });
 
-    expect((await invokeWorker(worker, await tokenRequest())).status).toBe(200);
-    expect((await invokeWorker(worker, await tokenRequest())).status).toBe(200);
+    expect((await invokeWorker(worker, await githubActionsTokenExchangeRequest())).status).toBe(
+      200,
+    );
+    expect((await invokeWorker(worker, await githubActionsTokenExchangeRequest())).status).toBe(
+      200,
+    );
     expect(
       sharedFetch.mock.calls.filter(
         ([input]) =>
@@ -298,14 +301,14 @@ describe("Token Exchange Worker boundary", () => {
       const request = new Request(input, init);
 
       return new URL(request.url).hostname === "token.actions.githubusercontent.com"
-        ? fetchOidcRemoteDocumentResponseTestDouble(request)
+        ? fetchGitHubActionsOidcRemoteDocumentTestDouble(request)
         : fetchGitHubTestDouble(input, init);
     });
     vi.stubGlobal("fetch", fetchExternal);
 
     try {
-      const worker = createTokenExchangeWorker(testTokenExchangeComposition);
-      const response = await invokeWorker(worker, await tokenRequest());
+      const worker = createTokenExchangeWorker(testGitHubActionsTokenExchangeComposition);
+      const response = await invokeWorker(worker, await githubActionsTokenExchangeRequest());
 
       expect(response.status).toBe(200);
       expect(fetchExternal).toHaveBeenCalled();
@@ -319,17 +322,19 @@ describe("Token Exchange Worker boundary", () => {
       const url = new Request(input).url;
 
       return url.startsWith("https://token.actions.githubusercontent.com/")
-        ? fetchOidcRemoteDocumentResponseTestDouble(input)
+        ? fetchGitHubActionsOidcRemoteDocumentTestDouble(input)
         : fetchGitHubTestDouble(input, init);
     });
     const replacementFetch = vi.fn<typeof fetch>();
-    const oidcProviderRegistrations = [...testTokenExchangeComposition.oidcProviderRegistrations];
+    const oidcProviderRegistrations = [
+      ...testGitHubActionsTokenExchangeComposition.oidcProviderRegistrations,
+    ];
     const composition = {
       oidcProviderRegistrations,
-      tokenIssuancePolicy: testTokenIssuancePolicy,
+      tokenIssuancePolicy: testGitHubActionsTokenIssuancePolicy,
     };
     const runtimeDependencies = {
-      ...testTokenExchangeWorkerRuntimeDependencies,
+      ...testGitHubActionsTokenExchangeWorkerRuntimeDependencies,
       fetch: initialFetch,
     };
     const worker = createTokenExchangeWorker(composition, runtimeDependencies);
@@ -338,7 +343,7 @@ describe("Token Exchange Worker boundary", () => {
     oidcProviderRegistrations.length = 0;
     composition.tokenIssuancePolicy = compileTokenIssuancePolicy([]);
 
-    const response = await invokeWorker(worker, await tokenRequest());
+    const response = await invokeWorker(worker, await githubActionsTokenExchangeRequest());
 
     expect(response.status).toBe(200);
     expect(initialFetch).toHaveBeenCalled();
@@ -351,7 +356,7 @@ describe("Token Exchange Worker boundary", () => {
       const request = new Request(input, init);
 
       if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
-        return fetchOidcRemoteDocumentResponseTestDouble(request);
+        return fetchGitHubActionsOidcRemoteDocumentTestDouble(request);
       }
 
       const authorization = request.headers.get("authorization");
@@ -361,7 +366,7 @@ describe("Token Exchange Worker boundary", () => {
 
       return fetchGitHubTestDouble(request);
     });
-    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
+    const worker = createTokenExchangeWorker(testGitHubActionsTokenExchangeComposition, {
       fetch: fetchExternal,
       now: () => testNow,
       observe: async () => undefined,
@@ -375,7 +380,11 @@ describe("Token Exchange Worker boundary", () => {
       new Request("https://example.test/token"),
       originalEnv,
     );
-    const tokenResponse = await invokeWorker(worker, await tokenRequest(), changedEnv);
+    const tokenResponse = await invokeWorker(
+      worker,
+      await githubActionsTokenExchangeRequest(),
+      changedEnv,
+    );
 
     expect(methodResponse.status).toBe(400);
     expect(tokenResponse.status).toBe(200);
@@ -388,7 +397,7 @@ describe("Token Exchange Worker boundary", () => {
       const request = new Request(input, init);
 
       if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
-        return fetchOidcRemoteDocumentResponseTestDouble(request);
+        return fetchGitHubActionsOidcRemoteDocumentTestDouble(request);
       }
 
       const authorization = request.headers.get("authorization");
@@ -406,7 +415,7 @@ describe("Token Exchange Worker boundary", () => {
     const appAWaiting = new Promise<void>((resolve) => {
       markAppAWaiting = resolve;
     });
-    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
+    const worker = createTokenExchangeWorker(testGitHubActionsTokenExchangeComposition, {
       fetch: fetchExternal,
       now: () => testNow,
       observe: async () => undefined,
@@ -426,9 +435,17 @@ describe("Token Exchange Worker boundary", () => {
     };
     const appBEnv = { ...testEnv, GITHUB_APP_ID: "222" };
 
-    const appAResponsePromise = invokeWorker(worker, await tokenRequest(), appAEnv);
+    const appAResponsePromise = invokeWorker(
+      worker,
+      await githubActionsTokenExchangeRequest(),
+      appAEnv,
+    );
     await appAWaiting;
-    const appBResponse = await invokeWorker(worker, await tokenRequest(), appBEnv);
+    const appBResponse = await invokeWorker(
+      worker,
+      await githubActionsTokenExchangeRequest(),
+      appBEnv,
+    );
     releaseAppA();
     const appAResponse = await appAResponsePromise;
 
@@ -460,8 +477,8 @@ describe("Token Exchange Worker boundary", () => {
       markAppAWaiting = resolve;
     });
     const worker = createTokenExchangeWorker(
-      testTokenExchangeComposition,
-      testTokenExchangeWorkerRuntimeDependencies,
+      testGitHubActionsTokenExchangeComposition,
+      testGitHubActionsTokenExchangeWorkerRuntimeDependencies,
     );
     const appAEnv = {
       ...testEnv,
@@ -477,9 +494,17 @@ describe("Token Exchange Worker boundary", () => {
     };
     const appBEnv = { ...testEnv, GITHUB_APP_PRIVATE_KEY: bindingB };
 
-    const appAResponsePromise = invokeWorker(worker, await tokenRequest(), appAEnv);
+    const appAResponsePromise = invokeWorker(
+      worker,
+      await githubActionsTokenExchangeRequest(),
+      appAEnv,
+    );
     await appAWaiting;
-    const appBResponse = await invokeWorker(worker, await tokenRequest(), appBEnv);
+    const appBResponse = await invokeWorker(
+      worker,
+      await githubActionsTokenExchangeRequest(),
+      appBEnv,
+    );
     releaseAppA();
     const appAResponse = await appAResponsePromise;
 
@@ -492,8 +517,8 @@ describe("Token Exchange Worker boundary", () => {
 
   it("sanitizes a changed audience after configuration is cached", async () => {
     const worker = createTokenExchangeWorker(
-      testTokenExchangeComposition,
-      testTokenExchangeWorkerRuntimeDependencies,
+      testGitHubActionsTokenExchangeComposition,
+      testGitHubActionsTokenExchangeWorkerRuntimeDependencies,
     );
 
     expect((await invokeWorker(worker, new Request("https://example.test/not-token"))).status).toBe(
@@ -510,13 +535,13 @@ describe("Token Exchange Worker boundary", () => {
   it("sanitizes a rejected rate-limit binding call without leaking its detail", async () => {
     const failureDetail = "rate limit binding leaked detail";
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
-      ...testTokenExchangeWorkerRuntimeDependencies,
+    const worker = createTokenExchangeWorker(testGitHubActionsTokenExchangeComposition, {
+      ...testGitHubActionsTokenExchangeWorkerRuntimeDependencies,
       fetch: vi.fn<typeof fetch>(),
     });
 
     try {
-      const response = await invokeWorker(worker, await tokenRequest(), {
+      const response = await invokeWorker(worker, await githubActionsTokenExchangeRequest(), {
         ...testEnv,
         TOKEN_EXCHANGE_RATE_LIMIT: {
           limit: async () => Promise.reject(new Error(failureDetail)),
@@ -534,13 +559,13 @@ describe("Token Exchange Worker boundary", () => {
     const failureDetail = "private non-Error rate-limit rejection";
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const fetchExternal = vi.fn<typeof fetch>();
-    const worker = createTokenExchangeWorker(testTokenExchangeComposition, {
-      ...testTokenExchangeWorkerRuntimeDependencies,
+    const worker = createTokenExchangeWorker(testGitHubActionsTokenExchangeComposition, {
+      ...testGitHubActionsTokenExchangeWorkerRuntimeDependencies,
       fetch: fetchExternal,
     });
 
     try {
-      const response = await invokeWorker(worker, await tokenRequest(), {
+      const response = await invokeWorker(worker, await githubActionsTokenExchangeRequest(), {
         ...testEnv,
         TOKEN_EXCHANGE_RATE_LIMIT: {
           limit: async () => Promise.reject(failureDetail),
@@ -565,12 +590,12 @@ describe("Token Exchange Worker boundary", () => {
     const failureDetail = "private invalid audience detail";
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const worker = createTokenExchangeWorker(
-      testTokenExchangeComposition,
-      testTokenExchangeWorkerRuntimeDependencies,
+      testGitHubActionsTokenExchangeComposition,
+      testGitHubActionsTokenExchangeWorkerRuntimeDependencies,
     );
 
     try {
-      const response = await invokeWorker(worker, await tokenRequest(), {
+      const response = await invokeWorker(worker, await githubActionsTokenExchangeRequest(), {
         ...testEnv,
         TOKEN_BROKER_AUDIENCE: `invalid\n${failureDetail}`,
       });
@@ -592,8 +617,8 @@ describe("Token Exchange Worker boundary", () => {
     });
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const worker = createTokenExchangeWorker(
-      testTokenExchangeComposition,
-      testTokenExchangeWorkerRuntimeDependencies,
+      testGitHubActionsTokenExchangeComposition,
+      testGitHubActionsTokenExchangeWorkerRuntimeDependencies,
     );
 
     try {
@@ -626,8 +651,8 @@ describe("Token Exchange Worker boundary", () => {
       },
     );
     const worker = createTokenExchangeWorker(
-      testTokenExchangeComposition,
-      testTokenExchangeWorkerRuntimeDependencies,
+      testGitHubActionsTokenExchangeComposition,
+      testGitHubActionsTokenExchangeWorkerRuntimeDependencies,
     );
 
     try {
@@ -646,7 +671,7 @@ describe("Token Exchange Worker boundary", () => {
 
   it("sanitizes a final rejected protocol-handler promise", async () => {
     const failureDetail = "private final Token Endpoint rejection";
-    const request = await tokenRequest();
+    const request = await githubActionsTokenExchangeRequest();
     const PlatformResponse = Response;
     let constructionCount = 0;
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -665,8 +690,8 @@ describe("Token Exchange Worker boundary", () => {
       },
     );
     const worker = createTokenExchangeWorker(
-      testTokenExchangeComposition,
-      testTokenExchangeWorkerRuntimeDependencies,
+      testGitHubActionsTokenExchangeComposition,
+      testGitHubActionsTokenExchangeWorkerRuntimeDependencies,
     );
 
     try {
@@ -682,9 +707,11 @@ describe("Token Exchange Worker boundary", () => {
   });
 });
 
-async function tokenRequest(headers: Readonly<Record<string, string>> = {}): Promise<Request> {
+async function githubActionsTokenExchangeRequest(
+  headers: Readonly<Record<string, string>> = {},
+): Promise<Request> {
   return new Request("https://example.test/token", {
-    body: await tokenExchangeRequestBody(),
+    body: await githubActionsTokenExchangeRequestBody(),
     headers: { "content-type": "application/x-www-form-urlencoded", ...headers },
     method: "POST",
   });

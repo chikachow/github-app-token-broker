@@ -1,3 +1,4 @@
+import { tokenExchangeRequestContext as requestContext } from "./support/token-exchange-request.ts";
 import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-github-actions";
 import {
   createGitHubAppTokenExchange,
@@ -18,18 +19,15 @@ import {
   tokenExchangeGrantType,
 } from "./support/constants.ts";
 import { fetchGitHubTestDouble } from "./support/github-api.ts";
-import {
-  fetchOidcRemoteDocumentResponseTestDouble,
-  tokenExchangeRequestBody,
-} from "./support/oidc.ts";
+import { fetchGitHubActionsOidcRemoteDocumentTestDouble } from "./support/github-actions-oidc.ts";
 import { testPrivateKeyPem } from "./support/rsa-test-key-pair.ts";
-import { testTokenIssuancePolicy } from "./support/token-issuance-policy.ts";
+import { testGitHubActionsTokenIssuancePolicy } from "./support/github-actions-token-issuance-policy.ts";
 import {
-  fetchTokenExchangeExternalTestDouble as fetchExternal,
-  testGitHubAppTokenExchangeConfiguration as configuration,
-  tokenExchangeRequest as tokenRequest,
-  tokenExchangeRequestContext as requestContext,
-} from "./support/github-app-token-exchange.ts";
+  fetchGitHubActionsTokenExchangeExternalTestDouble,
+  testGitHubActionsTokenExchangeConfiguration,
+  githubActionsTokenExchangeRequest,
+  githubActionsTokenExchangeRequestBody,
+} from "./support/github-actions-token-exchange.ts";
 const defaultInstallationAccessTokenRequestLogFields = {
   permissions: { contents: "write", pull_requests: "write" },
   resource: `https://api.github.com/repos/${testRepository}`,
@@ -43,14 +41,19 @@ describe("GitHub App Token Exchange public interface", () => {
       const request = new Request(input, init);
       externalRequests.push(request);
 
-      return fetchExternal(request);
+      return fetchGitHubActionsTokenExchangeExternalTestDouble(request);
     });
     vi.useFakeTimers({ now: testNow });
     vi.stubGlobal("fetch", platformFetch);
 
     try {
-      const tokenExchange = createGitHubAppTokenExchange(configuration);
-      const response = await tokenExchange(await tokenRequest(), requestContext());
+      const tokenExchange = createGitHubAppTokenExchange(
+        testGitHubActionsTokenExchangeConfiguration,
+      );
+      const response = await tokenExchange(
+        await githubActionsTokenExchangeRequest(),
+        requestContext(),
+      );
       const nowSeconds = Math.floor(testNow.getTime() / 1000);
       const githubAppJwtClaims = externalRequests
         .filter((request) => new URL(request.url).hostname === "api.github.com")
@@ -89,16 +92,16 @@ describe("GitHub App Token Exchange public interface", () => {
       const request = new Request(input, init);
 
       if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
-        return fetchOidcRemoteDocumentResponseTestDouble(request);
+        return fetchGitHubActionsOidcRemoteDocumentTestDouble(request);
       }
 
       githubRequests.push({ init, url: request.url });
       return fetchGitHubTestDouble(request);
     });
     const configurationWithIgnoredDestination = {
-      ...configuration,
+      ...testGitHubActionsTokenExchangeConfiguration,
       githubApp: {
-        ...configuration.githubApp,
+        ...testGitHubActionsTokenExchangeConfiguration.githubApp,
         apiBaseUrl: "https://attacker.invalid",
       },
     } as GitHubAppTokenExchangeConfiguration;
@@ -108,7 +111,10 @@ describe("GitHub App Token Exchange public interface", () => {
     });
 
     try {
-      const response = await tokenExchange(await tokenRequest(), requestContext());
+      const response = await tokenExchange(
+        await githubActionsTokenExchangeRequest(),
+        requestContext(),
+      );
 
       expect(response.status).toBe(200);
       expect(githubRequests.map(({ url }) => url)).toEqual([
@@ -137,7 +143,7 @@ describe("GitHub App Token Exchange public interface", () => {
         );
       }
 
-      return fetchExternal(request);
+      return fetchGitHubActionsTokenExchangeExternalTestDouble(request);
     });
     const initialNow = vi.fn(() => testNow);
     const replacementFetch = vi.fn<typeof fetch>();
@@ -145,7 +151,7 @@ describe("GitHub App Token Exchange public interface", () => {
     const mutableConfiguration = {
       composition: {
         oidcProviderRegistrations: [githubActionsOidcProviderRegistration],
-        tokenIssuancePolicy: testTokenIssuancePolicy,
+        tokenIssuancePolicy: testGitHubActionsTokenIssuancePolicy,
       },
       githubApp: {
         appId: "2419473",
@@ -166,7 +172,10 @@ describe("GitHub App Token Exchange public interface", () => {
     mutableRuntimeDependencies.fetch = replacementFetch;
     mutableRuntimeDependencies.now = replacementNow;
 
-    const response = await tokenExchange(await tokenRequest(), requestContext());
+    const response = await tokenExchange(
+      await githubActionsTokenExchangeRequest(),
+      requestContext(),
+    );
 
     expect(response.status).toBe(200);
     expect(observedIssuers).toEqual(["2419473", "2419473"]);
@@ -190,7 +199,7 @@ describe("GitHub App Token Exchange public interface", () => {
       const request = new Request(input, init);
 
       if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
-        return fetchOidcRemoteDocumentResponseTestDouble(request);
+        return fetchGitHubActionsOidcRemoteDocumentTestDouble(request);
       }
 
       queueMicrotask(() =>
@@ -198,13 +207,19 @@ describe("GitHub App Token Exchange public interface", () => {
       );
       return new Promise<Response>(() => undefined);
     });
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: fetchExternal,
-      now: () => testNow,
-    });
+    const tokenExchange = createGitHubAppTokenExchange(
+      testGitHubActionsTokenExchangeConfiguration,
+      {
+        fetch: fetchExternal,
+        now: () => testNow,
+      },
+    );
 
     try {
-      const response = await tokenExchange(await tokenRequest(), requestContext());
+      const response = await tokenExchange(
+        await githubActionsTokenExchangeRequest(),
+        requestContext(),
+      );
 
       expect(response.status).toBe(503);
       await expect(response.json()).resolves.toEqual({ error: "temporarily_unavailable" });
@@ -219,11 +234,14 @@ describe("GitHub App Token Exchange public interface", () => {
     const observeOidcDiagnostic = vi.fn(() => {
       throw new Error("optional diagnostic failure");
     });
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: fetchExternal,
-      now: () => testNow,
-    });
-    const response = await tokenExchange(await tokenRequest(), {
+    const tokenExchange = createGitHubAppTokenExchange(
+      testGitHubActionsTokenExchangeConfiguration,
+      {
+        fetch: fetchGitHubActionsTokenExchangeExternalTestDouble,
+        now: () => testNow,
+      },
+    );
+    const response = await tokenExchange(await githubActionsTokenExchangeRequest(), {
       observe: async (observation) => {
         observations.push(observation);
       },
@@ -240,29 +258,32 @@ describe("GitHub App Token Exchange public interface", () => {
 
   it("records permissions granted by GitHub through the public observation interface", async () => {
     const observations: TokenExchangeObservation[] = [];
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: async (input, init) => {
-        const request = new Request(input, init);
+    const tokenExchange = createGitHubAppTokenExchange(
+      testGitHubActionsTokenExchangeConfiguration,
+      {
+        fetch: async (input, init) => {
+          const request = new Request(input, init);
 
-        if (
-          request.method === "POST" &&
-          new URL(request.url).pathname === "/app/installations/67890/access_tokens"
-        ) {
-          return Response.json(
-            {
-              expires_at: "2030-01-01T00:00:00Z",
-              permissions: { contents: "write", metadata: "read", pull_requests: "write" },
-              token: "ghs_test_token",
-            },
-            { status: 201 },
-          );
-        }
+          if (
+            request.method === "POST" &&
+            new URL(request.url).pathname === "/app/installations/67890/access_tokens"
+          ) {
+            return Response.json(
+              {
+                expires_at: "2030-01-01T00:00:00Z",
+                permissions: { contents: "write", metadata: "read", pull_requests: "write" },
+                token: "ghs_test_token",
+              },
+              { status: 201 },
+            );
+          }
 
-        return fetchExternal(request);
+          return fetchGitHubActionsTokenExchangeExternalTestDouble(request);
+        },
+        now: () => testNow,
       },
-      now: () => testNow,
-    });
-    const response = await tokenExchange(await tokenRequest(), {
+    );
+    const response = await tokenExchange(await githubActionsTokenExchangeRequest(), {
       observe: async (observation) => {
         observations.push(observation);
       },
@@ -307,26 +328,29 @@ describe("GitHub App Token Exchange public interface", () => {
     "observes the received GitHub $upstreamStatus when the $method response body fails",
     async ({ installationId, method, upstreamStatus }) => {
       const observations: TokenExchangeObservation[] = [];
-      const tokenExchange = createGitHubAppTokenExchange(configuration, {
-        fetch: async (input, init) => {
-          const request = new Request(input, init);
+      const tokenExchange = createGitHubAppTokenExchange(
+        testGitHubActionsTokenExchangeConfiguration,
+        {
+          fetch: async (input, init) => {
+            const request = new Request(input, init);
 
-          if (new URL(request.url).hostname === "api.github.com" && request.method === method) {
-            return new Response(
-              new ReadableStream<Uint8Array>({
-                start(controller) {
-                  controller.error(new Error("private GitHub response stream failure"));
-                },
-              }),
-              { status: upstreamStatus },
-            );
-          }
+            if (new URL(request.url).hostname === "api.github.com" && request.method === method) {
+              return new Response(
+                new ReadableStream<Uint8Array>({
+                  start(controller) {
+                    controller.error(new Error("private GitHub response stream failure"));
+                  },
+                }),
+                { status: upstreamStatus },
+              );
+            }
 
-          return fetchExternal(request);
+            return fetchGitHubActionsTokenExchangeExternalTestDouble(request);
+          },
+          now: () => testNow,
         },
-        now: () => testNow,
-      });
-      const response = await tokenExchange(await tokenRequest(), {
+      );
+      const response = await tokenExchange(await githubActionsTokenExchangeRequest(), {
         observe: async (observation) => {
           observations.push(observation);
         },
@@ -357,22 +381,25 @@ describe("GitHub App Token Exchange public interface", () => {
 
   it("retains the resolved installation in an observed mint failure", async () => {
     const observations: TokenExchangeObservation[] = [];
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: async (input, init) => {
-        const request = new Request(input, init);
+    const tokenExchange = createGitHubAppTokenExchange(
+      testGitHubActionsTokenExchangeConfiguration,
+      {
+        fetch: async (input, init) => {
+          const request = new Request(input, init);
 
-        if (
-          request.method === "POST" &&
-          new URL(request.url).pathname === "/app/installations/67890/access_tokens"
-        ) {
-          return new Response(null, { status: 500 });
-        }
+          if (
+            request.method === "POST" &&
+            new URL(request.url).pathname === "/app/installations/67890/access_tokens"
+          ) {
+            return new Response(null, { status: 500 });
+          }
 
-        return fetchExternal(request);
+          return fetchGitHubActionsTokenExchangeExternalTestDouble(request);
+        },
+        now: () => testNow,
       },
-      now: () => testNow,
-    });
-    const response = await tokenExchange(await tokenRequest(), {
+    );
+    const response = await tokenExchange(await githubActionsTokenExchangeRequest(), {
       observe: async (observation) => {
         observations.push(observation);
       },
@@ -420,20 +447,26 @@ describe("GitHub App Token Exchange public interface", () => {
   ] as const)(
     "maps GitHub installation-resolution status $upstreamStatus to OAuth status $responseStatus",
     async ({ error, headers, responseStatus, upstreamStatus }) => {
-      const tokenExchange = createGitHubAppTokenExchange(configuration, {
-        fetch: async (input, init) => {
-          const request = new Request(input, init);
+      const tokenExchange = createGitHubAppTokenExchange(
+        testGitHubActionsTokenExchangeConfiguration,
+        {
+          fetch: async (input, init) => {
+            const request = new Request(input, init);
 
-          return new URL(request.url).hostname === "token.actions.githubusercontent.com"
-            ? fetchOidcRemoteDocumentResponseTestDouble(request)
-            : new Response(null, {
-                ...(headers === undefined ? {} : { headers }),
-                status: upstreamStatus,
-              });
+            return new URL(request.url).hostname === "token.actions.githubusercontent.com"
+              ? fetchGitHubActionsOidcRemoteDocumentTestDouble(request)
+              : new Response(null, {
+                  ...(headers === undefined ? {} : { headers }),
+                  status: upstreamStatus,
+                });
+          },
+          now: () => testNow,
         },
-        now: () => testNow,
-      });
-      const response = await tokenExchange(await tokenRequest(), requestContext());
+      );
+      const response = await tokenExchange(
+        await githubActionsTokenExchangeRequest(),
+        requestContext(),
+      );
 
       expect(response.status).toBe(responseStatus);
       await expect(response.json()).resolves.toEqual({ error });
@@ -443,19 +476,22 @@ describe("GitHub App Token Exchange public interface", () => {
   it("sanitizes a GitHub transport failure through the public handler", async () => {
     const failureDetail = "private GitHub transport failure";
     const observations: TokenExchangeObservation[] = [];
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: async (input, init) => {
-        const request = new Request(input, init);
+    const tokenExchange = createGitHubAppTokenExchange(
+      testGitHubActionsTokenExchangeConfiguration,
+      {
+        fetch: async (input, init) => {
+          const request = new Request(input, init);
 
-        if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
-          return fetchOidcRemoteDocumentResponseTestDouble(request);
-        }
+          if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
+            return fetchGitHubActionsOidcRemoteDocumentTestDouble(request);
+          }
 
-        throw new Error(failureDetail);
+          throw new Error(failureDetail);
+        },
+        now: () => testNow,
       },
-      now: () => testNow,
-    });
-    const response = await tokenExchange(await tokenRequest(), {
+    );
+    const response = await tokenExchange(await githubActionsTokenExchangeRequest(), {
       observe: async (observation) => {
         observations.push(observation);
       },
@@ -471,20 +507,23 @@ describe("GitHub App Token Exchange public interface", () => {
   it("maps OIDC provider unavailability without attempting GitHub I/O", async () => {
     const githubRequests: Request[] = [];
     const observations: TokenExchangeObservation[] = [];
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: async (input, init) => {
-        const request = new Request(input, init);
+    const tokenExchange = createGitHubAppTokenExchange(
+      testGitHubActionsTokenExchangeConfiguration,
+      {
+        fetch: async (input, init) => {
+          const request = new Request(input, init);
 
-        if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
-          return new Response(null, { status: 503 });
-        }
+          if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
+            return new Response(null, { status: 503 });
+          }
 
-        githubRequests.push(request);
-        return fetchGitHubTestDouble(request);
+          githubRequests.push(request);
+          return fetchGitHubTestDouble(request);
+        },
+        now: () => testNow,
       },
-      now: () => testNow,
-    });
-    const response = await tokenExchange(await tokenRequest(), {
+    );
+    const response = await tokenExchange(await githubActionsTokenExchangeRequest(), {
       observe: async (observation) => {
         observations.push(observation);
       },
@@ -514,13 +553,16 @@ describe("GitHub App Token Exchange public interface", () => {
     const failureDetail = "private OIDC clock failure with credential detail";
     const fetchExternal = vi.fn<typeof fetch>();
     const observations: TokenExchangeObservation[] = [];
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: fetchExternal,
-      now: () => {
-        throw new Error(failureDetail);
+    const tokenExchange = createGitHubAppTokenExchange(
+      testGitHubActionsTokenExchangeConfiguration,
+      {
+        fetch: fetchExternal,
+        now: () => {
+          throw new Error(failureDetail);
+        },
       },
-    });
-    const body = await tokenExchangeRequestBody();
+    );
+    const body = await githubActionsTokenExchangeRequestBody();
     const subjectToken = new URLSearchParams(body).get("subject_token");
     if (subjectToken === null) {
       throw new Error("test Token Exchange request did not contain a subject token");
@@ -564,7 +606,9 @@ describe("GitHub App Token Exchange public interface", () => {
     expect(serializedObservations).not.toContain("must-not-enter-neutral-observation");
     expect(serializedObservations).not.toContain(failureDetail);
     expect(serializedObservations).not.toContain(subjectToken);
-    expect(serializedObservations).not.toContain(configuration.githubApp.privateKey);
+    expect(serializedObservations).not.toContain(
+      testGitHubActionsTokenExchangeConfiguration.githubApp.privateKey,
+    );
     expect(serializedObservations).not.toContain("ghs_test_token");
   });
 
@@ -576,11 +620,11 @@ describe("GitHub App Token Exchange public interface", () => {
         name: "GitHubAppConfigurationError",
       },
       privateDetails: ["not-an-app-id"],
-      privateKey: configuration.githubApp.privateKey,
+      privateKey: testGitHubActionsTokenExchangeConfiguration.githubApp.privateKey,
       scenario: "an invalid App ID",
     },
     {
-      appId: configuration.githubApp.appId,
+      appId: testGitHubActionsTokenExchangeConfiguration.githubApp.appId,
       expectedError: {
         message: "invalid GitHub App configuration",
         name: "GitHubAppConfigurationError",
@@ -590,7 +634,7 @@ describe("GitHub App Token Exchange public interface", () => {
       scenario: "an empty private key",
     },
     {
-      appId: configuration.githubApp.appId,
+      appId: testGitHubActionsTokenExchangeConfiguration.githubApp.appId,
       expectedError: {
         message: "invalid GitHub App configuration",
         name: "GitHubAppConfigurationError",
@@ -600,7 +644,7 @@ describe("GitHub App Token Exchange public interface", () => {
       scenario: "an invalid private key",
     },
     {
-      appId: configuration.githubApp.appId,
+      appId: testGitHubActionsTokenExchangeConfiguration.githubApp.appId,
       expectedError: {
         message: "unexpected Installation Access Token Issuance error",
         name: "Error",
@@ -622,7 +666,7 @@ describe("GitHub App Token Exchange public interface", () => {
       const observations: TokenExchangeObservation[] = [];
       const tokenExchange = createGitHubAppTokenExchange(
         {
-          ...configuration,
+          ...testGitHubActionsTokenExchangeConfiguration,
           githubApp: { appId, privateKey },
         },
         {
@@ -630,7 +674,7 @@ describe("GitHub App Token Exchange public interface", () => {
             const request = new Request(input, init);
 
             if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
-              return fetchOidcRemoteDocumentResponseTestDouble(request);
+              return fetchGitHubActionsOidcRemoteDocumentTestDouble(request);
             }
 
             githubRequests.push(request);
@@ -639,7 +683,7 @@ describe("GitHub App Token Exchange public interface", () => {
           now: () => testNow,
         },
       );
-      const body = await tokenExchangeRequestBody();
+      const body = await githubActionsTokenExchangeRequestBody();
       const subjectToken = new URLSearchParams(body).get("subject_token");
       if (subjectToken === null) {
         throw new Error("test Token Exchange request did not contain a subject token");
@@ -686,10 +730,13 @@ describe("GitHub App Token Exchange public interface", () => {
         controller.error(new Error(failureDetail));
       },
     });
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: vi.fn<typeof fetch>(),
-      now: () => testNow,
-    });
+    const tokenExchange = createGitHubAppTokenExchange(
+      testGitHubActionsTokenExchangeConfiguration,
+      {
+        fetch: vi.fn<typeof fetch>(),
+        now: () => testNow,
+      },
+    );
 
     try {
       const response = await tokenExchange(
@@ -711,23 +758,26 @@ describe("GitHub App Token Exchange public interface", () => {
 
   it("fails closed before GitHub I/O when mandatory observation is not acknowledged", async () => {
     const githubRequests: Request[] = [];
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: async (input, init) => {
-        const request = new Request(input, init);
+    const tokenExchange = createGitHubAppTokenExchange(
+      testGitHubActionsTokenExchangeConfiguration,
+      {
+        fetch: async (input, init) => {
+          const request = new Request(input, init);
 
-        if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
-          return fetchOidcRemoteDocumentResponseTestDouble(request);
-        }
+          if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
+            return fetchGitHubActionsOidcRemoteDocumentTestDouble(request);
+          }
 
-        githubRequests.push(request);
-        return fetchGitHubTestDouble(request);
+          githubRequests.push(request);
+          return fetchGitHubTestDouble(request);
+        },
+        now: () => testNow,
       },
-      now: () => testNow,
-    });
+    );
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     try {
-      const response = await tokenExchange(await tokenRequest(), {
+      const response = await tokenExchange(await githubActionsTokenExchangeRequest(), {
         observe: async (observation) => {
           if (observation.fields["event"] === "installation_access_token_issuance_started") {
             throw new Error("private observation failure");
@@ -758,27 +808,30 @@ describe("GitHub App Token Exchange public interface", () => {
       }),
       { status: 503 },
     );
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: (input, init) => {
-        const request = new Request(input, init);
+    const tokenExchange = createGitHubAppTokenExchange(
+      testGitHubActionsTokenExchangeConfiguration,
+      {
+        fetch: (input, init) => {
+          const request = new Request(input, init);
 
-        if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
-          return fetchOidcRemoteDocumentResponseTestDouble(request);
-        }
+          if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
+            return fetchGitHubActionsOidcRemoteDocumentTestDouble(request);
+          }
 
-        githubRequests.push(request);
+          githubRequests.push(request);
 
-        return request.method === "DELETE" &&
-          new URL(request.url).pathname === "/installation/token"
-          ? Promise.resolve(revocationResponse)
-          : fetchGitHubTestDouble(request);
+          return request.method === "DELETE" &&
+            new URL(request.url).pathname === "/installation/token"
+            ? Promise.resolve(revocationResponse)
+            : fetchGitHubTestDouble(request);
+        },
+        now: () => testNow,
       },
-      now: () => testNow,
-    });
+    );
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     try {
-      const response = await tokenExchange(await tokenRequest(), {
+      const response = await tokenExchange(await githubActionsTokenExchangeRequest(), {
         observe: async (observation) => {
           const event = observation.fields["event"];
           observedEvents.push(event);
@@ -817,10 +870,13 @@ describe("GitHub App Token Exchange public interface", () => {
 
   it("fails closed when an authentication-failure observation is not acknowledged", async () => {
     const fetchExternal = vi.fn<typeof fetch>();
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: fetchExternal,
-      now: () => testNow,
-    });
+    const tokenExchange = createGitHubAppTokenExchange(
+      testGitHubActionsTokenExchangeConfiguration,
+      {
+        fetch: fetchExternal,
+        now: () => testNow,
+      },
+    );
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     try {
@@ -846,19 +902,19 @@ describe("GitHub App Token Exchange public interface", () => {
         resource: `https://api.github.com/repos/${testRepository}`,
         scope: "issues:read",
       },
-      options: { form: { scope: "issues:read" } },
+      options: { formOverrides: { scope: "issues:read" } },
       outcome: "requested_permissions_unsupported",
     },
     {
       error: "invalid_request",
       installationAccessTokenRequest: defaultInstallationAccessTokenRequestLogFields,
-      options: { claims: { event_name: "push" } },
+      options: { claimOverrides: { event_name: "push" } },
       outcome: "subject_token_unacceptable",
     },
     {
       error: "invalid_target",
       options: {
-        form: {
+        formOverrides: {
           resource: "https://api.github.com/repos/fixture-target-owner/fixture-unconfigured-target",
         },
       },
@@ -873,31 +929,27 @@ describe("GitHub App Token Exchange public interface", () => {
     async ({ error, installationAccessTokenRequest, options, outcome }) => {
       const githubRequests: Request[] = [];
       const observations: TokenExchangeObservation[] = [];
-      const tokenExchange = createGitHubAppTokenExchange(configuration, {
-        fetch: async (input, init) => {
-          const request = new Request(input, init);
-
-          if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
-            return fetchOidcRemoteDocumentResponseTestDouble(request);
-          }
-
-          githubRequests.push(request);
-          return fetchGitHubTestDouble(request);
-        },
-        now: () => testNow,
-      });
-      const response = await tokenExchange(
-        new Request("https://broker.example/token", {
-          body: await tokenExchangeRequestBody(options),
-          headers: { "content-type": "application/x-www-form-urlencoded" },
-          method: "POST",
-        }),
+      const tokenExchange = createGitHubAppTokenExchange(
+        testGitHubActionsTokenExchangeConfiguration,
         {
-          observe: async (observation) => {
-            observations.push(observation);
+          fetch: async (input, init) => {
+            const request = new Request(input, init);
+
+            if (new URL(request.url).hostname === "token.actions.githubusercontent.com") {
+              return fetchGitHubActionsOidcRemoteDocumentTestDouble(request);
+            }
+
+            githubRequests.push(request);
+            return fetchGitHubTestDouble(request);
           },
+          now: () => testNow,
         },
       );
+      const response = await tokenExchange(await githubActionsTokenExchangeRequest(options), {
+        observe: async (observation) => {
+          observations.push(observation);
+        },
+      });
 
       expect(response.status).toBe(400);
       await expect(response.json()).resolves.toEqual({ error });
@@ -963,11 +1015,11 @@ function expectedIssuanceObservationFields({
 }
 
 const runtimeDependencies = {
-  fetch: fetchExternal,
+  fetch: fetchGitHubActionsTokenExchangeExternalTestDouble,
   now: () => testNow,
 } satisfies TokenExchangeRuntimeDependencies;
 const publicHandler: TokenExchangeHandler = createGitHubAppTokenExchange(
-  configuration,
+  testGitHubActionsTokenExchangeConfiguration,
   runtimeDependencies,
 );
 void publicHandler;
