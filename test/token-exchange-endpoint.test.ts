@@ -1,3 +1,4 @@
+import { tokenExchangeRequestContext as requestContext } from "./support/token-exchange-request.ts";
 import {
   createGitHubAppTokenExchange,
   type TokenExchangeObservation,
@@ -11,24 +12,26 @@ import {
   tokenExchangeGrantType,
 } from "./support/constants.ts";
 import {
-  fetchTokenExchangeExternalTestDouble as fetchExternal,
-  testGitHubAppTokenExchangeConfiguration as configuration,
-  tokenExchangeRequest as tokenRequest,
-  tokenExchangeRequestContext as requestContext,
-} from "./support/github-app-token-exchange.ts";
-import { tokenExchangeRequestBody } from "./support/oidc.ts";
+  fetchGitHubActionsTokenExchangeExternalTestDouble,
+  testGitHubActionsTokenExchangeConfiguration,
+  githubActionsTokenExchangeRequest,
+  githubActionsTokenExchangeRequestBody,
+} from "./support/github-actions-token-exchange.ts";
 
 describe("Token Exchange Endpoint public handler", () => {
   it("validates method and media type without external I/O", async () => {
     const fetchExternal = vi.fn<typeof fetch>();
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: fetchExternal,
-      now: () => testNow,
-    });
+    const tokenExchange = createGitHubAppTokenExchange(
+      testGitHubActionsTokenExchangeConfiguration,
+      {
+        fetch: fetchExternal,
+        now: () => testNow,
+      },
+    );
 
     const methodResponse = await tokenExchange(
       new Request("https://broker.example/token", {
-        body: await tokenExchangeRequestBody(),
+        body: await githubActionsTokenExchangeRequestBody(),
         headers: { "content-type": "application/x-www-form-urlencoded" },
         method: "PUT",
       }),
@@ -52,10 +55,13 @@ describe("Token Exchange Endpoint public handler", () => {
     ["1invalid credentials", 'Basic realm="github-app-token-broker"'],
   ])("rejects client authentication using the %s challenge", async (authorization, challenge) => {
     const fetchExternal = vi.fn<typeof fetch>();
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: fetchExternal,
-      now: () => testNow,
-    });
+    const tokenExchange = createGitHubAppTokenExchange(
+      testGitHubActionsTokenExchangeConfiguration,
+      {
+        fetch: fetchExternal,
+        now: () => testNow,
+      },
+    );
     const request = formRequest();
     request.headers.set("authorization", authorization);
     const response = await tokenExchange(request, requestContext());
@@ -76,12 +82,17 @@ describe("Token Exchange Endpoint public handler", () => {
       "urn:ietf:params:oauth:token-type:access_token",
     ],
   ])("echoes the supported requested token type %s", async (requestedTokenType, expectedType) => {
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: fetchExternal,
-      now: () => testNow,
-    });
+    const tokenExchange = createGitHubAppTokenExchange(
+      testGitHubActionsTokenExchangeConfiguration,
+      {
+        fetch: fetchGitHubActionsTokenExchangeExternalTestDouble,
+        now: () => testNow,
+      },
+    );
     const response = await tokenExchange(
-      await tokenRequest({ requested_token_type: requestedTokenType }),
+      await githubActionsTokenExchangeRequest({
+        formOverrides: { requested_token_type: requestedTokenType },
+      }),
       requestContext(),
     );
 
@@ -90,12 +101,17 @@ describe("Token Exchange Endpoint public handler", () => {
   });
 
   it("canonicalizes reordered permission scope in the response", async () => {
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: fetchExternal,
-      now: () => testNow,
-    });
+    const tokenExchange = createGitHubAppTokenExchange(
+      testGitHubActionsTokenExchangeConfiguration,
+      {
+        fetch: fetchGitHubActionsTokenExchangeExternalTestDouble,
+        now: () => testNow,
+      },
+    );
     const response = await tokenExchange(
-      await tokenRequest({ scope: "pull_requests:write contents:write" }),
+      await githubActionsTokenExchangeRequest({
+        formOverrides: { scope: "pull_requests:write contents:write" },
+      }),
       requestContext(),
     );
 
@@ -133,10 +149,13 @@ describe("Token Exchange Endpoint public handler", () => {
   ] as const)("rejects %s through the public handler", async (_scenario, overrides, error) => {
     const fetchExternal = vi.fn<typeof fetch>();
     const observe = vi.fn(async () => undefined);
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: fetchExternal,
-      now: () => testNow,
-    });
+    const tokenExchange = createGitHubAppTokenExchange(
+      testGitHubActionsTokenExchangeConfiguration,
+      {
+        fetch: fetchExternal,
+        now: () => testNow,
+      },
+    );
     const response = await tokenExchange(formRequest(overrides), { observe });
 
     expect(response.status).toBe(400);
@@ -156,10 +175,13 @@ describe("Token Exchange Endpoint public handler", () => {
   ] as const)("rejects a non-empty unsupported %s", async (field) => {
     const fetchExternal = vi.fn<typeof fetch>();
     const observe = vi.fn(async () => undefined);
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: fetchExternal,
-      now: () => testNow,
-    });
+    const tokenExchange = createGitHubAppTokenExchange(
+      testGitHubActionsTokenExchangeConfiguration,
+      {
+        fetch: fetchExternal,
+        now: () => testNow,
+      },
+    );
     const response = await tokenExchange(formRequest({ [field]: "unsupported" }), { observe });
 
     expect(response.status).toBe(400);
@@ -170,10 +192,13 @@ describe("Token Exchange Endpoint public handler", () => {
 
   it("ignores empty unsupported parameters before authenticating the Subject Token", async () => {
     const observe = vi.fn(async () => undefined);
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: vi.fn<typeof fetch>(),
-      now: () => testNow,
-    });
+    const tokenExchange = createGitHubAppTokenExchange(
+      testGitHubActionsTokenExchangeConfiguration,
+      {
+        fetch: vi.fn<typeof fetch>(),
+        now: () => testNow,
+      },
+    );
     const form = validForm();
 
     for (const field of [
@@ -204,10 +229,13 @@ describe("Token Exchange Endpoint public handler", () => {
   });
 
   it("rejects duplicate non-empty singleton values and accepts surrounding empty values", async () => {
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: vi.fn<typeof fetch>(),
-      now: () => testNow,
-    });
+    const tokenExchange = createGitHubAppTokenExchange(
+      testGitHubActionsTokenExchangeConfiguration,
+      {
+        fetch: vi.fn<typeof fetch>(),
+        now: () => testNow,
+      },
+    );
     const rejectedForm = validForm();
     rejectedForm.append("scope", "contents:read");
     const rejectedObserve = vi.fn(async () => undefined);
@@ -230,11 +258,14 @@ describe("Token Exchange Endpoint public handler", () => {
 
   it("accepts an empty singleton occurrence before its non-empty value", async () => {
     const observations: TokenExchangeObservation[] = [];
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: fetchExternal,
-      now: () => testNow,
-    });
-    const validBody = new URLSearchParams(await tokenExchangeRequestBody());
+    const tokenExchange = createGitHubAppTokenExchange(
+      testGitHubActionsTokenExchangeConfiguration,
+      {
+        fetch: fetchGitHubActionsTokenExchangeExternalTestDouble,
+        now: () => testNow,
+      },
+    );
+    const validBody = new URLSearchParams(await githubActionsTokenExchangeRequestBody());
     const form = new URLSearchParams([["grant_type", ""], ...validBody]);
     const response = await tokenExchange(
       new Request("https://broker.example/token", {
@@ -259,10 +290,13 @@ describe("Token Exchange Endpoint public handler", () => {
 
   it("rejects an oversized body before authentication", async () => {
     const observe = vi.fn(async () => undefined);
-    const tokenExchange = createGitHubAppTokenExchange(configuration, {
-      fetch: vi.fn<typeof fetch>(),
-      now: () => testNow,
-    });
+    const tokenExchange = createGitHubAppTokenExchange(
+      testGitHubActionsTokenExchangeConfiguration,
+      {
+        fetch: vi.fn<typeof fetch>(),
+        now: () => testNow,
+      },
+    );
     const response = await tokenExchange(
       new Request("https://broker.example/token", {
         body: `grant_type=x&subject_token=${"x".repeat(64 * 1024)}`,

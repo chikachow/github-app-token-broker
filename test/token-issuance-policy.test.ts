@@ -23,7 +23,6 @@ import {
   type PermitStatementDefinition,
 } from "@github-app-token-broker/token-issuance-policy";
 import type { VerifiedSubjectToken } from "@github-app-token-broker/oidc/id-token-authenticator";
-import { createVerifiedSubjectToken } from "./support/oidc.ts";
 
 const parsedIssuer = parseOidcIssuerIdentifier("https://issuer.example");
 
@@ -513,10 +512,11 @@ const repositoryResource = createGitHubRepositoryResource({
   owner: "owner",
   repository: "repository",
 });
-const matchingSubjectToken = createVerifiedSubjectToken(
-  { branch: "main", environment: "production", trusted: true },
-  { issuer },
-);
+const matchingSubjectToken = verifiedSubjectTokenFor({
+  branch: "main",
+  environment: "production",
+  trusted: true,
+});
 
 function requestFor(
   permissions: GitHubInstallationPermissions,
@@ -653,7 +653,7 @@ describe("Token Issuance Policy evaluation", () => {
     expect(
       evaluateTokenIssuancePolicy(
         policy,
-        createVerifiedSubjectToken({ trusted: false }, { issuer }),
+        verifiedSubjectTokenFor({ trusted: false }),
         requestFor({ contents: "read" }),
       ),
     ).toEqual({ outcome: "subject_token_unacceptable" });
@@ -733,7 +733,7 @@ describe("Token Issuance Policy evaluation", () => {
       expect(
         policyEvaluationPermits(
           policy,
-          createVerifiedSubjectToken(claims, { issuer }),
+          verifiedSubjectTokenFor(claims),
           requestFor({ contents: "read" }),
         ),
       ).toBe(false);
@@ -1034,3 +1034,17 @@ describe("Token Issuance Policy evaluation", () => {
     expect(cases).toBe(3_600);
   });
 });
+
+function verifiedSubjectTokenFor(claims: Record<string, unknown>): VerifiedSubjectToken {
+  return {
+    issuer,
+    claims: {
+      aud: "https://broker.example",
+      exp: 1779581100,
+      iat: 1779580790,
+      sub: "subject",
+      ...claims,
+      iss: issuer,
+    },
+  };
+}

@@ -96,7 +96,7 @@ export async function signedIdToken(
   options: {
     algorithm?: string;
     audience?: string | string[];
-    claims?: Record<string, unknown>;
+    claimOverrides?: Record<string, unknown>;
     expiresInSeconds?: number;
     kid?: string | null;
     tokenIssuer?: string;
@@ -111,7 +111,7 @@ export async function signedIdToken(
     iat: now - 10,
     iss: options.tokenIssuer ?? issuer,
     sub: "subject",
-    ...options.claims,
+    ...options.claimOverrides,
   })
     .setProtectedHeader({
       alg: options.algorithm ?? "RS256",

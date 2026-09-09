@@ -21,7 +21,7 @@ const testSubjectTokenConstraint = oidcSubjectTokenConstraint(
   claimEquals("workflow_ref", testWorkflowRef),
 );
 
-export const testTokenIssuancePolicy = compileTokenIssuancePolicy([
+export const testGitHubActionsTokenIssuancePolicy = compileTokenIssuancePolicy([
   {
     permissions: { contents: "write", pull_requests: "write" },
     resource: githubRepositoryResourceConstraint(...repositoryParts(testRepository)),

@@ -93,7 +93,7 @@ describe("OIDC ID Token Authenticator", () => {
       expectedFailure("subject_token_rejected", "ERR_JWT_INVALID"),
     );
     await expect(
-      authenticator.authenticateIdToken(await signedIdToken({ claims: { iss: "" } })),
+      authenticator.authenticateIdToken(await signedIdToken({ claimOverrides: { iss: "" } })),
     ).resolves.toEqual(expectedFailure("subject_token_rejected", "ERR_JWT_INVALID"));
     expect(fetchOidcRemoteDocumentResponse).not.toHaveBeenCalled();
   });

@@ -1,3 +1,4 @@
+import { githubActionsTokenExchangeRequestBody } from "./support/github-actions-token-exchange.ts";
 import { describe, expect, it, vi } from "vitest";
 
 import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-github-actions";
@@ -12,8 +13,7 @@ import {
 } from "@github-app-token-broker/worker";
 import { parseOidcIssuerIdentifier } from "@github-app-token-broker/oidc/provider-registration";
 import genericTokenExchangeWorker from "../workers/github-app-token-broker/src/generic-worker.ts";
-import { tokenExchangeRequestBody } from "./support/worker.ts";
-import { testTokenIssuancePolicy } from "./support/token-issuance-policy.ts";
+import { testGitHubActionsTokenIssuancePolicy } from "./support/github-actions-token-issuance-policy.ts";
 
 describe("worker entrypoint shapes", () => {
   it("exports only the reviewed GitHub App Information RPC methods", () => {
@@ -33,7 +33,7 @@ describe("worker entrypoint shapes", () => {
           githubActionsOidcProviderRegistration,
           githubActionsOidcProviderRegistration,
         ],
-        tokenIssuancePolicy: testTokenIssuancePolicy,
+        tokenIssuancePolicy: testGitHubActionsTokenIssuancePolicy,
       }),
     ).toThrow("duplicate OIDC Provider Registration issuer");
   });
@@ -74,7 +74,7 @@ describe("worker entrypoint shapes", () => {
     createTokenExchangeWorker(
       {
         oidcProviderRegistrations: [githubActionsOidcProviderRegistration],
-        tokenIssuancePolicy: testTokenIssuancePolicy,
+        tokenIssuancePolicy: testGitHubActionsTokenIssuancePolicy,
       },
       { fetch: fetchExternal, now: () => new Date() },
     );
@@ -98,7 +98,7 @@ describe("worker entrypoint shapes", () => {
       const response = await Promise.resolve(
         handler(
           new Request("https://example.test/token", {
-            body: await tokenExchangeRequestBody(),
+            body: await githubActionsTokenExchangeRequestBody(),
             headers: { "content-type": "application/x-www-form-urlencoded" },
             method: "POST",
           }) as Parameters<typeof handler>[0],

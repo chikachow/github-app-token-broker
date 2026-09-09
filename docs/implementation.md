@@ -164,6 +164,16 @@ new Vitest major.
 
 The aggregate check builds once, then reuses that artifact for the artifact, typecheck, test, Node production-consumer, and deployment lanes. Standalone `artifact:check`, `typecheck`, `test`, `node-deploy:check`, and `deploy:dry-run` commands build their prerequisites first. Workspace builds synchronize injected package copies, so those standalone commands also work after a frozen clean install with no pre-existing `dist`. The artifact check imports the built Token Exchange ESM directly under Node and typechecks a self-importing consumer through the package's exports and bundled declarations; no source alias participates. The Node deployment check production-deploys a Fastify host fixture, imports the deployed package roots, typechecks the public adapter options, and exercises a real loopback listener with GET and form POST requests. The POST reaches the built Token Exchange handler and checks its `unsupported_grant_type` response. The Fastify host fixture permits `@github-app-token-broker/fastify`, `@github-app-token-broker/token-exchange`, `jose`, and `zod` when tsdown bundles dependencies during that fixture build. Other dependencies encountered at that stage fail the build. This guard cannot identify dependencies already embedded in consumed package artifacts. The root Wrangler file is a unit-test harness. It intentionally repeats the package Worker's compatibility flags and binding shapes so Workerd unit tests execute under the production runtime constraints; `env-types:check`, the GitHub App Information Workerd integration project, and the package dry-run validate the deployable config. The package Wrangler file is a public-safe dry-run template; deployment-owned identifiers and routes are supplied by the external deployment system.
 
+### OIDC test fixtures
+
+Shared GitHub Actions payload, remote-document, policy, exchange, and Worker
+fixtures identify their provider in their exported names. `test/support/jwt.ts`
+signs an exact supplied payload with RS256; `test/support/token-exchange-request.ts`
+owns provider-neutral form construction and request context. Named request fixtures
+accept `claimOverrides` and `formOverrides` to distinguish partial changes from
+complete payloads and forms. The synthetic-issuer signing fixture also accepts
+`claimOverrides` over its explicit defaults.
+
 ### Container integration
 
 The [suite guide](../test/integration/README.md) owns the explicit Compose startup,

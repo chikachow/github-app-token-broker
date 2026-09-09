@@ -493,7 +493,7 @@ describe("Registered OIDC Provider Verifier", () => {
     await expect(
       verifier.verifyIdToken(
         await signedIdToken({
-          claims: {
+          claimOverrides: {
             event_name: "workflow_dispatch",
             ref: "refs/heads/main",
             ref_type: "branch",
@@ -526,7 +526,9 @@ describe("Registered OIDC Provider Verifier", () => {
     const verifier = testVerifier(successfulProviderFetch, undefined, profileRegistration);
 
     await expect(
-      verifier.verifyIdToken(await signedIdToken({ claims: { repository: "octo-org/example" } })),
+      verifier.verifyIdToken(
+        await signedIdToken({ claimOverrides: { repository: "octo-org/example" } }),
+      ),
     ).resolves.toMatchObject({ ok: true });
     expect(validate).toHaveBeenCalledWith(
       expect.objectContaining({ repository: "octo-org/example" }),
@@ -570,7 +572,7 @@ describe("Registered OIDC Provider Verifier", () => {
     await expect(
       verifier.verifyIdToken(
         await signedIdToken({
-          claims: {
+          claimOverrides: {
             context: { branch: "refs/heads/main" },
             environments: ["staging"],
           },
@@ -598,7 +600,7 @@ describe("Registered OIDC Provider Verifier", () => {
     await expect(
       verifier.verifyIdToken(
         await signedIdToken({
-          claims: {
+          claimOverrides: {
             exp: Date.parse("2030-01-01T00:00:00Z") / 1000,
             iat: Date.parse("2020-01-01T00:00:00Z") / 1000,
           },
@@ -615,9 +617,11 @@ describe("Registered OIDC Provider Verifier", () => {
     ["a non-numeric expiration time", { exp: "not-a-number" }, "ERR_JWT_CLAIM_VALIDATION_FAILED"],
   ])(
     "preserves the rejection classification for %s",
-    async (_description, claims, diagnosticCode) => {
+    async (_description, claimOverrides, diagnosticCode) => {
       await expect(
-        testVerifier(successfulProviderFetch).verifyIdToken(await signedIdToken({ claims })),
+        testVerifier(successfulProviderFetch).verifyIdToken(
+          await signedIdToken({ claimOverrides }),
+        ),
       ).resolves.toEqual(expectedFailure("subject_token_rejected", diagnosticCode));
     },
   );

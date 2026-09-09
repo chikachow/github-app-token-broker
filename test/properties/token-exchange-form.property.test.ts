@@ -1,3 +1,4 @@
+import { githubActionsTokenExchangeRequestBody } from "../support/github-actions-token-exchange.ts";
 import { test } from "@fast-check/vitest";
 import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-github-actions";
 import {
@@ -7,17 +8,14 @@ import {
 import fc from "fast-check";
 import { describe, expect } from "vitest";
 
-import {
-  fetchOidcRemoteDocumentResponseTestDouble,
-  tokenExchangeRequestBody,
-} from "../support/oidc.ts";
+import { fetchGitHubActionsOidcRemoteDocumentTestDouble } from "../support/github-actions-oidc.ts";
 import { testNow } from "../support/constants.ts";
 import { fetchGitHubTestDouble } from "../support/github-api.ts";
 import { testPrivateKeyPem } from "../support/rsa-test-key-pair.ts";
-import { testTokenIssuancePolicy } from "../support/token-issuance-policy.ts";
+import { testGitHubActionsTokenIssuancePolicy } from "../support/github-actions-token-issuance-policy.ts";
 
 const tokenEndpoint = "https://broker.example/token";
-const fixtureForm = new URLSearchParams(await tokenExchangeRequestBody());
+const fixtureForm = new URLSearchParams(await githubActionsTokenExchangeRequestBody());
 const resource = requiredFormValue(fixtureForm, "resource");
 const scope = requiredFormValue(fixtureForm, "scope");
 
@@ -79,7 +77,7 @@ const tokenExchange = createGitHubAppTokenExchange(
   {
     composition: {
       oidcProviderRegistrations: [githubActionsOidcProviderRegistration],
-      tokenIssuancePolicy: testTokenIssuancePolicy,
+      tokenIssuancePolicy: testGitHubActionsTokenIssuancePolicy,
     },
     githubApp: { appId: "2419473", privateKey: testPrivateKeyPem },
     subjectTokenAudience: "https://broker.example",
@@ -89,7 +87,7 @@ const tokenExchange = createGitHubAppTokenExchange(
       const request = new Request(input, init);
 
       return new URL(request.url).hostname === "token.actions.githubusercontent.com"
-        ? fetchOidcRemoteDocumentResponseTestDouble(request)
+        ? fetchGitHubActionsOidcRemoteDocumentTestDouble(request)
         : fetchGitHubTestDouble(request);
     },
     now: () => testNow,
