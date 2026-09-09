@@ -283,37 +283,40 @@ describe("OIDC admitted verification keys", () => {
     "RS256",
     "RS384",
     "RS512",
-  ] as const)("authenticates a registered %s verification key", async (algorithm) => {
-    const { privateKey, publicKey } = await generateKeyPair(algorithm, { extractable: true });
-    const publicJwk = await exportJWK(publicKey);
-    const providerRegistration = createOidcProviderRegistration({
-      acceptedIdTokenSigningAlgorithms: [algorithm],
-      idTokenProfile: null,
-      issuer,
-    });
-    const authenticator = testAuthenticator(
-      providerFetch({
-        advertisedIdTokenSigningAlgorithms: ["RS256", algorithm],
-        jwksResponse: () => Response.json({ keys: [{ ...publicJwk, kid: "algorithm-key" }] }),
-      }),
-      undefined,
-      providerRegistration,
-    );
-    const issuedAt = Math.floor(authenticationTestNow.getTime() / 1_000);
-    const subjectToken = await new SignJWT({
-      aud: subjectTokenAudience,
-      exp: issuedAt + 300,
-      iat: issuedAt,
-      iss: issuer,
-      sub: "subject",
-    })
-      .setProtectedHeader({ alg: algorithm, kid: "algorithm-key" })
-      .sign(privateKey);
+  ] as const)(
+    "authenticates an ID Token signed with registered algorithm %s",
+    async (algorithm) => {
+      const { privateKey, publicKey } = await generateKeyPair(algorithm, { extractable: true });
+      const publicJwk = await exportJWK(publicKey);
+      const providerRegistration = createOidcProviderRegistration({
+        acceptedIdTokenSigningAlgorithms: [algorithm],
+        idTokenProfile: null,
+        issuer,
+      });
+      const authenticator = testAuthenticator(
+        providerFetch({
+          advertisedIdTokenSigningAlgorithms: ["RS256", algorithm],
+          jwksResponse: () => Response.json({ keys: [{ ...publicJwk, kid: "algorithm-key" }] }),
+        }),
+        undefined,
+        providerRegistration,
+      );
+      const issuedAt = Math.floor(authenticationTestNow.getTime() / 1_000);
+      const subjectToken = await new SignJWT({
+        aud: subjectTokenAudience,
+        exp: issuedAt + 300,
+        iat: issuedAt,
+        iss: issuer,
+        sub: "subject",
+      })
+        .setProtectedHeader({ alg: algorithm, kid: "algorithm-key" })
+        .sign(privateKey);
 
-    await expect(authenticator.authenticateIdToken(subjectToken)).resolves.toMatchObject({
-      ok: true,
-    });
-  });
+      await expect(authenticator.authenticateIdToken(subjectToken)).resolves.toMatchObject({
+        ok: true,
+      });
+    },
+  );
 });
 
 describe("Registered OIDC Provider Verifier", () => {
