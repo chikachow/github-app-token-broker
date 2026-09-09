@@ -353,7 +353,7 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
 
   async #remoteJwks(
     providerMetadata: ValidatedOidcProviderMetadata,
-    forceRefresh: boolean,
+    refreshForMissingKey: boolean,
     now: number,
     observe: ((event: OidcDiagnosticEvent) => void) | undefined,
   ): Promise<CachedJwks> {
@@ -364,7 +364,7 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
     );
 
     if (
-      !forceRefresh &&
+      !refreshForMissingKey &&
       current !== undefined &&
       jwksResolutionIdentitiesEqual(current.value.identity, identity) &&
       now < current.freshUntil
@@ -373,7 +373,7 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
     }
 
     if (
-      forceRefresh &&
+      refreshForMissingKey &&
       current !== undefined &&
       jwksResolutionIdentitiesEqual(current.value.identity, identity) &&
       now < current.freshUntil &&
@@ -398,7 +398,7 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
       now < this.#state.jwksFailure.retryAfter
     ) {
       if (
-        !forceRefresh &&
+        !refreshForMissingKey &&
         current !== undefined &&
         jwksResolutionIdentitiesEqual(current.value.identity, identity) &&
         now < current.staleUntil
@@ -471,7 +471,7 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
       }
 
       if (
-        !forceRefresh &&
+        !refreshForMissingKey &&
         current !== undefined &&
         jwksResolutionIdentitiesEqual(current.value.identity, identity) &&
         now < current.staleUntil
