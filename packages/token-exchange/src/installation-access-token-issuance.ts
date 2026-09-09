@@ -79,7 +79,7 @@ export async function issueInstallationAccessTokenForContext(
     };
   }
 
-  const requestedResourceName = `${installationAccessTokenRequest.resource.owner}/${installationAccessTokenRequest.resource.repository}`;
+  const requestedRepositoryFullName = `${installationAccessTokenRequest.resource.owner}/${installationAccessTokenRequest.resource.repository}`;
 
   await observe({
     fields: {
@@ -87,7 +87,7 @@ export async function issueInstallationAccessTokenForContext(
       ...issuanceObservationFields(),
       target_installation: {
         id: undefined,
-        repository: requestedResourceName,
+        repository: requestedRepositoryFullName,
       },
     },
     level: "info",
@@ -128,7 +128,7 @@ export async function issueInstallationAccessTokenForContext(
         ...issuanceObservationFields(),
         target_installation: {
           id: issuance.installationId,
-          repository: requestedResourceName,
+          repository: requestedRepositoryFullName,
         },
         installation_access_token: {
           permissions: issuance.permissions,
