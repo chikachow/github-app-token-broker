@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   createOidcIdTokenAuthenticator,
-  type OidcIdTokenAuthenticationEvent,
+  type OidcDiagnosticEvent,
 } from "@github-app-token-broker/oidc/id-token-authenticator";
 import {
   createOidcProviderRegistration,
@@ -47,7 +47,7 @@ describe.each([
     async (cache) => {
       let now = authenticationTestNow;
       let malformed = cache === "cold";
-      const events: OidcIdTokenAuthenticationEvent[] = [];
+      const events: OidcDiagnosticEvent[] = [];
       const authenticator = testAuthenticator(
         providerFetch({
           jwksResponse: () =>
@@ -59,7 +59,7 @@ describe.each([
         () => now,
       );
       const subjectToken = await signedIdToken({ expiresInSeconds: 7_200 });
-      const observe = (event: OidcIdTokenAuthenticationEvent) => events.push(event);
+      const observe = (event: OidcDiagnosticEvent) => events.push(event);
 
       if (cache === "warm") {
         expect((await authenticator.authenticateIdToken(subjectToken)).ok).toBe(true);
@@ -107,7 +107,7 @@ describe.each([
     "does not reuse a %s JWK Set after an unusable refresh",
     async (cacheControl) => {
       let refreshing = false;
-      const events: OidcIdTokenAuthenticationEvent[] = [];
+      const events: OidcDiagnosticEvent[] = [];
       const authenticator = testAuthenticator(
         providerFetch({
           jwksResponse: () =>
@@ -159,7 +159,7 @@ describe("OIDC JWK Sets with deeply nested additive data", () => {
     async (cacheControl) => {
       let refreshing = false;
       let now = authenticationTestNow;
-      const events: OidcIdTokenAuthenticationEvent[] = [];
+      const events: OidcDiagnosticEvent[] = [];
       const authenticator = testAuthenticator(
         providerFetch({
           jwksResponse: () =>
@@ -216,7 +216,7 @@ describe("OIDC mixed JWK Set authentication", () => {
   it("admits a refreshed mixed set while classifying a selected weak key as unavailable", async () => {
     let now = authenticationTestNow;
     let mixed = false;
-    const events: OidcIdTokenAuthenticationEvent[] = [];
+    const events: OidcDiagnosticEvent[] = [];
     const authenticator = testAuthenticator(
       providerFetch({
         jwksResponse: () =>
@@ -235,7 +235,7 @@ describe("OIDC mixed JWK Set authentication", () => {
       () => now,
     );
     const subjectToken = await signedIdToken();
-    const observe = (event: OidcIdTokenAuthenticationEvent) => events.push(event);
+    const observe = (event: OidcDiagnosticEvent) => events.push(event);
 
     expect((await authenticator.authenticateIdToken(subjectToken)).ok).toBe(true);
     now = new Date(now.getTime() + 1_001);
@@ -345,7 +345,7 @@ describe("Registered OIDC Provider Verifier", () => {
   it("rejects a Provider Configuration redirect without using or caching its document", async () => {
     let now = new Date("2026-01-01T00:00:00Z");
     let configurationIsDirect = false;
-    const events: OidcIdTokenAuthenticationEvent[] = [];
+    const events: OidcDiagnosticEvent[] = [];
     const fetchOidcRemoteDocumentResponse = vi.fn<typeof fetch>(async (input, init) => {
       const url = new Request(input).url;
 
@@ -359,7 +359,7 @@ describe("Registered OIDC Provider Verifier", () => {
 
       return successfulProviderFetch(input, init);
     });
-    const observe = (event: OidcIdTokenAuthenticationEvent) => events.push(event);
+    const observe = (event: OidcDiagnosticEvent) => events.push(event);
     const verifier = testVerifier(fetchOidcRemoteDocumentResponse, () => now);
     const subjectToken = await signedIdToken();
 
@@ -428,10 +428,10 @@ describe("Registered OIDC Provider Verifier", () => {
   });
 
   it("contains a Provider Configuration observer failure without recording provider backoff", async () => {
-    const events: OidcIdTokenAuthenticationEvent[] = [];
+    const events: OidcDiagnosticEvent[] = [];
     const fetchOidcRemoteDocumentResponse = vi.fn(providerFetch({ cacheControl: "no-store" }));
     const verifier = testVerifier(fetchOidcRemoteDocumentResponse);
-    const observe = (event: OidcIdTokenAuthenticationEvent) => {
+    const observe = (event: OidcDiagnosticEvent) => {
       events.push(event);
 
       if (event.event === "oidc_provider_configuration_refreshed") {
@@ -729,8 +729,8 @@ describe("Registered OIDC Provider Verifier", () => {
         keys: [jwksMode === "rotated" ? { ...testPublicJwk, kid: "unknown-key" } : testPublicJwk],
       });
     });
-    const events: OidcIdTokenAuthenticationEvent[] = [];
-    const observe = (event: OidcIdTokenAuthenticationEvent) => events.push(event);
+    const events: OidcDiagnosticEvent[] = [];
+    const observe = (event: OidcDiagnosticEvent) => events.push(event);
     const verifier = testVerifier(fetchOidcRemoteDocumentResponse, () => now);
 
     await expect(verifier.verifyIdToken(await signedIdToken(), observe)).resolves.toMatchObject({
@@ -809,7 +809,7 @@ describe("Registered OIDC Provider Verifier", () => {
       Promise.withResolvers<Response>(),
     ];
     let providerConfigurationRequests = 0;
-    const events: OidcIdTokenAuthenticationEvent[] = [];
+    const events: OidcDiagnosticEvent[] = [];
     const fetchOidcRemoteDocumentResponse = vi.fn<typeof fetch>((input, init) => {
       const url = new Request(input).url;
 
@@ -826,7 +826,7 @@ describe("Registered OIDC Provider Verifier", () => {
 
       return successfulProviderFetch(input, init);
     });
-    const observe = (event: OidcIdTokenAuthenticationEvent) => events.push(event);
+    const observe = (event: OidcDiagnosticEvent) => events.push(event);
     const verifier = testVerifier(fetchOidcRemoteDocumentResponse, () => now);
     const subjectToken = await signedIdToken();
 
@@ -885,7 +885,7 @@ describe("Registered OIDC Provider Verifier", () => {
     let now = new Date("2026-01-01T00:00:00Z");
     const failedRefresh = Promise.withResolvers<Response>();
     let providerConfigurationRequests = 0;
-    const events: OidcIdTokenAuthenticationEvent[] = [];
+    const events: OidcDiagnosticEvent[] = [];
     const fetchOidcRemoteDocumentResponse = vi.fn<typeof fetch>((input, init) => {
       if (new Request(input).url === `${issuer}/.well-known/openid-configuration`) {
         providerConfigurationRequests += 1;
@@ -897,7 +897,7 @@ describe("Registered OIDC Provider Verifier", () => {
 
       return successfulProviderFetch(input, init);
     });
-    const observe = (event: OidcIdTokenAuthenticationEvent) => events.push(event);
+    const observe = (event: OidcDiagnosticEvent) => events.push(event);
     const verifier = testVerifier(fetchOidcRemoteDocumentResponse, () => now);
     const subjectToken = await signedIdToken();
 
@@ -955,7 +955,7 @@ describe("Registered OIDC Provider Verifier", () => {
   });
 
   it("contains a coalesced JWK Set refresh-failure observer failure", async () => {
-    const events: OidcIdTokenAuthenticationEvent[] = [];
+    const events: OidcDiagnosticEvent[] = [];
     const scenario = await beginCoalescedJwksRefreshFailure((event) => {
       events.push(event);
 
@@ -1688,8 +1688,8 @@ describe("Registered OIDC Provider Verifier", () => {
 
   it("backs off a failed Provider Configuration fetch when no metadata is cached", async () => {
     const fetchOidcRemoteDocumentResponse = vi.fn(async () => new Response(null, { status: 503 }));
-    const events: OidcIdTokenAuthenticationEvent[] = [];
-    const observe = (event: OidcIdTokenAuthenticationEvent) => events.push(event);
+    const events: OidcDiagnosticEvent[] = [];
+    const observe = (event: OidcDiagnosticEvent) => events.push(event);
     const verifier = testVerifier(fetchOidcRemoteDocumentResponse);
     const subjectToken = await signedIdToken();
     const diagnosticCode = "ERR_OIDC_PROVIDER_CONFIGURATION_HTTP_STATUS";
@@ -1806,7 +1806,7 @@ describe("Registered OIDC Provider Verifier", () => {
 
   it("does not use stale JWKS marked must-revalidate", async () => {
     let jwksAvailable = true;
-    const events: OidcIdTokenAuthenticationEvent[] = [];
+    const events: OidcDiagnosticEvent[] = [];
     const fetchOidcRemoteDocumentResponse = vi.fn(
       providerFetch({
         jwksResponse: () =>
@@ -1818,7 +1818,7 @@ describe("Registered OIDC Provider Verifier", () => {
             : new Response(null, { status: 503 }),
       }),
     );
-    const observe = (event: OidcIdTokenAuthenticationEvent) => events.push(event);
+    const observe = (event: OidcDiagnosticEvent) => events.push(event);
     const verifier = testVerifier(fetchOidcRemoteDocumentResponse);
     const subjectToken = await signedIdToken();
 
@@ -1973,9 +1973,7 @@ describe("Registered OIDC Provider Verifier", () => {
   });
 });
 
-async function beginCoalescedJwksRefreshFailure(
-  observe: (event: OidcIdTokenAuthenticationEvent) => void,
-) {
+async function beginCoalescedJwksRefreshFailure(observe: (event: OidcDiagnosticEvent) => void) {
   let now = new Date("2026-01-01T00:00:00Z");
   let jwksRequests = 0;
   const failedRefresh = Promise.withResolvers<Response>();

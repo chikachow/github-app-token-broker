@@ -54,7 +54,9 @@ absent, including when a singleton JWK Set supplies a verification key.
 Update structured-log queries, dashboards, and observation adapters when adopting
 this revision. The old field is not emitted alongside the new field.
 
-Rebuild source consumers against the renamed exports before deployment.
+The exported optional diagnostic union is `OidcDiagnosticEvent`, replacing
+`OidcIdTokenAuthenticationEvent`. Callback arguments and delivery semantics remain
+unchanged. Rebuild source consumers against the renamed exports before deployment.
 
 ## Repository Settings
 

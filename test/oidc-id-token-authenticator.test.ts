@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   createOidcIdTokenAuthenticator,
-  type OidcIdTokenAuthenticationEvent,
+  type OidcDiagnosticEvent,
   type OidcIdTokenAuthenticationFailure,
   type OidcVerificationEvidence,
   type VerifiedSubjectToken,
@@ -160,8 +160,8 @@ describe("OIDC ID Token Authenticator", () => {
   });
 
   it("resolves per-call and default diagnostic observers at the public seam", async () => {
-    const defaultEvents: OidcIdTokenAuthenticationEvent[] = [];
-    const requestEvents: OidcIdTokenAuthenticationEvent[] = [];
+    const defaultEvents: OidcDiagnosticEvent[] = [];
+    const requestEvents: OidcDiagnosticEvent[] = [];
     const authenticator = createOidcIdTokenAuthenticator(
       {
         providerRegistrations: [registration],
