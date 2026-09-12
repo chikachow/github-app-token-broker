@@ -1,6 +1,6 @@
 # github-app-token-broker
 
-github-app-token-broker is the maintainer's hosted automation application. It lets trusted automation workloads obtain GitHub App installation access tokens narrowed to one selected repository and the Requested Permissions without exposing the GitHub App private key outside Cloudflare. Requested permission keys may include GitHub organization- or account-level permissions; repository selection and permission narrowing are independent controls.
+github-app-token-broker is the maintainer's hosted automation application. It lets trusted automation workloads obtain GitHub App installation access tokens narrowed to one selected repository and the Requested Permissions without exposing the deployment-owned GitHub App private key to Token Exchange Clients. Requested permission keys may include GitHub organization- or account-level permissions; repository selection and permission narrowing are independent controls.
 
 ## Language
 
