@@ -52,7 +52,12 @@ describe("Token Exchange Endpoint public handler", () => {
   it.each([
     ["Basic dW5zdXBwb3J0ZWQ=", 'Basic realm="github-app-token-broker"'],
     ["Bearer subject-token", 'Bearer realm="github-app-token-broker"'],
-    ["1invalid credentials", 'Basic realm="github-app-token-broker"'],
+    ["1custom credentials", '1custom realm="github-app-token-broker"'],
+    ["!#$%&'*+-.^_`|~ credentials", '!#$%&\'*+-.^_`|~ realm="github-app-token-broker"'],
+    ["invalid/scheme credentials", 'Basic realm="github-app-token-broker"'],
+    ['invalid"scheme credentials', 'Basic realm="github-app-token-broker"'],
+    ["invalid,scheme credentials", 'Basic realm="github-app-token-broker"'],
+    ["", 'Basic realm="github-app-token-broker"'],
   ])("rejects client authentication %s with challenge %s", async (authorization, challenge) => {
     const fetchExternal = vi.fn<typeof fetch>();
     const tokenExchange = createGitHubAppTokenExchange(
@@ -68,6 +73,8 @@ describe("Token Exchange Endpoint public handler", () => {
 
     expect(response.status).toBe(401);
     expect(response.headers.get("www-authenticate")).toBe(challenge);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("pragma")).toBe("no-cache");
     await expect(response.json()).resolves.toEqual({ error: "invalid_client" });
     expect(fetchExternal).not.toHaveBeenCalled();
   });
