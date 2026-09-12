@@ -185,11 +185,20 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
         });
       }
 
-      if (
-        this.#providerRegistration.idTokenProfile !== null &&
-        !this.#providerRegistration.idTokenProfile.validate(verifiedIdToken.claims)
-      ) {
-        return subjectTokenRejected("ERR_OIDC_ID_TOKEN_PROFILE_REJECTED");
+      if (this.#providerRegistration.idTokenProfile !== null) {
+        const profileResult: unknown = this.#providerRegistration.idTokenProfile.validate(
+          verifiedIdToken.claims,
+        );
+
+        if (typeof profileResult !== "boolean") {
+          // A mistakenly asynchronous profile must not cause an unhandled rejection.
+          void Promise.resolve(profileResult).catch(() => undefined);
+          throw new TypeError("invalid OIDC ID Token Profile result");
+        }
+
+        if (!profileResult) {
+          return subjectTokenRejected("ERR_OIDC_ID_TOKEN_PROFILE_REJECTED");
+        }
       }
 
       return {
