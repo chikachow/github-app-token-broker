@@ -77,32 +77,12 @@ function logObservation(request: FastifyRequest, observation: TokenExchangeObser
   const message =
     observation.message ?? (typeof event === "string" && event.length > 0 ? event : undefined);
 
-  switch (observation.level) {
-    case "error":
-      logAtLevel(request, "error", observation.fields, message);
-      return;
-    case "info":
-      logAtLevel(request, "info", observation.fields, message);
-      return;
-    case "warn":
-      logAtLevel(request, "warn", observation.fields, message);
-  }
-}
-
-function logAtLevel(
-  request: FastifyRequest,
-  level: TokenExchangeObservation["level"],
-  fields: Readonly<Record<string, unknown>>,
-  message: string | undefined,
-): void {
-  const log = request.log[level];
-
   if (message === undefined) {
-    log.call(request.log, fields);
+    request.log[observation.level](observation.fields);
     return;
   }
 
-  log.call(request.log, fields, message);
+  request.log[observation.level](observation.fields, message);
 }
 
 function fastifyRequestToWebRequest(request: FastifyRequest): Request | null {

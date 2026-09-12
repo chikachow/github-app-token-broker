@@ -114,6 +114,11 @@ An empty `scope` is not a no-permissions request and is never translated to an e
 
 The OpenID Connect ID Token supplied as the RFC 8693 subject token must have non-empty Issuer Identifier (`iss`), Audience (`aud`), and Subject (`sub`) Claims plus numeric Expiration Time (`exp`) and Issued At (`iat`) Claims. github-app-token-broker accepts only the ID Token subject-token-type identifier, verifies the configured Issuer Identifier and expiration, and does not impose a separate maximum token age based on `iat`. The ID Token must have the single Subject-Token Audience value owned by the deployment. This value is parsed and validated into an exact non-empty, non-whitespace, single-line domain value and may be URL-shaped or opaque; the Cloudflare Worker obtains it from `TOKEN_BROKER_AUDIENCE`. Missing or plural token audiences, and every scalar value that does not exactly equal the configured value, receive `400 {"error":"invalid_request"}`. One authentication operation captures one value from the injected clock and uses it for JOSE time validation and cache decisions. After central verification, the authenticator copies and recursively freezes the verified JSON Claims. A non-null OIDC ID Token Profile validates that immutable snapshot as the provider-specific token kind; an explicit `null` profile means central validation is sufficient. Token Issuance Policy receives the same immutable snapshot only after profile admission, so profile validation and policy authorization remain separate decisions.
 
+An OIDC ID Token Profile must return a synchronous Boolean decision. `false`
+rejects the subject token. A non-Boolean result, including a Promise, is a
+profile implementation failure and produces the sanitized internal-failure
+response.
+
 github-app-token-broker does not support RFC 8693 `audience`, `actor_token`, or `actor_token_type` form parameters. Non-empty `audience` parameters are rejected with `invalid_target` because this profile uses `resource` for the issued token target and service-owned GitHub App credentials. Actor-token parameters are rejected as malformed for this profile with `invalid_request`.
 
 github-app-token-broker also does not support OAuth client authentication or Rich Authorization Requests at `/token`. Requests containing non-empty `client_id`, `client_secret`, `client_assertion`, `client_assertion_type`, or `authorization_details` fields are rejected with `invalid_request` rather than silently ignored. Requests containing an `Authorization` header are rejected with `401 {"error":"invalid_client"}` and a matching `WWW-Authenticate` challenge. Value-less form parameters are treated as omitted, and other unrecognized extension parameters are ignored, according to OAuth Token Endpoint rules.
@@ -187,6 +192,12 @@ Only rejection of an actual Client `Authorization` authentication attempt
 includes `WWW-Authenticate`. Subject-token rejection, OpenID Provider
 unavailability, and internal authentication failure retain their mapped OAuth
 status and error body without a Client authentication challenge.
+The challenge preserves a syntactically valid HTTP authentication scheme,
+including a digit or punctuation as its first character, according to
+[RFC 9110's token grammar](https://www.rfc-editor.org/rfc/rfc9110.html#section-11.1)
+and [OAuth's matching-challenge requirement](https://www.rfc-editor.org/rfc/rfc6749.html#section-5.2).
+An empty or malformed scheme uses the fixed `Basic` challenge; credentials are
+never copied into the challenge.
 
 After Token Issuance Policy permits a request, issuance failures have this
 complete observable mapping:
@@ -242,6 +253,10 @@ For the small installation-resolution and installation-token documents github-ap
 consumes, a successful GitHub response body is limited to `64 KiB`. A larger
 upstream document is an invalid successful representation and follows the
 `502` mapping above; it is not derived from a Token Exchange Client parameter.
+GitHub JSON responses must use valid [UTF-8](https://www.rfc-editor.org/rfc/rfc8259.html#section-8.1).
+Malformed encoding in a successful response follows the same `502` mapping.
+An error body with malformed encoding contributes no rate-limit evidence;
+the response status and headers can still establish a rate limit independently.
 
 Each OpenID Provider Configuration and JWK Set request has one fixed broker-owned five-second deadline spanning response headers and complete bounded body consumption.
 

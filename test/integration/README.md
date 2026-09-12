@@ -129,8 +129,8 @@ authentication failure with the same public error and upstream request sequence.
 
 The shared suite covers signed issuance, exact mint narrowing, signature and
 Claim rejection, provider profile rejection, policy denials before GitHub I/O,
-duplicate form parameters, known-length and chunked request limits, unsupported
-methods, untrusted TLS, OIDC redirects and malformed/oversized documents, GitHub
+duplicate form parameters, Client authentication challenges, known-length and
+chunked request limits, unsupported methods, untrusted TLS, OIDC redirects and malformed/oversized documents, GitHub
 redirects, installation-owner mismatch, rate-limit/unavailable responses, rejected
 or malformed mint responses, real response-body deadlines, document reuse, and
 unknown-key refresh cooldown followed by rotation. Worker-specific coverage

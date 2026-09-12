@@ -299,6 +299,29 @@ void describe(host === "worker" ? "Workerd" : "Fastify", { concurrency: false },
   void describe("ordinary deployment", () => {
     // Valid no-cache OIDC documents permit fresh authentication between mock resets.
     before(() => restartHost());
+    void it("preserves valid HTTP authentication schemes in rejected Client challenges", async () => {
+      await reset();
+      for (const scheme of ["1custom", "!custom"]) {
+        const response = await request(`${broker}/token`, {
+          body: "grant_type=ignored",
+          headers: {
+            authorization: `${scheme} private-credentials`,
+            "content-type": "application/x-www-form-urlencoded",
+            "cf-connecting-ip": `192.0.2.${++clientIpCounter}`,
+          },
+          method: "POST",
+        });
+        assert.equal(response.status, 401);
+        assert.equal(
+          response.headers.get("www-authenticate"),
+          `${scheme} realm="github-app-token-broker"`,
+        );
+        assert.equal(response.headers.get("cache-control"), "no-store");
+        assert.equal(response.headers.get("pragma"), "no-cache");
+        assert.deepEqual(await response.json(), { error: "invalid_client" });
+      }
+      assert.deepEqual(await evidence(), [[], []]);
+    });
     for (const providerCase of [
       {
         name: "GitHub Actions",

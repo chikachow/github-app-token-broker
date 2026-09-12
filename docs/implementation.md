@@ -100,6 +100,10 @@ App credentials remain Worker environment bindings. One Worker instance receives
 
 ## OIDC security boundary
 
+Unused Provider Configuration and JWK Set response bodies are cancelled on
+rejection, including responses delivered after the request deadline. Cleanup is
+best effort and does not delay or change the selected authentication outcome.
+
 The authenticator derives the issuer only to select an exact preconfigured registration. One operation captures one injected time value and supplies it to JOSE and cache decisions. Each Provider Configuration and JWK Set request has one fixed five-second deadline spanning response headers and complete bounded body consumption; the shared abort-aware wait enforces the bound even when a Fetch implementation does not settle in response to the supplied signal. The authenticator validates discovery issuer equality, permitted algorithms, strict structure for every consumed JWK member, signature, required Claims, time Claims, the exact Subject-Token Audience, optional provider profile, and bounded stale-cache rules. It copies and recursively freezes verified JSON Claims before a provider profile or policy can inspect them. A provider registration authenticates tokens but never creates policy authorization.
 
 JWK Set admission probes individual keys through the same JOSE local resolver
@@ -168,6 +172,10 @@ only loaded files, which can hide untested source files from the coverage
 thresholds.
 
 The `node` Vitest project exclusively owns `test/node/**/*.test.ts`; the Workerd `unit` project excludes that directory, making the selected runtime explicit for those behavioral tests.
+
+The [property-testing decision](decisions/property-based-testing.md#test-admission)
+owns mutation evidence requirements. The runner's Reporter integration is checked
+with real Vitest subprocesses, including teardown and shutdown failures.
 
 The Workerd projects use the `cloudflareTest()` plugin from
 `@cloudflare/vitest-plugin` with Vitest 4. Cloudflare’s plugin and
