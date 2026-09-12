@@ -21,14 +21,5 @@ function writeTokenExchangeObservationToConsole(observation: TokenExchangeObserv
     ? ([observation.message, observation.fields] as const)
     : ([observation.fields] as const);
 
-  switch (observation.level) {
-    case "error":
-      console.error(...values);
-      break;
-    case "info":
-      console.info(...values);
-      break;
-    case "warn":
-      console.warn(...values);
-  }
+  console[observation.level](...values);
 }
