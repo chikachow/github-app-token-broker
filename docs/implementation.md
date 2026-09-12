@@ -173,11 +173,9 @@ thresholds.
 
 The `node` Vitest project exclusively owns `test/node/**/*.test.ts`; the Workerd `unit` project excludes that directory, making the selected runtime explicit for those behavioral tests.
 
-The property mutation runner records completed runs and failed test identities
-through Vitest's public Reporter API. It rejects startup, collection, suite,
-unhandled-error, shutdown, interrupted, and empty-run failures instead of counting their
-exit codes as killed mutants. Node regressions exercise this distinction with
-real Vitest subprocesses and disposable fixtures.
+The [property-testing decision](decisions/property-based-testing.md#test-admission)
+owns mutation evidence requirements. The runner's Reporter integration is checked
+with real Vitest subprocesses, including teardown and shutdown failures.
 
 The Workerd projects use the `cloudflareTest()` plugin from
 `@cloudflare/vitest-plugin` with Vitest 4. Cloudflare’s plugin and

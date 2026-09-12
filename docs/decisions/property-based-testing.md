@@ -51,17 +51,12 @@ once. It then typechecks every mutant before running all non-property tests and
 the exact responsible property. A responsible property that does not kill its
 mutant is unsupported even when an ordinary regression kills the same mutant.
 
-Every lane must supply a completed run report through Vitest's public Reporter
-API. A nonzero process exit establishes a killed mutant only when that report
-identifies failed tests and has no collection, suite, or unhandled errors.
-The reporter publishes that evidence only after global teardown reaches the
-close hook, and invalidates it if Vitest logs a shutdown error or reports a
-process shutdown timeout. An abrupt exit during teardown cannot leave a valid
-report from an earlier test failure.
-Startup failures, interrupted or incomplete runs, no executed tests, missing
-reports, and inconsistent process/report results abort the matrix. The JSON
-matrix retains failed test identities for each lane; process status alone is
-not evidence of mutation sensitivity.
+Every lane must establish a completed test run, including teardown, with no
+runner errors and a result consistent with its process status. A killed mutant
+requires identified failed tests; process status alone is not evidence of
+mutation sensitivity. Missing evidence, incomplete or empty runs, and runner
+errors abort the matrix. The JSON matrix retains failed test identities for
+each lane.
 
 ### Oracle boundary
 
