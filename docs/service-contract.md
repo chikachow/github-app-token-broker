@@ -117,7 +117,7 @@ The OpenID Connect ID Token supplied as the RFC 8693 subject token must have non
 An OIDC ID Token Profile must return a synchronous Boolean decision. `false`
 rejects the subject token. A non-Boolean result, including a Promise, is a
 profile implementation failure and produces the sanitized internal-failure
-response; truthy values never establish profile admission.
+response.
 
 github-app-token-broker does not support RFC 8693 `audience`, `actor_token`, or `actor_token_type` form parameters. Non-empty `audience` parameters are rejected with `invalid_target` because this profile uses `resource` for the issued token target and service-owned GitHub App credentials. Actor-token parameters are rejected as malformed for this profile with `invalid_request`.
 
