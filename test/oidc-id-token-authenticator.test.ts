@@ -116,6 +116,37 @@ describe("OIDC ID Token Authenticator", () => {
     ).toEqual([`${issuer}/.well-known/openid-configuration`, jwksUri]);
   });
 
+  it.each([
+    { name: "undefined", result: () => undefined },
+    { name: "null", result: () => null },
+    { name: "a number", result: () => 1 },
+    { name: "a string", result: () => "false" },
+    { name: "an object", result: () => ({}) },
+    { name: "an asynchronous rejection decision", result: () => Promise.resolve(false) },
+    {
+      name: "an asynchronously thrown error",
+      result: () => Promise.reject(new Error("private profile implementation failure")),
+    },
+  ])("treats a profile returning $name as an internal failure", async ({ result }) => {
+    const authenticator = createOidcIdTokenAuthenticator(
+      {
+        providerRegistrations: [
+          createOidcProviderRegistration({
+            acceptedIdTokenSigningAlgorithms: ["RS256"],
+            idTokenProfile: { validate: () => result() as never },
+            issuer,
+          }),
+        ],
+        subjectTokenAudience,
+      },
+      { fetch: successfulProviderFetch, now: () => authenticationTestNow },
+    );
+
+    await expect(authenticator.authenticateIdToken(await signedIdToken())).resolves.toEqual(
+      expectedFailure("internal_failure"),
+    );
+  });
+
   it("enforces the provider deadline while waiting for response headers", async () => {
     const deadline = new AbortController();
     let watchdog: ReturnType<typeof setTimeout> | undefined;
