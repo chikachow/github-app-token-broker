@@ -208,7 +208,7 @@ function nonEmptyFormValues(form: URLSearchParams, key: string): string[] {
 function wwwAuthenticateChallenge(authorization: string | null): string {
   const scheme = authorization?.split(/\s+/u, 1)[0];
 
-  if (scheme !== undefined && /^[A-Za-z][A-Za-z0-9!#$%&'*+.^_`|~-]*$/u.test(scheme)) {
+  if (scheme !== undefined && /^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/u.test(scheme)) {
     return `${scheme} realm="github-app-token-broker"`;
   }
 

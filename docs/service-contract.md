@@ -187,6 +187,12 @@ Only rejection of an actual Client `Authorization` authentication attempt
 includes `WWW-Authenticate`. Subject-token rejection, OpenID Provider
 unavailability, and internal authentication failure retain their mapped OAuth
 status and error body without a Client authentication challenge.
+The challenge preserves a syntactically valid HTTP authentication scheme,
+including a digit or punctuation as its first character, according to
+[RFC 9110's token grammar](https://www.rfc-editor.org/rfc/rfc9110.html#section-11.1)
+and [OAuth's matching-challenge requirement](https://www.rfc-editor.org/rfc/rfc6749.html#section-5.2).
+An empty or malformed scheme uses the fixed `Basic` challenge; credentials are
+never copied into the challenge.
 
 After Token Issuance Policy permits a request, issuance failures have this
 complete observable mapping:
