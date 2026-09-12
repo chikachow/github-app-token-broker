@@ -700,71 +700,96 @@ async function fetchAndParseOidcRemoteDocument(
   byteLimit: number,
   documentKind: "JWKS" | "PROVIDER_CONFIGURATION",
 ): Promise<{ cacheControl: string | null; document: unknown }> {
-  let response: Response;
+  let responseForCleanup: Response | undefined;
   const requestSignal = AbortSignal.timeout(providerRequestTimeoutMilliseconds);
 
   try {
-    response = await awaitWithAbortSignal(
-      fetchImplementation(url, {
-        headers: { accept: "application/json" },
-        // Workerd exposes redirects only in manual mode; the exact-200 check below rejects them.
-        redirect: "manual",
-        signal: requestSignal,
-      }),
-      requestSignal,
-    );
-  } catch (error) {
-    throw oidcRemoteDocumentTransportError(error, requestSignal, documentKind);
+    let response: Response;
+
+    try {
+      response = await awaitWithAbortSignal(
+        fetchImplementation(url, {
+          headers: { accept: "application/json" },
+          // Workerd exposes redirects only in manual mode; the exact-200 check below rejects them.
+          redirect: "manual",
+          signal: requestSignal,
+        }).then((received) => {
+          if (requestSignal.aborted) {
+            discardOidcResponseBody(received);
+          } else {
+            responseForCleanup = received;
+          }
+
+          return received;
+        }),
+        requestSignal,
+      );
+    } catch (error) {
+      throw oidcRemoteDocumentTransportError(error, requestSignal, documentKind);
+    }
+
+    if (response.status !== 200) {
+      throw new OidcRemoteDocumentError(`ERR_OIDC_${documentKind}_HTTP_STATUS`, {
+        providerHttpStatus: response.status,
+      });
+    }
+
+    if (!isExpectedJsonContentType(response.headers.get("content-type"), documentKind)) {
+      throw new OidcRemoteDocumentError(`ERR_OIDC_${documentKind}_CONTENT_TYPE_INVALID`);
+    }
+
+    const declaredLength = response.headers.get("content-length");
+
+    if (
+      declaredLength !== null &&
+      /^\d+$/u.test(declaredLength) &&
+      Number(declaredLength) > byteLimit
+    ) {
+      throw new OidcRemoteDocumentError(`ERR_OIDC_${documentKind}_RESPONSE_LIMIT_EXCEEDED`);
+    }
+
+    let bodyResult;
+
+    try {
+      bodyResult = await readBodyUpTo(response.body, byteLimit, requestSignal);
+    } catch (error) {
+      throw oidcRemoteDocumentTransportError(error, requestSignal, documentKind);
+    }
+
+    if (!bodyResult.ok) {
+      throw new OidcRemoteDocumentError(`ERR_OIDC_${documentKind}_RESPONSE_LIMIT_EXCEEDED`);
+    }
+
+    let document: unknown;
+
+    try {
+      document = JSON.parse(
+        new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bodyResult.bytes),
+      );
+    } catch (error) {
+      throw new OidcRemoteDocumentError(`ERR_OIDC_${documentKind}_JSON_PARSE_FAILED`, {
+        cause: error,
+      });
+    }
+
+    return {
+      cacheControl: response.headers.get("cache-control"),
+      document,
+    };
+  } finally {
+    discardOidcResponseBody(responseForCleanup);
   }
+}
 
-  if (response.status !== 200) {
-    throw new OidcRemoteDocumentError(`ERR_OIDC_${documentKind}_HTTP_STATUS`, {
-      providerHttpStatus: response.status,
-    });
-  }
-
-  if (!isExpectedJsonContentType(response.headers.get("content-type"), documentKind)) {
-    throw new OidcRemoteDocumentError(`ERR_OIDC_${documentKind}_CONTENT_TYPE_INVALID`);
-  }
-
-  const declaredLength = response.headers.get("content-length");
-
-  if (
-    declaredLength !== null &&
-    /^\d+$/u.test(declaredLength) &&
-    Number(declaredLength) > byteLimit
-  ) {
-    throw new OidcRemoteDocumentError(`ERR_OIDC_${documentKind}_RESPONSE_LIMIT_EXCEEDED`);
-  }
-
-  let bodyResult;
-
+function discardOidcResponseBody(response: Response | undefined): void {
   try {
-    bodyResult = await readBodyUpTo(response.body, byteLimit, requestSignal);
-  } catch (error) {
-    throw oidcRemoteDocumentTransportError(error, requestSignal, documentKind);
+    const body = response?.body;
+    if (body !== null && body !== undefined && !body.locked) {
+      void body.cancel().catch(() => undefined);
+    }
+  } catch {
+    // Discarding a response must not change its already selected outcome.
   }
-
-  if (!bodyResult.ok) {
-    throw new OidcRemoteDocumentError(`ERR_OIDC_${documentKind}_RESPONSE_LIMIT_EXCEEDED`);
-  }
-
-  let document: unknown;
-
-  try {
-    document = JSON.parse(
-      new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bodyResult.bytes),
-    );
-  } catch (error) {
-    throw new OidcRemoteDocumentError(`ERR_OIDC_${documentKind}_JSON_PARSE_FAILED`, {
-      cause: error,
-    });
-  }
-
-  return {
-    cacheControl: response.headers.get("cache-control"),
-    document,
-  };
 }
 
 function oidcRemoteDocumentTransportError(
