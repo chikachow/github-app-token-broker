@@ -78,12 +78,12 @@ export async function fetchGitHubApiJson<Schema extends z.ZodType>(
         throw invalidGitHubApiResponse(path, response.status);
       }
 
-      const responseText = new TextDecoder().decode(bodyRead.bytes);
-
       let responseBody: unknown;
 
       try {
-        responseBody = JSON.parse(responseText);
+        responseBody = JSON.parse(
+          new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bodyRead.bytes),
+        );
       } catch {
         throw invalidGitHubApiResponse(path, response.status);
       }
@@ -242,10 +242,10 @@ async function githubResponseIsRateLimited(
     return false;
   }
 
-  const body = new TextDecoder().decode(bodyRead.bytes);
-
   try {
-    const parsed: unknown = JSON.parse(body);
+    const parsed: unknown = JSON.parse(
+      new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bodyRead.bytes),
+    );
     const errorResponse = githubErrorResponseSchema.safeParse(parsed);
 
     return errorResponse.success && /\brate limit\b/iu.test(errorResponse.data.message);

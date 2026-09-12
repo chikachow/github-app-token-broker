@@ -248,6 +248,10 @@ For the small installation-resolution and installation-token documents github-ap
 consumes, a successful GitHub response body is limited to `64 KiB`. A larger
 upstream document is an invalid successful representation and follows the
 `502` mapping above; it is not derived from a Token Exchange Client parameter.
+GitHub JSON responses must use valid [UTF-8](https://www.rfc-editor.org/rfc/rfc8259.html#section-8.1).
+Malformed encoding in a successful response follows the same `502` mapping.
+An error body with malformed encoding contributes no rate-limit evidence;
+the response status and headers can still establish a rate limit independently.
 
 Each OpenID Provider Configuration and JWK Set request has one fixed broker-owned five-second deadline spanning response headers and complete bounded body consumption.
 

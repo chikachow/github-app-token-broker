@@ -248,6 +248,34 @@ describe("GitHub API HTTP adapter", () => {
     ).rejects.toMatchObject({ rateLimited: false, status: 403 });
   });
 
+  it.each([
+    { headers: {}, rateLimited: false, status: 403 },
+    { headers: { "x-ratelimit-remaining": "0" }, rateLimited: true, status: 403 },
+    { headers: { "retry-after": "60" }, rateLimited: true, status: 403 },
+    { headers: {}, rateLimited: true, status: 429 },
+  ])(
+    "uses only status and headers as rate-limit evidence when JSON contains malformed UTF-8: $status $headers",
+    async ({ headers, rateLimited, status }) => {
+      const body = Uint8Array.of(
+        ...new TextEncoder().encode('{"message":"rate limit '),
+        0xff,
+        ...new TextEncoder().encode('"}'),
+      );
+
+      await expect(
+        fetchGitHubApiJson(
+          { fetch: async () => new Response(body, { headers, status }) },
+          { headers: {}, path: requestPath, responseSchema },
+        ),
+      ).rejects.toMatchObject({
+        message: `GitHub API request failed: ${requestPath}`,
+        rateLimited,
+        status,
+        upstreamStatus: status,
+      });
+    },
+  );
+
   it("classifies a status-only rate limit before reading its body", async () => {
     const response = new Response(unreadableBody(), { status: 429 });
 
@@ -328,6 +356,17 @@ describe("GitHub API HTTP adapter", () => {
 
   it.each([
     ["malformed JSON", new Response("{"), 200],
+    [
+      "JSON containing malformed UTF-8",
+      new Response(
+        Uint8Array.of(
+          ...new TextEncoder().encode('{"value":"'),
+          0xff,
+          ...new TextEncoder().encode('"}'),
+        ),
+      ),
+      200,
+    ],
     ["a schema-invalid response", Response.json({ value: 123 }), 200],
     ["an oversized successful response", Response.json({ value: "x".repeat(128 * 1024) }), 200],
   ] as const)("rejects %s as an invalid upstream response", async (_scenario, response, status) => {

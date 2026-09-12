@@ -4,15 +4,30 @@ import { createServer } from "node:http";
 import {
   createGitHubAppInformation,
   GitHubAppUnavailableError,
+  GitHubAppUpstreamError,
 } from "@github-app-token-broker/github/app-information";
 import { describe, expect, it, vi } from "vitest";
 
 import { testPrivateKeyPem } from "../support/rsa-test-key-pair.ts";
 import { testNow } from "../support/constants.ts";
+import { testGitHubAppResponse } from "../support/github-app-information.ts";
 
 const configuration = { appId: "2419473", privateKey: testPrivateKeyPem };
 
 describe("GitHub HTTP Node runtime", () => {
+  it("rejects malformed UTF-8 without replacing a GitHub App metadata field", async () => {
+    const body = new TextEncoder().encode(
+      JSON.stringify({ ...testGitHubAppResponse, description: "\u007f" }),
+    );
+    body[body.indexOf(0x7f)] = 0xff;
+    const information = createGitHubAppInformation(configuration, {
+      fetch: async () => new Response(body),
+      now: () => testNow,
+    });
+
+    await expect(information.getApp()).rejects.toEqual(new GitHubAppUpstreamError());
+  });
+
   it("closes a native Fetch response after classifying an unfinished upstream error body", async () => {
     const responseClosed = Promise.withResolvers<void>();
     const upstream = createServer((_request, response) => {
