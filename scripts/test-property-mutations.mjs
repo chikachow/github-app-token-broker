@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import process from "node:process";
 
 import { propertyMutations } from "./property-mutations.mjs";
+import { readMutationTestResult } from "./property-mutation-vitest.ts";
 
 const help = `Usage: pnpm test:mutations:property [--format=json]
 
@@ -77,8 +78,16 @@ try {
         description: mutation.description,
         id: mutation.id,
         lanes: {
-          ordinary: { exitCode: ordinary.exitCode, killed: !ordinary.passed },
-          property: { exitCode: property.exitCode, killed: !property.passed },
+          ordinary: {
+            exitCode: ordinary.exitCode,
+            failedTests: ordinary.failedTests,
+            killed: !ordinary.passed,
+          },
+          property: {
+            exitCode: property.exitCode,
+            failedTests: property.failedTests,
+            killed: !property.passed,
+          },
         },
         mutantTypechecked: true,
       });
@@ -262,6 +271,8 @@ function runPackageManager(arguments_, cwd) {
 }
 
 function runVitest(cwd, lane) {
+  const reportPath = join(cwd, ".property-mutation-vitest.json");
+  rmSync(reportPath, { force: true });
   const projectArguments = lane.projects.flatMap((project) => ["--project", project]);
   const testNameArguments =
     lane.testNamePattern === undefined ? [] : ["--testNamePattern", lane.testNamePattern];
@@ -273,19 +284,17 @@ function runVitest(cwd, lane) {
     ...projectArguments,
     ...testNameArguments,
     "--reporter=dot",
+    `--reporter=${join(cwd, "scripts/property-mutation-vitest.ts")}`,
+    `--outputFile=${reportPath}`,
   ];
   const invocation = packageManagerInvocation(arguments_);
   const result = runCommand(invocation.command, invocation.arguments, cwd);
 
-  if (result.error !== undefined || result.status === null) {
-    throw new Error(commandFailure(invocation.command, invocation.arguments, result));
+  try {
+    return readMutationTestResult(result, reportPath);
+  } finally {
+    rmSync(reportPath, { force: true });
   }
-
-  return {
-    exitCode: result.status,
-    output: [result.stdout, result.stderr].filter(Boolean).join("\n"),
-    passed: result.status === 0,
-  };
 }
 
 function testEnvironment() {
