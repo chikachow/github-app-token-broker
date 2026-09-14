@@ -54,7 +54,7 @@
     "@vitest/coverage-istanbul": "4.1.11",
     "fast-check": "4.9.0",
     "fastify": "catalog:",
-    "knip": "6.34.0",
+    "knip": "6.35.1",
     "oxfmt": "0.67.0",
     "oxlint": "1.82.0",
     "oxlint-tsgolint": "7.0.2001",
