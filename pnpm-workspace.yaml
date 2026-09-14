@@ -12,7 +12,7 @@ syncInjectedDepsAfterScripts:
   - build
 
 catalog:
-  "@types/node": 24.13.3
+  "@types/node": 24.13.4
   "fastify": 5.12.3
   "jose": 6.2.11
   "tsdown": 0.23.0
