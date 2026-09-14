@@ -53,10 +53,8 @@ mutant is unsupported even when an ordinary regression kills the same mutant.
 
 Every lane must establish a completed test run, including teardown, with no
 runner errors and a result consistent with its process status. A killed mutant
-requires identified failed tests; process status alone is not evidence of
-mutation sensitivity. Missing evidence, incomplete or empty runs, and runner
-errors abort the matrix. The JSON matrix retains failed test identities for
-each lane.
+requires identified failed tests. Missing evidence, incomplete or empty runs,
+and runner errors abort the matrix.
 
 ### Oracle boundary
 
