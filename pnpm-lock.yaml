@@ -14,8 +14,8 @@ catalogs:
       specifier: 5.12.3
       version: 5.12.3
     jose:
-      specifier: 6.2.11
-      version: 6.2.11
+      specifier: 6.2.12
+      version: 6.2.12
     tsdown:
       specifier: 0.23.0
       version: 0.23.0
@@ -32,7 +32,7 @@ importers:
     dependencies:
       jose:
         specifier: 'catalog:'
-        version: 6.2.11
+        version: 6.2.12
     devDependencies:
       '@cloudflare/vitest-plugin':
         specifier: 1.1.5
@@ -123,7 +123,7 @@ importers:
         version: link:../http
       jose:
         specifier: 'catalog:'
-        version: 6.2.11
+        version: 6.2.12
       zod:
         specifier: 'catalog:'
         version: 4.5.4
@@ -137,7 +137,7 @@ importers:
         version: link:../http
       jose:
         specifier: 'catalog:'
-        version: 6.2.11
+        version: 6.2.12
       zod:
         specifier: 'catalog:'
         version: 4.5.4
@@ -182,7 +182,7 @@ importers:
         version: link:../token-issuance-policy
       jose:
         specifier: 'catalog:'
-        version: 6.2.11
+        version: 6.2.12
       zod:
         specifier: 'catalog:'
         version: 4.5.4
@@ -1934,8 +1934,8 @@ packages:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
     hasBin: true
 
-  jose@6.2.11:
-    resolution: {integrity: sha512-A5NPn7g8EAzGU3IzRs+Yiq8K5n3ypYS75M5+KKiVHdUexfpWK1kP4ZMq7QnTGDoMj6TJ1dtcEJjW60yZDXS4hg==}
+  jose@6.2.12:
+    resolution: {integrity: sha512-9NiFmJEex0sy2Dk58j2UGBSHgUs2ypF9eZSu4L6vjOX3Dp96Sw1F3uL+H+D1sx02jZZdzUT0HgvCy59CuvXcWw==}
 
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
@@ -2805,7 +2805,7 @@ snapshots:
   '@github-app-token-broker/github@file:packages/github':
     dependencies:
       '@github-app-token-broker/http': file:packages/http
-      jose: 6.2.11
+      jose: 6.2.12
       zod: 4.5.4
 
   '@github-app-token-broker/http@file:packages/http': {}
@@ -2813,7 +2813,7 @@ snapshots:
   '@github-app-token-broker/oidc@file:packages/oidc':
     dependencies:
       '@github-app-token-broker/http': file:packages/http
-      jose: 6.2.11
+      jose: 6.2.12
       zod: 4.5.4
 
   '@github-app-token-broker/token-exchange@file:packages/token-exchange':
@@ -2822,7 +2822,7 @@ snapshots:
       '@github-app-token-broker/http': file:packages/http
       '@github-app-token-broker/oidc': file:packages/oidc
       '@github-app-token-broker/token-issuance-policy': file:packages/token-issuance-policy
-      jose: 6.2.11
+      jose: 6.2.12
       zod: 4.5.4
 
   '@github-app-token-broker/token-issuance-policy@file:packages/token-issuance-policy':
@@ -3714,7 +3714,7 @@ snapshots:
 
   jiti@2.7.0: {}
 
-  jose@6.2.11: {}
+  jose@6.2.12: {}
 
   js-tokens@4.0.0: {}
 
