@@ -173,10 +173,6 @@ thresholds.
 
 The `node` Vitest project exclusively owns `test/node/**/*.test.ts`; the Workerd `unit` project excludes that directory, making the selected runtime explicit for those behavioral tests.
 
-The [property-testing decision](decisions/property-based-testing.md#test-admission)
-owns mutation evidence requirements. The runner's Reporter integration is checked
-with real Vitest subprocesses, including teardown and shutdown failures.
-
 The Workerd projects use the `cloudflareTest()` plugin from
 `@cloudflare/vitest-plugin` with Vitest 4. Cloudflare’s plugin and
 `@fast-check/vitest` require Vitest 4; upgrade them together when moving to a
