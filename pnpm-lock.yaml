@@ -23,8 +23,8 @@ catalogs:
       specifier: 7.0.2
       version: 7.0.2
     zod:
-      specifier: 4.6.2
-      version: 4.6.2
+      specifier: 4.6.5
+      version: 4.6.5
 
 importers:
 
@@ -126,7 +126,7 @@ importers:
         version: 6.2.12
       zod:
         specifier: 'catalog:'
-        version: 4.6.2
+        version: 4.6.5
 
   packages/http: {}
 
@@ -140,7 +140,7 @@ importers:
         version: 6.2.12
       zod:
         specifier: 'catalog:'
-        version: 4.6.2
+        version: 4.6.5
 
   packages/oidc-provider-buildkite:
     dependencies:
@@ -185,7 +185,7 @@ importers:
         version: 6.2.12
       zod:
         specifier: 'catalog:'
-        version: 4.6.2
+        version: 4.6.5
 
   packages/token-issuance-policy:
     dependencies:
@@ -2523,9 +2523,6 @@ packages:
   zod@4.4.3:
     resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
 
-  zod@4.6.2:
-    resolution: {integrity: sha512-lh5RCAGFa1Cm2hjtNwLQhSs/AsqdWnTQaBER9fEwN/88pSh7KOtJavtBx/0VlkN/uFd61SwYmljLMDAsHlvzBQ==}
-
   zod@4.6.5:
     resolution: {integrity: sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==}
 
@@ -2812,7 +2809,7 @@ snapshots:
     dependencies:
       '@github-app-token-broker/http': file:packages/http
       jose: 6.2.12
-      zod: 4.6.2
+      zod: 4.6.5
 
   '@github-app-token-broker/http@file:packages/http': {}
 
@@ -2820,7 +2817,7 @@ snapshots:
     dependencies:
       '@github-app-token-broker/http': file:packages/http
       jose: 6.2.12
-      zod: 4.6.2
+      zod: 4.6.5
 
   '@github-app-token-broker/token-exchange@file:packages/token-exchange':
     dependencies:
@@ -2829,7 +2826,7 @@ snapshots:
       '@github-app-token-broker/oidc': file:packages/oidc
       '@github-app-token-broker/token-issuance-policy': file:packages/token-issuance-policy
       jose: 6.2.12
-      zod: 4.6.2
+      zod: 4.6.5
 
   '@github-app-token-broker/token-issuance-policy@file:packages/token-issuance-policy':
     dependencies:
@@ -4355,7 +4352,5 @@ snapshots:
       '@yuku-parser/binding-win32-x64': 0.9.5
 
   zod@4.4.3: {}
-
-  zod@4.6.2: {}
 
   zod@4.6.5: {}
