@@ -11,8 +11,8 @@ catalogs:
       specifier: 24.13.5
       version: 24.13.5
     fastify:
-      specifier: 5.12.3
-      version: 5.12.3
+      specifier: 5.12.5
+      version: 5.12.5
     jose:
       specifier: 6.2.12
       version: 6.2.12
@@ -45,7 +45,7 @@ importers:
         version: 0.5.0(vitest@4.1.11)
       '@github-app-token-broker/fastify':
         specifier: workspace:*
-        version: file:packages/fastify(fastify@5.12.3)
+        version: file:packages/fastify(fastify@5.12.5)
       '@github-app-token-broker/github':
         specifier: workspace:*
         version: link:packages/github
@@ -84,7 +84,7 @@ importers:
         version: 4.10.1
       fastify:
         specifier: 'catalog:'
-        version: 5.12.3
+        version: 5.12.5
       knip:
         specifier: 6.36.0
         version: 6.36.0
@@ -200,13 +200,13 @@ importers:
     dependencies:
       '@github-app-token-broker/fastify':
         specifier: workspace:*
-        version: file:packages/fastify(fastify@5.12.3)
+        version: file:packages/fastify(fastify@5.12.5)
       '@github-app-token-broker/token-exchange':
         specifier: workspace:*
         version: link:../../../packages/token-exchange
       fastify:
         specifier: 'catalog:'
-        version: 5.12.3
+        version: 5.12.5
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -222,11 +222,11 @@ importers:
     dependencies:
       fastify:
         specifier: 'catalog:'
-        version: 5.12.3
+        version: 5.12.5
     devDependencies:
       '@github-app-token-broker/fastify':
         specifier: workspace:*
-        version: file:packages/fastify(fastify@5.12.3)
+        version: file:packages/fastify(fastify@5.12.5)
       '@github-app-token-broker/token-exchange':
         specifier: workspace:*
         version: link:../../../packages/token-exchange
@@ -1857,8 +1857,8 @@ packages:
   fast-uri@4.1.4:
     resolution: {integrity: sha512-dODXrIxlS9JSdgAnhIUKOosKV1oMtU2VtVw87QRaHzyl5jxO290Ii5tEZfCfzfWNHi3jKWwBSdQj0qIyshdZdQ==}
 
-  fastify@5.12.3:
-    resolution: {integrity: sha512-reZ8wce5VNCcufIt9AVtzZa3L4u1j8esikn7OEgHWLVpRpL5R7Y2+Xzj70OUkv5zDfzUAxXZT6cu4Rt0zr3EKA==}
+  fastify@5.12.5:
+    resolution: {integrity: sha512-OB2k1dlxs5/NAABqeKV2FUHkSD2BbENsCak8yULVcymn3fHIPDVa9TI3SDnJSWYSllZmSYuZXy2gTnsT+Sut1A==}
 
   fastq@1.20.3:
     resolution: {integrity: sha512-XKv5nnLs6nLF71NgiKJLIZFLkPyIEuOselLG7ujZnGrRfQK8HpvY+WqKhAJUAdLomwVHErVS4LfxFlPq0/FTAw==}
@@ -2803,10 +2803,10 @@ snapshots:
       '@fastify/forwarded': 3.0.2
       ipaddr.js: 2.5.0
 
-  '@github-app-token-broker/fastify@file:packages/fastify(fastify@5.12.3)':
+  '@github-app-token-broker/fastify@file:packages/fastify(fastify@5.12.5)':
     dependencies:
       '@github-app-token-broker/token-exchange': file:packages/token-exchange
-      fastify: 5.12.3
+      fastify: 5.12.5
 
   '@github-app-token-broker/github@file:packages/github':
     dependencies:
@@ -3641,7 +3641,7 @@ snapshots:
 
   fast-uri@4.1.4: {}
 
-  fastify@5.12.3:
+  fastify@5.12.5:
     dependencies:
       '@fastify/ajv-compiler': 4.0.6
       '@fastify/error': 4.2.0
