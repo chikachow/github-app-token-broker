@@ -52,7 +52,7 @@
     "@tsconfig/strictest": "2.0.8",
     "@types/node": "catalog:",
     "@vitest/coverage-istanbul": "4.1.11",
-    "fast-check": "4.9.0",
+    "fast-check": "4.10.1",
     "fastify": "catalog:",
     "knip": "6.36.0",
     "oxfmt": "0.68.0",
