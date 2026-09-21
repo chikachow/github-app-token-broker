@@ -39,7 +39,7 @@
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.1.12",
     "@cloudflare/workers-types": "5.20260918.1",
-    "@fast-check/vitest": "0.4.1",
+    "@fast-check/vitest": "0.5.0",
     "@github-app-token-broker/fastify": "workspace:*",
     "@github-app-token-broker/github": "workspace:*",
     "@github-app-token-broker/http": "workspace:*",
