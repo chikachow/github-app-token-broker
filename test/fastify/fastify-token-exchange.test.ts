@@ -533,6 +533,27 @@ describe("githubAppTokenExchangePlugin", () => {
     }
   });
 
+  it("rejects invalid host metadata introduced by a host pre-validation hook", async () => {
+    const tokenExchange = tokenExchangeDouble();
+    const app = Fastify();
+    app.addHook("preValidation", async (request) => {
+      request.headers.host = "[";
+    });
+    await app.register(githubAppTokenExchangePlugin, { tokenExchange });
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: "/github/apps/fixture-app/token",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: "scope=contents%3Aread",
+      });
+      expectOAuthInvalidRequest(response, 400);
+      expect(tokenExchange).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
+    }
+  });
+
   it("lets host admission reject before body parsing and token exchange", async () => {
     const tokenExchange = tokenExchangeDouble();
     const app = Fastify();

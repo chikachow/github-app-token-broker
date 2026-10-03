@@ -251,6 +251,61 @@ describe("Token Exchange Worker boundary", () => {
     }
   });
 
+  it.each([undefined, null, 123, "", "lowercase", "KEY-NAME"])(
+    "rejects invalid private-key binding name %j before I/O",
+    (privateKeyBinding) => {
+      const fetch = vi.fn<typeof globalThis.fetch>();
+      expect(() =>
+        createTokenExchangeWorker(
+          {
+            ...testGitHubActionsTokenExchangeComposition,
+            githubApps: [
+              {
+                ...testGitHubActionsTokenExchangeComposition.githubApps[0],
+                privateKeyBinding: privateKeyBinding as never,
+              },
+            ],
+          },
+          { fetch, now: () => testNow },
+        ),
+      ).toThrow("private-key binding name");
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    undefined,
+    null,
+    {},
+    { get: "not callable" },
+    { get: async () => 123 },
+    { get: async () => null },
+  ])("fails closed for unusable selected private-key binding %j", async (privateKeyBinding) => {
+    const outbound = vi.fn<typeof fetch>((input) =>
+      fetchGitHubActionsOidcRemoteDocumentTestDouble(input),
+    );
+    const observe = vi.fn(async () => undefined);
+    const worker = createTokenExchangeWorker(testGitHubActionsTokenExchangeComposition, {
+      fetch: outbound,
+      now: () => testNow,
+      observe,
+    });
+    const response = await invokeWorker(worker, await githubActionsTokenExchangeRequest(), {
+      ...testEnv,
+      GITHUB_APP_PRIVATE_KEY: privateKeyBinding,
+    });
+    await expectSanitizedServerError(response);
+    expect(outbound.mock.calls.map(([input]) => new URL(new Request(input).url).hostname)).toEqual([
+      "token.actions.githubusercontent.com",
+      "token.actions.githubusercontent.com",
+    ]);
+    expect(observe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fields: expect.objectContaining({ event: "installation_access_token_issuance_started" }),
+      }),
+    );
+  });
+
   it("accepts a structural GitHub App private-key binding", async () => {
     const getPrivateKey = vi.fn(async () => testEnv.GITHUB_APP_PRIVATE_KEY);
     const response = await fetchGitHubActionsTokenExchangeWithEnv(

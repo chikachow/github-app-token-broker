@@ -1107,3 +1107,19 @@ function verifiedSubjectTokenFor(claims: Record<string, unknown>): VerifiedSubje
     },
   };
 }
+
+describe("Permit Statement App identity", () => {
+  it.each([undefined, null, 12345, "", "12345", " Iv1.example", "Iv1.example\n", "I".repeat(129)])(
+    "rejects invalid App client ID %j",
+    (githubAppClientId) => {
+      expect(() =>
+        compileTokenIssuancePolicy([
+          {
+            ...validPermitStatement(),
+            githubAppClientId: githubAppClientId as never,
+          },
+        ]),
+      ).toThrow("permitStatements[0].githubAppClientId");
+    },
+  );
+});

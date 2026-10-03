@@ -195,6 +195,25 @@ describe("app selection at the Token Exchange boundary", () => {
     expect(fixture.readPrimarySecret).not.toHaveBeenCalled();
   });
 
+  it.each([undefined, null, {}])(
+    "rejects a non-array App catalogue %j without I/O",
+    async (githubApps) => {
+      const fixture = await multiAppFixture();
+      expect(() =>
+        createGitHubAppTokenExchange(
+          {
+            ...fixture.configuration,
+            githubApps: githubApps as never,
+          },
+          fixture.dependencies,
+        ),
+      ).toThrow(TypeError);
+      expect(fixture.providerRequests).toEqual([]);
+      expect(fixture.readPrimarySecret).not.toHaveBeenCalled();
+      expect(fixture.readOtherSecret).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([
     { name: "duplicate slug", override: { slug: "fixture-app" } },
     { name: "duplicate client ID", override: { clientId: "Iv1.fixtureApp" } },
