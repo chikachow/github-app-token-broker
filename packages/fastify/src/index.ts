@@ -47,16 +47,14 @@ export const githubAppTokenExchangePlugin: FastifyPluginAsync<
     {
       bodyLimit: maxTokenExchangeBodyBytes,
       async onRequest(request, reply) {
-        const pathname = new URL(request.raw.url ?? request.url, "http://localhost").pathname.slice(
-          fastify.prefix.length,
-        );
-        if (tokenEndpointPaths.has(pathname)) return;
-        // Unknown Apps must be rejected before Fastify consumes or classifies a body.
         const webRequest = fastifyRequestToWebRequest(request, fastify.prefix);
-        const response =
-          webRequest === null
-            ? tokenExchangeInvalidRequestResponse(400)
-            : await options.tokenExchange(webRequest, tokenExchangeContext(request));
+        if (webRequest === null) {
+          await sendWebResponse(reply, tokenExchangeInvalidRequestResponse(400));
+          return;
+        }
+        if (tokenEndpointPaths.has(new URL(webRequest.url).pathname)) return;
+        // Unknown Apps must be rejected before Fastify consumes or classifies a body.
+        const response = await options.tokenExchange(webRequest, tokenExchangeContext(request));
         await sendWebResponse(reply, response);
       },
     },

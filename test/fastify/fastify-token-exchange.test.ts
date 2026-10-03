@@ -65,59 +65,62 @@ describe("githubAppTokenExchangePlugin", () => {
     }
   });
 
-  it("preserves raw form bytes in its prefix without changing an ordinary sibling parser", async () => {
-    const tokenExchange = tokenExchangeDouble(async (request) => {
-      expect(request.headers.get("content-type")).toBe(
-        "application/x-www-form-urlencoded; charset=utf-8",
+  it.each(["/automation", "/automation/"])(
+    "preserves raw form bytes under prefix %s without changing a sibling parser",
+    async (prefix) => {
+      const tokenExchange = tokenExchangeDouble(async (request) => {
+        expect(request.headers.get("content-type")).toBe(
+          "application/x-www-form-urlencoded; charset=utf-8",
+        );
+        expect(await request.text()).toBe("scope=&scope=contents%3Aread&scope=actions%3Awrite");
+
+        return Response.json({ ok: true });
+      });
+      const app = Fastify();
+      app.addContentTypeParser(
+        "application/x-www-form-urlencoded",
+        { parseAs: "string" },
+        (_request, body, done) => done(null, { parsed: body }),
       );
-      expect(await request.text()).toBe("scope=&scope=contents%3Aread&scope=actions%3Awrite");
-
-      return Response.json({ ok: true });
-    });
-    const app = Fastify();
-    app.addContentTypeParser(
-      "application/x-www-form-urlencoded",
-      { parseAs: "string" },
-      (_request, body, done) => done(null, { parsed: body }),
-    );
-    let ordinaryParsedBody: unknown;
-    app.post("/ordinary-form", async (request) => {
-      ordinaryParsedBody = request.body;
-      return { ok: true };
-    });
-    await app.register(githubAppTokenExchangePlugin, {
-      prefix: "/automation",
-      tokenExchange,
-    });
-
-    try {
-      const response = await app.inject({
-        body: "scope=&scope=contents%3Aread&scope=actions%3Awrite",
-        headers: {
-          "content-type": "application/x-www-form-urlencoded; charset=utf-8",
-        },
-        method: "POST",
-        url: "/automation/github/apps/fixture-app/token",
+      let ordinaryParsedBody: unknown;
+      app.post("/ordinary-form", async (request) => {
+        ordinaryParsedBody = request.body;
+        return { ok: true };
       });
-      const ordinaryResponse = await app.inject({
-        body: "field=value",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        method: "POST",
-        url: "/ordinary-form",
+      await app.register(githubAppTokenExchangePlugin, {
+        prefix,
+        tokenExchange,
       });
 
-      expect(response.statusCode).toBe(200);
-      expect(tokenExchange).toHaveBeenCalledOnce();
-      expect(
-        (await app.inject({ method: "POST", url: "/github/apps/fixture-app/token" })).statusCode,
-      ).toBe(404);
-      expect(ordinaryResponse.statusCode).toBe(200);
-      expect(ordinaryResponse.json()).toEqual({ ok: true });
-      expect(ordinaryParsedBody).toEqual({ parsed: "field=value" });
-    } finally {
-      await app.close();
-    }
-  });
+      try {
+        const response = await app.inject({
+          body: "scope=&scope=contents%3Aread&scope=actions%3Awrite",
+          headers: {
+            "content-type": "application/x-www-form-urlencoded; charset=utf-8",
+          },
+          method: "POST",
+          url: "/automation/github/apps/fixture-app/token",
+        });
+        const ordinaryResponse = await app.inject({
+          body: "field=value",
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          method: "POST",
+          url: "/ordinary-form",
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(tokenExchange).toHaveBeenCalledOnce();
+        expect(
+          (await app.inject({ method: "POST", url: "/github/apps/fixture-app/token" })).statusCode,
+        ).toBe(404);
+        expect(ordinaryResponse.statusCode).toBe(200);
+        expect(ordinaryResponse.json()).toEqual({ ok: true });
+        expect(ordinaryParsedBody).toEqual({ parsed: "field=value" });
+      } finally {
+        await app.close();
+      }
+    },
+  );
 
   it.each([
     { contentType: "application/json", scenario: "JSON" },
