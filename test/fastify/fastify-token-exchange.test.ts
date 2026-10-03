@@ -2,6 +2,7 @@ import { request as nodeHttpRequest } from "node:http";
 
 import { githubAppTokenExchangePlugin } from "@github-app-token-broker/fastify";
 import {
+  createGitHubAppTokenExchange,
   maxTokenExchangeBodyBytes,
   type TokenExchangeHandler,
 } from "@github-app-token-broker/token-exchange";
@@ -9,6 +10,33 @@ import Fastify from "fastify";
 import { describe, expect, it, vi } from "vitest";
 
 describe("githubAppTokenExchangePlugin", () => {
+  it.each(["GET", "HEAD", "OPTIONS", "POST"] as const)(
+    "returns 404 for %s to an unconfigured app before protocol classification",
+    async (method) => {
+      const outbound = vi.fn<typeof fetch>();
+      const tokenExchange = createGitHubAppTokenExchange(
+        {
+          composition: {
+            oidcProviderRegistrations: [],
+            tokenIssuancePolicy: { permitStatements: [] },
+          },
+          githubApps: [],
+        },
+        { fetch: outbound, now: () => new Date() },
+      );
+      const app = Fastify();
+      await app.register(githubAppTokenExchangePlugin, { tokenExchange });
+      try {
+        expect((await app.inject({ method, url: "/github/apps/missing/token" })).statusCode).toBe(
+          404,
+        );
+        expect(outbound).not.toHaveBeenCalled();
+      } finally {
+        await app.close();
+      }
+    },
+  );
+
   it("preserves raw form bytes in its prefix without changing an ordinary sibling parser", async () => {
     const tokenExchange = vi.fn<TokenExchangeHandler>(async (request) => {
       expect(request.headers.get("content-type")).toBe(
@@ -321,7 +349,7 @@ describe("githubAppTokenExchangePlugin", () => {
     }
   });
 
-  it("normalizes routed non-POST methods before Fetch request construction", async () => {
+  it("delegates known-app method rejection and handles methods Fetch cannot represent", async () => {
     const methods: Array<"DELETE" | "GET" | "HEAD" | "OPTIONS" | "PATCH" | "PUT" | "TRACE"> = [
       "DELETE",
       "GET",
@@ -331,8 +359,22 @@ describe("githubAppTokenExchangePlugin", () => {
       "PUT",
       "TRACE",
     ];
-    const tokenExchange = vi.fn<TokenExchangeHandler>(async () =>
-      Response.json({ must_not_reach: true }),
+    const tokenExchange = createGitHubAppTokenExchange(
+      {
+        composition: {
+          oidcProviderRegistrations: [],
+          tokenIssuancePolicy: { permitStatements: [] },
+        },
+        githubApps: [
+          {
+            slug: "fixture-app",
+            clientId: "Iv1.fixtureApp",
+            subjectTokenAudiences: ["urn:test"],
+            privateKey: "unused",
+          },
+        ],
+      },
+      { fetch: vi.fn<typeof fetch>(), now: () => new Date() },
     );
     const app = Fastify();
     await app.register(githubAppTokenExchangePlugin, { tokenExchange });
@@ -353,8 +395,6 @@ describe("githubAppTokenExchangePlugin", () => {
           expect(response.body).toBe('{"error":"invalid_request"}');
         }
       }
-
-      expect(tokenExchange).not.toHaveBeenCalled();
     } finally {
       await app.close();
     }
@@ -375,7 +415,6 @@ describe("githubAppTokenExchangePlugin", () => {
 
       expect(response.statusCode).toBe(400);
       expect(response.cacheControl).toBeUndefined();
-      expect(tokenExchange).not.toHaveBeenCalled();
     } finally {
       await app.close();
     }
@@ -456,7 +495,6 @@ describe("githubAppTokenExchangePlugin", () => {
       });
 
       expectOAuthInvalidRequest(response, 400);
-      expect(tokenExchange).not.toHaveBeenCalled();
     } finally {
       await app.close();
     }
@@ -480,7 +518,6 @@ describe("githubAppTokenExchangePlugin", () => {
 
       expect(response.statusCode).toBe(429);
       expect(response.json()).toEqual({ error: "host_rate_limit" });
-      expect(tokenExchange).not.toHaveBeenCalled();
     } finally {
       await app.close();
     }

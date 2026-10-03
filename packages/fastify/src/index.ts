@@ -44,11 +44,6 @@ export const githubAppTokenExchangePlugin: FastifyPluginAsync<
     "/github/apps/:app_slug/token",
     { bodyLimit: maxTokenExchangeBodyBytes },
     async (request, reply) => {
-      if (request.method !== "POST") {
-        await sendWebResponse(reply, tokenExchangeInvalidRequestResponse(400));
-        return;
-      }
-
       const webRequest = fastifyRequestToWebRequest(request, fastify.prefix);
 
       if (webRequest === null) {
