@@ -2,6 +2,7 @@ import { request as nodeHttpRequest } from "node:http";
 
 import { githubAppTokenExchangePlugin } from "@github-app-token-broker/fastify";
 import {
+  createGitHubAppTokenExchange,
   maxTokenExchangeBodyBytes,
   type TokenExchangeHandler,
 } from "@github-app-token-broker/token-exchange";
@@ -9,57 +10,117 @@ import Fastify from "fastify";
 import { describe, expect, it, vi } from "vitest";
 
 describe("githubAppTokenExchangePlugin", () => {
-  it("preserves raw form bytes in its prefix without changing an ordinary sibling parser", async () => {
-    const tokenExchange = vi.fn<TokenExchangeHandler>(async (request) => {
-      expect(request.headers.get("content-type")).toBe(
-        "application/x-www-form-urlencoded; charset=utf-8",
+  it.each(["GET", "HEAD", "OPTIONS", "POST"] as const)(
+    "returns 404 for %s to an unconfigured app before protocol classification",
+    async (method) => {
+      const outbound = vi.fn<typeof fetch>();
+      const tokenExchange = createGitHubAppTokenExchange(
+        {
+          composition: {
+            oidcProviderRegistrations: [],
+            tokenIssuancePolicy: { permitStatements: [] },
+          },
+          githubApps: [],
+        },
+        { fetch: outbound, now: () => new Date() },
       );
-      expect(await request.text()).toBe("scope=&scope=contents%3Aread&scope=actions%3Awrite");
+      const app = Fastify();
+      await app.register(githubAppTokenExchangePlugin, { tokenExchange });
+      try {
+        expect((await app.inject({ method, url: "/github/apps/missing/token" })).statusCode).toBe(
+          404,
+        );
+        expect(outbound).not.toHaveBeenCalled();
+      } finally {
+        await app.close();
+      }
+    },
+  );
 
-      return Response.json({ ok: true });
+  it.each([
+    { contentType: "application/json", body: "{}" },
+    {
+      contentType: "application/x-www-form-urlencoded",
+      body: "x".repeat(maxTokenExchangeBodyBytes + 1),
+    },
+    { contentType: "not a type", body: "invalid" },
+  ])("rejects an unconfigured app before parsing $contentType", async ({ contentType, body }) => {
+    const tokenExchange = createGitHubAppTokenExchange({
+      composition: { oidcProviderRegistrations: [], tokenIssuancePolicy: { permitStatements: [] } },
+      githubApps: [],
     });
     const app = Fastify();
-    app.addContentTypeParser(
-      "application/x-www-form-urlencoded",
-      { parseAs: "string" },
-      (_request, body, done) => done(null, { parsed: body }),
-    );
-    let ordinaryParsedBody: unknown;
-    app.post("/ordinary-form", async (request) => {
-      ordinaryParsedBody = request.body;
-      return { ok: true };
-    });
-    await app.register(githubAppTokenExchangePlugin, {
-      prefix: "/automation",
-      tokenExchange,
-    });
-
+    await app.register(githubAppTokenExchangePlugin, { tokenExchange });
     try {
       const response = await app.inject({
-        body: "scope=&scope=contents%3Aread&scope=actions%3Awrite",
-        headers: {
-          "content-type": "application/x-www-form-urlencoded; charset=utf-8",
-        },
         method: "POST",
-        url: "/automation/token",
+        url: "/github/apps/missing/token",
+        headers: { "content-type": contentType },
+        body,
       });
-      const ordinaryResponse = await app.inject({
-        body: "field=value",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        method: "POST",
-        url: "/ordinary-form",
-      });
-
-      expect(response.statusCode).toBe(200);
-      expect(tokenExchange).toHaveBeenCalledOnce();
-      expect((await app.inject({ method: "POST", url: "/token" })).statusCode).toBe(404);
-      expect(ordinaryResponse.statusCode).toBe(200);
-      expect(ordinaryResponse.json()).toEqual({ ok: true });
-      expect(ordinaryParsedBody).toEqual({ parsed: "field=value" });
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toEqual({ type: "about:blank", title: "Not Found", status: 404 });
     } finally {
       await app.close();
     }
   });
+
+  it.each(["/automation", "/automation/"])(
+    "preserves raw form bytes under prefix %s without changing a sibling parser",
+    async (prefix) => {
+      const tokenExchange = tokenExchangeDouble(async (request) => {
+        expect(request.headers.get("content-type")).toBe(
+          "application/x-www-form-urlencoded; charset=utf-8",
+        );
+        expect(await request.text()).toBe("scope=&scope=contents%3Aread&scope=actions%3Awrite");
+
+        return Response.json({ ok: true });
+      });
+      const app = Fastify();
+      app.addContentTypeParser(
+        "application/x-www-form-urlencoded",
+        { parseAs: "string" },
+        (_request, body, done) => done(null, { parsed: body }),
+      );
+      let ordinaryParsedBody: unknown;
+      app.post("/ordinary-form", async (request) => {
+        ordinaryParsedBody = request.body;
+        return { ok: true };
+      });
+      await app.register(githubAppTokenExchangePlugin, {
+        prefix,
+        tokenExchange,
+      });
+
+      try {
+        const response = await app.inject({
+          body: "scope=&scope=contents%3Aread&scope=actions%3Awrite",
+          headers: {
+            "content-type": "application/x-www-form-urlencoded; charset=utf-8",
+          },
+          method: "POST",
+          url: "/automation/github/apps/fixture-app/token",
+        });
+        const ordinaryResponse = await app.inject({
+          body: "field=value",
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          method: "POST",
+          url: "/ordinary-form",
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(tokenExchange).toHaveBeenCalledOnce();
+        expect(
+          (await app.inject({ method: "POST", url: "/github/apps/fixture-app/token" })).statusCode,
+        ).toBe(404);
+        expect(ordinaryResponse.statusCode).toBe(200);
+        expect(ordinaryResponse.json()).toEqual({ ok: true });
+        expect(ordinaryParsedBody).toEqual({ parsed: "field=value" });
+      } finally {
+        await app.close();
+      }
+    },
+  );
 
   it.each([
     { contentType: "application/json", scenario: "JSON" },
@@ -67,7 +128,7 @@ describe("githubAppTokenExchangePlugin", () => {
     { contentType: "not a type", scenario: "malformed media type" },
     { contentType: undefined, scenario: "missing content type" },
   ])("maps unsupported $scenario bodies to OAuth invalid_request", async ({ contentType }) => {
-    const tokenExchange = vi.fn<TokenExchangeHandler>();
+    const tokenExchange = tokenExchangeDouble();
     const app = Fastify();
     await app.register(githubAppTokenExchangePlugin, { tokenExchange });
 
@@ -76,7 +137,7 @@ describe("githubAppTokenExchangePlugin", () => {
         body: "grant_type=ignored",
         ...(contentType === undefined ? {} : { headers: { "content-type": contentType } }),
         method: "POST",
-        url: "/token",
+        url: "/github/apps/fixture-app/token",
       });
 
       expectOAuthInvalidRequest(response, 400);
@@ -87,12 +148,12 @@ describe("githubAppTokenExchangePlugin", () => {
   });
 
   it("lets an empty request with no content type reach the deep handler", async () => {
-    const tokenExchange = vi.fn<TokenExchangeHandler>(async () => Response.json({ reached: true }));
+    const tokenExchange = tokenExchangeDouble(async () => Response.json({ reached: true }));
     const app = Fastify();
     await app.register(githubAppTokenExchangePlugin, { tokenExchange });
 
     try {
-      const response = await app.inject({ method: "POST", url: "/token" });
+      const response = await app.inject({ method: "POST", url: "/github/apps/fixture-app/token" });
 
       expect(response.statusCode).toBe(200);
       expect(response.json()).toEqual({ reached: true });
@@ -103,7 +164,7 @@ describe("githubAppTokenExchangePlugin", () => {
   });
 
   it("maps body-limit and invalid-content-length failures to OAuth invalid_request", async () => {
-    const tokenExchange = vi.fn<TokenExchangeHandler>();
+    const tokenExchange = tokenExchangeDouble();
     const app = Fastify();
     await app.register(githubAppTokenExchangePlugin, { tokenExchange });
 
@@ -112,7 +173,7 @@ describe("githubAppTokenExchangePlugin", () => {
         body: "x".repeat(maxTokenExchangeBodyBytes + 1),
         headers: { "content-type": "application/x-www-form-urlencoded" },
         method: "POST",
-        url: "/token",
+        url: "/github/apps/fixture-app/token",
       });
       const invalidContentLength = await app.inject({
         body: "x=1",
@@ -121,7 +182,7 @@ describe("githubAppTokenExchangePlugin", () => {
           "content-type": "application/x-www-form-urlencoded",
         },
         method: "POST",
-        url: "/token",
+        url: "/github/apps/fixture-app/token",
       });
 
       expectOAuthInvalidRequest(oversized, 413);
@@ -154,18 +215,20 @@ describe("githubAppTokenExchangePlugin", () => {
       return payload;
     });
     await app.register(githubAppTokenExchangePlugin, {
-      tokenExchange: async () =>
-        new Response(Uint8Array.from([0, 255, 1]), {
-          headers,
-          status: 207,
-        }),
+      tokenExchange: tokenExchangeDouble(
+        async () =>
+          new Response(Uint8Array.from([0, 255, 1]), {
+            headers,
+            status: 207,
+          }),
+      ),
     });
 
     try {
       const response = await app.inject({
         headers: { "content-type": "application/x-www-form-urlencoded" },
         method: "POST",
-        url: "/token",
+        url: "/github/apps/fixture-app/token",
       });
 
       expect(response.statusCode).toBe(207);
@@ -202,7 +265,7 @@ describe("githubAppTokenExchangePlugin", () => {
       request.log.warn = warn;
     });
     await app.register(githubAppTokenExchangePlugin, {
-      tokenExchange: async (_request, context) => {
+      tokenExchange: tokenExchangeDouble(async (_request, context) => {
         await context.observe({
           fields: { event: "issuance_failed", reason: "policy" },
           level: "error",
@@ -214,14 +277,14 @@ describe("githubAppTokenExchangePlugin", () => {
         });
         await context.observe({ fields: { diagnosticCode: "EXAMPLE" }, level: "warn" });
         return new Response(null, { status: 204 });
-      },
+      }),
     });
 
     try {
       const response = await app.inject({
         headers: { "content-type": "application/x-www-form-urlencoded" },
         method: "POST",
-        url: "/token",
+        url: "/github/apps/fixture-app/token",
       });
 
       expect(response.statusCode).toBe(204);
@@ -249,7 +312,7 @@ describe("githubAppTokenExchangePlugin", () => {
       request.log.warn = warn;
     });
     await app.register(githubAppTokenExchangePlugin, {
-      tokenExchange: async (_request, context) => {
+      tokenExchange: tokenExchangeDouble(async (_request, context) => {
         if (context.observeOidcDiagnostic === undefined) {
           throw new Error("Fastify adapter omitted the optional diagnostic callback");
         }
@@ -260,14 +323,14 @@ describe("githubAppTokenExchangePlugin", () => {
         });
         expect(result).toBeUndefined();
         return new Response(null, { status: 204 });
-      },
+      }),
     });
 
     try {
       const response = await app.inject({
         headers: { "content-type": "application/x-www-form-urlencoded" },
         method: "POST",
-        url: "/token",
+        url: "/github/apps/fixture-app/token",
       });
 
       expect(response.statusCode).toBe(204);
@@ -289,7 +352,7 @@ describe("githubAppTokenExchangePlugin", () => {
       };
     });
     await app.register(githubAppTokenExchangePlugin, {
-      tokenExchange: async (_request, context) => {
+      tokenExchange: tokenExchangeDouble(async (_request, context) => {
         try {
           await context.observe({ fields: { event: "issuance_succeeded" }, level: "info" });
           return Response.json({ access_token: "must-not-escape" });
@@ -300,14 +363,14 @@ describe("githubAppTokenExchangePlugin", () => {
             { headers: { "cache-control": "no-store", pragma: "no-cache" }, status: 500 },
           );
         }
-      },
+      }),
     });
 
     try {
       const response = await app.inject({
         headers: { "content-type": "application/x-www-form-urlencoded" },
         method: "POST",
-        url: "/token",
+        url: "/github/apps/fixture-app/token",
       });
 
       expect(response.statusCode).toBe(500);
@@ -319,7 +382,7 @@ describe("githubAppTokenExchangePlugin", () => {
     }
   });
 
-  it("normalizes routed non-POST methods before Fetch request construction", async () => {
+  it("delegates known-app method rejection and handles methods Fetch cannot represent", async () => {
     const methods: Array<"DELETE" | "GET" | "HEAD" | "OPTIONS" | "PATCH" | "PUT" | "TRACE"> = [
       "DELETE",
       "GET",
@@ -329,8 +392,22 @@ describe("githubAppTokenExchangePlugin", () => {
       "PUT",
       "TRACE",
     ];
-    const tokenExchange = vi.fn<TokenExchangeHandler>(async () =>
-      Response.json({ must_not_reach: true }),
+    const tokenExchange = createGitHubAppTokenExchange(
+      {
+        composition: {
+          oidcProviderRegistrations: [],
+          tokenIssuancePolicy: { permitStatements: [] },
+        },
+        githubApps: [
+          {
+            slug: "fixture-app",
+            clientId: "Iv1.fixtureApp",
+            subjectTokenAudiences: ["urn:test"],
+            privateKey: "unused",
+          },
+        ],
+      },
+      { fetch: vi.fn<typeof fetch>(), now: () => new Date() },
     );
     const app = Fastify();
     await app.register(githubAppTokenExchangePlugin, { tokenExchange });
@@ -338,7 +415,7 @@ describe("githubAppTokenExchangePlugin", () => {
 
     try {
       for (const method of methods) {
-        const response = await makeNodeRequest(`${address}/token`, {
+        const response = await makeNodeRequest(`${address}/github/apps/fixture-app/token`, {
           body: "",
           headers: {},
           method,
@@ -351,21 +428,19 @@ describe("githubAppTokenExchangePlugin", () => {
           expect(response.body).toBe('{"error":"invalid_request"}');
         }
       }
-
-      expect(tokenExchange).not.toHaveBeenCalled();
     } finally {
       await app.close();
     }
   });
 
   it("leaves a transport-rejected TRACK request outside the adapter OAuth contract", async () => {
-    const tokenExchange = vi.fn<TokenExchangeHandler>();
+    const tokenExchange = tokenExchangeDouble();
     const app = Fastify();
     await app.register(githubAppTokenExchangePlugin, { tokenExchange });
     const address = await app.listen({ host: "127.0.0.1", port: 0 });
 
     try {
-      const response = await makeNodeRequest(`${address}/token`, {
+      const response = await makeNodeRequest(`${address}/github/apps/fixture-app/token`, {
         body: "",
         headers: {},
         method: "TRACK",
@@ -373,7 +448,6 @@ describe("githubAppTokenExchangePlugin", () => {
 
       expect(response.statusCode).toBe(400);
       expect(response.cacheControl).toBeUndefined();
-      expect(tokenExchange).not.toHaveBeenCalled();
     } finally {
       await app.close();
     }
@@ -382,7 +456,7 @@ describe("githubAppTokenExchangePlugin", () => {
   it("bridges request URL, multi-value headers, and exact bounded bytes", async () => {
     const body = "x".repeat(maxTokenExchangeBodyBytes);
     let bridgedRequest: Record<string, unknown> | undefined;
-    const tokenExchange = vi.fn<TokenExchangeHandler>(async (request) => {
+    const tokenExchange = tokenExchangeDouble(async (request) => {
       bridgedRequest = {
         bodyMatches: (await request.text()) === body,
         clientHint: request.headers.get("x-client-hint"),
@@ -402,7 +476,7 @@ describe("githubAppTokenExchangePlugin", () => {
           "x-client-hint": ["one", "two"],
         },
         method: "POST",
-        url: "/token?trace=one",
+        url: "/github/apps/fixture-app/token?trace=one",
       });
 
       expect(response.statusCode).toBe(204);
@@ -410,7 +484,7 @@ describe("githubAppTokenExchangePlugin", () => {
       expect(bridgedRequest).toEqual({
         bodyMatches: true,
         clientHint: "one,two",
-        url: "http://broker.example:8443/token?trace=one",
+        url: "http://broker.example:8443/github/apps/fixture-app/token?trace=one",
       });
     } finally {
       await app.close();
@@ -439,7 +513,7 @@ describe("githubAppTokenExchangePlugin", () => {
       trustProxy: false,
     },
   ])("sanitizes $scenario before token exchange", async ({ headers, trustProxy }) => {
-    const tokenExchange = vi.fn<TokenExchangeHandler>();
+    const tokenExchange = tokenExchangeDouble();
     const app = Fastify({ trustProxy });
     await app.register(githubAppTokenExchangePlugin, { tokenExchange });
 
@@ -450,9 +524,29 @@ describe("githubAppTokenExchangePlugin", () => {
           "content-type": "application/x-www-form-urlencoded",
         },
         method: "POST",
-        url: "/token",
+        url: "/github/apps/fixture-app/token",
       });
 
+      expectOAuthInvalidRequest(response, 400);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("rejects invalid host metadata introduced by a host pre-validation hook", async () => {
+    const tokenExchange = tokenExchangeDouble();
+    const app = Fastify();
+    app.addHook("preValidation", async (request) => {
+      request.headers.host = "[";
+    });
+    await app.register(githubAppTokenExchangePlugin, { tokenExchange });
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: "/github/apps/fixture-app/token",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: "scope=contents%3Aread",
+      });
       expectOAuthInvalidRequest(response, 400);
       expect(tokenExchange).not.toHaveBeenCalled();
     } finally {
@@ -461,7 +555,7 @@ describe("githubAppTokenExchangePlugin", () => {
   });
 
   it("lets host admission reject before body parsing and token exchange", async () => {
-    const tokenExchange = vi.fn<TokenExchangeHandler>();
+    const tokenExchange = tokenExchangeDouble();
     const app = Fastify();
     app.addHook("onRequest", async (_request, reply) => {
       await reply.code(429).send({ error: "host_rate_limit" });
@@ -473,12 +567,11 @@ describe("githubAppTokenExchangePlugin", () => {
         body: "x".repeat(maxTokenExchangeBodyBytes + 1),
         headers: { "content-type": "application/x-www-form-urlencoded" },
         method: "POST",
-        url: "/token",
+        url: "/github/apps/fixture-app/token",
       });
 
       expect(response.statusCode).toBe(429);
       expect(response.json()).toEqual({ error: "host_rate_limit" });
-      expect(tokenExchange).not.toHaveBeenCalled();
     } finally {
       await app.close();
     }
@@ -493,14 +586,14 @@ describe("githubAppTokenExchangePlugin", () => {
       await reply.code(598).send({ error: "host_error" });
     });
     await app.register(githubAppTokenExchangePlugin, {
-      tokenExchange: async () => Promise.reject(sentinel),
+      tokenExchange: tokenExchangeDouble(async () => Promise.reject(sentinel)),
     });
 
     try {
       const response = await app.inject({
         headers: { "content-type": "application/x-www-form-urlencoded" },
         method: "POST",
-        url: "/token",
+        url: "/github/apps/fixture-app/token",
       });
 
       expect(response.statusCode).toBe(598);
@@ -518,25 +611,28 @@ describe("githubAppTokenExchangePlugin", () => {
     responseHeaders.append("set-cookie", "socket=value; Path=/; HttpOnly");
     await app.register(githubAppTokenExchangePlugin, {
       prefix: "/automation",
-      tokenExchange: async (request) => {
+      tokenExchange: tokenExchangeDouble(async (request) => {
         observed.push({
           body: await request.text(),
           clientHint: request.headers.get("x-client-hint"),
           url: request.url,
         });
         return Response.json({ ok: true }, { headers: responseHeaders });
-      },
+      }),
     });
     const address = await app.listen({ host: "127.0.0.1", port: 0 });
 
     try {
-      const response = await makeNodeRequest(`${address}/automation/token?transport=socket`, {
-        body: "scope=contents%3Aread&scope=actions%3Awrite",
-        headers: {
-          "content-type": "application/x-www-form-urlencoded",
-          "x-client-hint": ["one", "two"],
+      const response = await makeNodeRequest(
+        `${address}/automation/github/apps/fixture-app/token?transport=socket`,
+        {
+          body: "scope=contents%3Aread&scope=actions%3Awrite",
+          headers: {
+            "content-type": "application/x-www-form-urlencoded",
+            "x-client-hint": ["one", "two"],
+          },
         },
-      });
+      );
 
       expect(response).toEqual({
         body: '{"ok":true}',
@@ -549,7 +645,7 @@ describe("githubAppTokenExchangePlugin", () => {
         {
           body: "scope=contents%3Aread&scope=actions%3Awrite",
           clientHint: "one, two",
-          url: `${address}/automation/token?transport=socket`,
+          url: `${address}/github/apps/fixture-app/token?transport=socket`,
         },
       ]);
     } finally {
@@ -612,5 +708,11 @@ async function makeNodeRequest(
     );
     request.on("error", reject);
     request.end(input.body);
+  });
+}
+
+function tokenExchangeDouble(implementation?: TokenExchangeHandler) {
+  return Object.assign(vi.fn<TokenExchangeHandler>(implementation), {
+    tokenEndpointPaths: ["/github/apps/fixture-app/token"],
   });
 }

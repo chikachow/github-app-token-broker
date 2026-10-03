@@ -29,19 +29,29 @@ Run this checklist before making the repository public or tagging a release.
   enforce source cleanliness or provenance.
 - The Fastify deployment fixture remains deny-all and is not a production composition; Node host
   lifecycle, admission, and composition remain externally owned.
-- Deployment-owned entrypoints re-export `GitHubAppInformationEntrypoint` and
+- Deployment-owned entrypoints construct `GitHubAppInformationEntrypoint` from their app catalogue and
   exercise it through a named service binding; each concrete consumer tests its
-  exact production binding configuration.
+  exact production binding configuration and `props.githubAppClientId`.
 - The generic Wrangler entrypoint remains deny-all and contains no deployment inventory.
 - No dynamic issuer-trust or authorization-policy binding has been introduced.
 - An external deployment owns and independently tests the OIDC Provider Registrations and Token Issuance Policy compiled into its artifact.
-- Cloudflare Worker deployment validation proves its audience binding exactly equals the audience requested by its Clients and separately proves that Clients use the intended routed HTTPS Token Exchange Endpoint.
+- Cloudflare Worker deployment validation proves each app's explicit audience list accepts the scalar audience requested by its Clients and separately proves that Clients use the intended routed HTTPS Token Exchange Endpoint.
 - The runtime binding inventory has no configurable GitHub API destination; all App-credential requests remain fixed to `https://api.github.com` and retain the 10-second broker deadline.
 - Installation Access Token integration tests cover both legacy opaque and JWT-shaped GitHub token values and prove that no temporary stateful-token override is sent.
 - The GitHub App Information service binding remains explicitly trusted, read-only, non-public, unable to mint tokens or expose the private key, and unable to enumerate installation repositories.
 - `CONTEXT.md` remains the glossary source of truth.
 - Deployment remains outside this codebase.
 - Source workflows do not hard-code deployment-owned audience or route values; any Token Exchange Endpoint override comes from repository configuration.
+
+## Multi-app migration
+
+- Replace singleton `{ githubApp, subjectTokenAudience }` configuration with `{ githubApps }`, and replace `appId` with the GitHub-issued `clientId`.
+- Add `githubAppClientId` to every Permit Statement. Preserve the original subject, repository, and permission constraints when assigning existing statements to their app.
+- Move app metadata and accepted audiences into the deployment's typed catalogue; retain separate key bindings. Remove the former `GITHUB_APP_ID` and `TOKEN_BROKER_AUDIENCE` runtime overrides.
+- Update every direct caller to `/github/apps/{app_slug}/token`. Keep any required `/token` compatibility proxy outside the broker and test its trusted client-IP forwarding. No HTTP redirect can safely substitute for forwarding a token exchange.
+- Replace the direct RPC class import with `createGitHubAppInformationEntrypoint(catalogue)` and add the static app selector to every consumer binding. Missing selectors have no default.
+- Update observation consumers for the additive `github_app.client_id` field.
+- Validate all source and consumer revisions before a coordinated cutover. Record old deployment versions and route ownership; explicitly remove obsolete routes and restore them if rolling back. Source CI alone does not authorize a production deployment.
 
 ## OIDC terminology migration
 

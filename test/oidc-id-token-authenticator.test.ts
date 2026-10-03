@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   createOidcIdTokenAuthenticator,
+  createOidcIdTokenAuthenticatorFactory,
   type OidcDiagnosticEvent,
   type OidcIdTokenAuthenticationFailure,
   type OidcVerificationEvidence,
@@ -251,3 +252,18 @@ function testAuthenticator(fetchOidcRemoteDocumentResponse: typeof fetch) {
     { fetch: fetchOidcRemoteDocumentResponse, now: () => authenticationTestNow },
   );
 }
+
+describe("audience-bound authenticator construction", () => {
+  it.each([null, {}, [], ["urn:example", "urn:example"], [""]])(
+    "rejects invalid audience configuration %j without I/O",
+    (audiences) => {
+      const fetch = vi.fn<typeof globalThis.fetch>();
+      const bindAudience = createOidcIdTokenAuthenticatorFactory([], {
+        fetch,
+        now: () => new Date(),
+      });
+      expect(() => bindAudience(audiences as never)).toThrow(TypeError);
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+});

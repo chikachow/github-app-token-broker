@@ -1,0 +1,20 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "github-app-information-test",
+  "main": "worker.ts",
+  "compatibility_date": "2026-07-24",
+  "services": [
+    {
+      "binding": "APP_A",
+      "service": "github-app-information-test",
+      "entrypoint": "GitHubAppInformationEntrypoint",
+      "props": { "githubAppClientId": "Iv1.fixtureApp" },
+    },
+    {
+      "binding": "APP_B",
+      "service": "github-app-information-test",
+      "entrypoint": "GitHubAppInformationEntrypoint",
+      "props": { "githubAppClientId": "Iv1.otherApp" },
+    },
+  ],
+}

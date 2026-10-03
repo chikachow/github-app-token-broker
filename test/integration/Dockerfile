@@ -10,11 +10,9 @@ RUN pnpm --filter @github-app-token-broker/integration-fastify deploy --prod /fa
 RUN node node_modules/wrangler/bin/wrangler.js deploy test/integration/worker.ts \
     --config workers/github-app-token-broker/wrangler.jsonc \
     --dry-run --outdir test/integration/dist/worker/normal \
-    --name integration-worker-normal \
-    --var GITHUB_APP_ID:123456 TOKEN_BROKER_AUDIENCE:urn:integration:broker
+    --name integration-worker-normal
 RUN node node_modules/wrangler/bin/wrangler.js deploy test/integration/worker-observation-failure.ts \
     --config workers/github-app-token-broker/wrangler.jsonc \
     --dry-run --outdir test/integration/dist/worker/observation-failure \
     --name integration-worker-observation-failure \
-    --var GITHUB_APP_ID:123456 TOKEN_BROKER_AUDIENCE:urn:integration:broker \
     && mv test/integration/dist/worker/observation-failure/worker-observation-failure.js test/integration/dist/worker/observation-failure/worker.js

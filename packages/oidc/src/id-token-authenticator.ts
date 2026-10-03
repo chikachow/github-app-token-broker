@@ -9,7 +9,7 @@ import {
   type OidcIssuerIdentifier,
   type OidcProviderRegistration,
 } from "./provider-registration.ts";
-import type { SubjectTokenAudience } from "./subject-token-audience.ts";
+import { parseSubjectTokenAudience, type SubjectTokenAudience } from "./subject-token-audience.ts";
 import type { VerifiedOidcIdTokenClaims } from "./verified-id-token.ts";
 
 export interface OidcIdTokenAuthenticationTrust {
@@ -127,30 +127,16 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
   readonly #defaultObserve: ((event: OidcDiagnosticEvent) => void) | undefined;
   readonly #verifierByIssuer: ReadonlyMap<OidcIssuerIdentifier, RegisteredOidcProviderVerifier>;
 
+  readonly #subjectTokenAudiences: readonly SubjectTokenAudience[];
+
   public constructor(
-    trust: OidcIdTokenAuthenticationTrust,
-    dependencies: OidcIdTokenAuthenticatorDependencies,
+    verifierByIssuer: ReadonlyMap<OidcIssuerIdentifier, RegisteredOidcProviderVerifier>,
+    subjectTokenAudiences: readonly SubjectTokenAudience[],
+    defaultObserve: ((event: OidcDiagnosticEvent) => void) | undefined,
   ) {
-    const verifierByIssuer = new Map<OidcIssuerIdentifier, RegisteredOidcProviderVerifier>();
-
-    for (const providerRegistration of snapshotOidcProviderRegistrations(
-      trust.providerRegistrations,
-    )) {
-      verifierByIssuer.set(
-        providerRegistration.issuer,
-        createRegisteredOidcProviderVerifier({
-          dependencies: {
-            fetch: dependencies.fetch,
-            now: dependencies.now,
-          },
-          providerRegistration,
-          subjectTokenAudience: trust.subjectTokenAudience,
-        }),
-      );
-    }
-
-    this.#defaultObserve = dependencies.observe;
     this.#verifierByIssuer = verifierByIssuer;
+    this.#subjectTokenAudiences = subjectTokenAudiences;
+    this.#defaultObserve = defaultObserve;
   }
 
   public async authenticateIdToken(
@@ -169,7 +155,7 @@ class OidcIdTokenAuthenticatorImplementation implements OidcIdTokenAuthenticator
       return subjectTokenRejected("ERR_OIDC_ISSUER_NOT_REGISTERED");
     }
 
-    return verifier.verifyIdToken(idToken, observe);
+    return verifier.verifyIdToken(idToken, this.#subjectTokenAudiences, observe);
   }
 }
 
@@ -177,7 +163,38 @@ export function createOidcIdTokenAuthenticator(
   trust: OidcIdTokenAuthenticationTrust,
   dependencies: OidcIdTokenAuthenticatorDependencies,
 ): OidcIdTokenAuthenticator {
-  return new OidcIdTokenAuthenticatorImplementation(trust, dependencies);
+  return createOidcIdTokenAuthenticatorFactory(
+    trust.providerRegistrations,
+    dependencies,
+  )([trust.subjectTokenAudience]);
+}
+
+/** Creates audience-bound capabilities sharing only issuer-owned discovery and key caches. */
+export function createOidcIdTokenAuthenticatorFactory(
+  providerRegistrations: readonly OidcProviderRegistration[],
+  dependencies: OidcIdTokenAuthenticatorDependencies,
+): (subjectTokenAudiences: readonly string[]) => OidcIdTokenAuthenticator {
+  const verifiers = new Map<OidcIssuerIdentifier, RegisteredOidcProviderVerifier>();
+  for (const providerRegistration of snapshotOidcProviderRegistrations(providerRegistrations)) {
+    verifiers.set(
+      providerRegistration.issuer,
+      createRegisteredOidcProviderVerifier({
+        dependencies: { fetch: dependencies.fetch, now: dependencies.now },
+        providerRegistration,
+      }),
+    );
+  }
+  const defaultObserve = dependencies.observe;
+  return (audiences) => {
+    if (!Array.isArray(audiences) || audiences.length === 0) {
+      throw new TypeError("Subject-Token Audiences must not be empty");
+    }
+    const captured = Object.freeze(audiences.map(parseSubjectTokenAudience));
+    if (new Set(captured).size !== captured.length) {
+      throw new TypeError("Subject-Token Audiences must not contain duplicates");
+    }
+    return new OidcIdTokenAuthenticatorImplementation(verifiers, captured, defaultObserve);
+  };
 }
 
 function subjectTokenRejected(diagnosticCode: string): OidcIdTokenAuthenticationFailureResult {

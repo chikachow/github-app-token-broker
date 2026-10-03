@@ -2,33 +2,44 @@
 
 This public repository owns the broker source, tests, documentation, public-safe Wrangler templates, and the source side of the release handoff. It does not own credentials, production routes, Cloudflare account identifiers, deployment overlays, or deployment execution.
 
-## Cloudflare Worker: one App per deployment
+## Cloudflare Worker: explicit app catalogue
 
-`@github-app-token-broker/worker` is the sole Worker package. Its only public
-HTTP route is `POST /token`; it also exports the internal
-`GitHubAppInformationEntrypoint` for trusted service-binding RPC. Each deployed
-Worker instance receives one `GITHUB_APP_ID` and one
-`GITHUB_APP_PRIVATE_KEY`. Deploy a separate instance for another GitHub App. Do
-not add a public App selector or multi-key endpoint.
+`@github-app-token-broker/worker` is the sole Worker package. Its public routes are `POST /github/apps/{app_slug}/token` for configured apps. A deployment supplies a reviewed TypeScript catalogue, OIDC Provider Registrations, and app-qualified Token Issuance Policy. Empty catalogues and policies form a valid deny-all composition; they expose no app routes.
 
-An external deployment owns a TypeScript entrypoint that:
+```ts
+import {
+  createGitHubAppInformationEntrypoint,
+  createTokenExchangeWorker,
+  type TokenExchangeWorkerComposition,
+} from "@github-app-token-broker/worker";
+import { oidcProviderRegistrations, tokenIssuancePolicy } from "./policy.ts";
 
-- default-exports the result of calling `createTokenExchangeWorker`; and
-- re-exports `GitHubAppInformationEntrypoint` from
-  `@github-app-token-broker/worker` as a named export.
+export const githubApps = [
+  {
+    slug: "example-app",
+    clientId: "Iv1.exampleApp",
+    privateKeyBinding: "EXAMPLE_APP_PRIVATE_KEY",
+    subjectTokenAudiences: ["https://broker.example", "https://app.example"],
+  },
+] as const satisfies TokenExchangeWorkerComposition["githubApps"];
 
-The deployment calls `createTokenExchangeWorker` with:
+export const GitHubAppInformationEntrypoint = createGitHubAppInformationEntrypoint(githubApps);
+export default createTokenExchangeWorker({
+  githubApps,
+  oidcProviderRegistrations,
+  tokenIssuancePolicy,
+});
+```
 
-- the accepted OIDC Provider Registrations
-- the compiled Token Issuance Policy
+Every Permit Statement explicitly names `githubAppClientId`; every referenced app and issuer must exist in the composition. Changing app identities, audience acceptance, provider trust, or authorization requires rebuilding the reviewed artifact. Private keys remain separate runtime Worker secrets or Secrets Store bindings named by the catalogue. Do not put PEM values in the catalogue or combine keys into a JSON secret. Bindings cannot remap an app client ID. Construction validates metadata without secret or network I/O, and only the selected key is resolved for authorized issuance.
 
-The Worker adapter constructs the runtime-neutral `createGitHubAppTokenExchange` handler from that reviewed composition and the deployment bindings. Its semantic GitHub App interface contains only `appId` and `privateKey`; the GitHub API destination is fixed inside the GitHub module and cannot be supplied by either factory.
+The runtime-neutral `createGitHubAppTokenExchange` configuration is `{ composition, githubApps }`; its app records contain `privateKey` instead of `privateKeyBinding`. `privateKey` accepts the existing string or structural async `get()` binding. The GitHub API origin is fixed and cannot be supplied by either factory.
 
-The deployment imports the required workspace packages from a pinned source revision, compiles both values into the Worker artifact, and points its Wrangler `main` at that entrypoint. `createTokenExchangeWorker` rejects duplicate registrations and Permit Statements that reference an unregistered issuer during construction. Empty registrations with an empty Token Issuance Policy are a valid deny-all composition. Construction performs no network I/O.
+Configure a trusted RPC consumer with a named service binding whose `entrypoint` is `GitHubAppInformationEntrypoint` and whose `props` is exactly `{ githubAppClientId: "Iv1.exampleApp" }`. One consumer can configure several bindings to the same service and entrypoint with different client IDs. Missing or invalid selectors fail closed; none of the four methods accepts a per-call selector.
 
-OIDC Provider Registrations and Token Issuance Policy are not Worker bindings, request parameters, or remote configuration. Changing them requires changing reviewed TypeScript and building a new artifact. The source package root has named exports only; it does not provide a default production composition.
+Hostnames and convenience URLs remain deployment-owned. The broker implements no `/token` alias or body selector. A separate proxy may forward a convenience URL to an explicit canonical app route, preserving the signed subject token, request body, and response. That proxy is trusted with both credentials in transit and must preserve the broker's admission identity, reject redirects, and avoid automatic issuance retries or caching. Accepted audiences remain an explicit app capability regardless of which URL forwards the request.
 
-The deployment environment supplies one GitHub App credential pair, the rate-limit binding, and one non-secret identity binding. `TOKEN_BROKER_AUDIENCE` is the exact non-empty, non-whitespace, single-line Subject-Token Audience accepted in subject tokens. It may be URL-shaped or opaque. Public hostname and route ownership remain in deployment configuration rather than a Worker runtime binding. The GitHub API destination is fixed to `https://api.github.com`; it is not deployment configuration. The audience and App credentials can differ across deployments of the same artifact; provider trust and authorization policy cannot change without rebuilding it.
+Shared audiences do not imply shared authorization. A common broker audience lets an identity token be presented to several app endpoints; the selected app's Permit Statements still decide issuance. A vanity audience can be listed only for its intended app. Separate deployments remain appropriate when operators, key custody, or infrastructure trust differ.
 
 The optional runtime `observe` adapter acknowledges mandatory high-level Token Exchange
 observations by returning `Promise<void>`. The broker does not return a token until the pre-mint
@@ -42,9 +53,9 @@ must not be wired to the mandatory async adapter.
 
 ## Node 24 and Fastify 5 host adapter
 
-`@github-app-token-broker/fastify` mounts a prebuilt `TokenExchangeHandler` into a Fastify 5
+`@github-app-token-broker/fastify` mounts a prebuilt `GitHubAppTokenExchangeHandler` into a Fastify 5
 application. Its only plugin-specific option is `tokenExchange`; use Fastify's standard `prefix`
-registration option when the host does not expose `/token` at the application root.
+registration option when mounting the canonical app paths below an application prefix.
 
 ```ts
 import { githubAppTokenExchangePlugin } from "@github-app-token-broker/fastify";
@@ -97,16 +108,16 @@ The deployment system is maintained outside this repository. It must:
 1. select and pin a reviewed source revision
 2. install with Node 24 and the source repository's pinned Corepack/pnpm version
 3. run the public source checks independently
-4. compile a deployment-owned TypeScript entrypoint with reviewed OIDC Provider Registrations and Token Issuance Policy, and re-export `GitHubAppInformationEntrypoint`
+4. compile a deployment-owned TypeScript entrypoint with its app catalogue, OIDC Provider Registrations, and app-qualified Token Issuance Policy; construct the named RPC export from the same catalogue
 5. test the exact composition, including accepted and rejected requests, without deriving expectations from the policy under test
 6. preserve the source compatibility date and flags unless a reviewed deployment change intentionally updates them
-7. supply the deployment-owned Worker name, routes, exact `TOKEN_BROKER_AUDIENCE`, GitHub App ID/private key, rate-limit namespace, and Cloudflare credentials
+7. supply the deployment-owned Worker name, canonical routes, named private-key bindings, rate-limit namespace, and Cloudflare credentials
 8. run a strict dry-run against the deployment-owned entrypoint
-9. smoke-test the routed `POST /token` contract without logging tokens
-10. exercise `GitHubAppInformationEntrypoint` through an explicitly configured trusted named service binding; each concrete consumer must test its exact production binding configuration and the absence of any public HTTP route to that entrypoint
+9. smoke-test the routed `POST /github/apps/{app_slug}/token` contract without logging tokens
+10. exercise `GitHubAppInformationEntrypoint` through an explicitly configured trusted named service binding; each concrete consumer must test its exact production binding configuration and static `props.githubAppClientId` and the absence of any public HTTP route to that entrypoint
 11. when durable observation is required, inject and test an acknowledgement adapter whose promise resolves only after the selected sink confirms persistence
 
-The deployment system owns the Worker audience and public route. It must bind `TOKEN_BROKER_AUDIENCE` to the exact value requested in Clients' subject tokens and independently verify that Clients send requests to the intended Token Exchange Endpoint. Neither identity nor location may be inferred from an incoming `Host` header.
+The deployment system owns the accepted audience list for each app and its public routes. It must verify that Clients request an explicitly accepted scalar audience and independently send requests to the intended app endpoint. Audience identity is never inferred from `Host` or proxy headers.
 
 Source maintenance workflows pin an immutable external action release and use its caller-side broker request defaults where appropriate; workflows targeting a different Repository Resource or Requested Permissions explicitly override them. The workflow files are authoritative for that caller-side contract. Direct Clients must supply a non-empty scope because the broker has no permission default.
 
@@ -124,4 +135,4 @@ a deployment-owned composition,
 credentials, routes, or post-deployment smoke tests; the external deployment system retains those
 responsibilities.
 
-Never commit Cloudflare account IDs or tokens, GitHub App IDs or private keys, `.dev.vars`, `.env`, `.wrangler/`, `.local-secrets/`, private deployment overlays, or production route details. Build from tracked files or an explicit archive, not an ambient working directory.
+Never commit Cloudflare account IDs or tokens, production GitHub App identities or private keys, `.dev.vars`, `.env`, `.wrangler/`, `.local-secrets/`, private deployment overlays, or production route details. Build from tracked files or an explicit archive, not an ambient working directory.

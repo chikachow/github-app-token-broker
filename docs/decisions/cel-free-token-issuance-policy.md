@@ -49,6 +49,7 @@ OIDC **Subject Identifier** remains reserved for the issuer-local `sub` Claim.
 Token Issuance Policy uses a closed, immutable TypeScript authoring language
 made of Permit Statements. Each statement contains:
 
+- one explicit GitHub App client ID;
 - one issuer-qualified OIDC Subject Token Constraint;
 - one Repository Resource Constraint, selecting either one exact repository or
   every repository owned by one owner; and
@@ -67,7 +68,7 @@ regular-expression evaluation, or Claim-to-Claim comparison.
 
 OIDC Subject Token Constraints and Repository Resource Constraints are separate
 typed products. Claim Predicates form the only discriminated AST union. Permit Statements remain
-plain objects without identifiers, effects, action fields, generic conditions,
+plain objects without statement identifiers, effects, action fields, generic conditions,
 or a `permit(...)` wrapper.
 
 A Repository Resource Constraint contains a canonical GitHub owner and either a
@@ -76,9 +77,11 @@ that repository; `null` matches every repository under the owner. The request
 itself always contains one exact canonical Repository Resource, and an
 owner-scoped constraint never matches a different owner.
 
+The [multi-app decision](multiple-github-apps.md) adds app identity to every complete statement. App identity is explicit rather than inherited from surrounding policy groups. Composition rejects unknown app references; evaluation excludes other apps before target support and either permission-coverage calculation.
+
 ### Applicability and Effective Permissions
 
-A Permit Statement is applicable when its complete OIDC Subject Token Constraint
+A Permit Statement is applicable when its GitHub App client ID matches the selected app and its complete OIDC Subject Token Constraint
 and Repository Resource Constraint match, including the constraint's exact or
 owner-scoped repository selection. Only an applicable statement contributes
 its `permissions`. The policy never combines issuers, Claim Predicates, or

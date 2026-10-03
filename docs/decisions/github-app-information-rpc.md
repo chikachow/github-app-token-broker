@@ -7,14 +7,14 @@ Decision status: Accepted.
 ## Context
 
 github-app-token-broker currently exposes its token exchange as HTTP. Trusted
-Workers also need selected metadata about the one configured GitHub App and its
+Workers also need selected metadata about a configured GitHub App and its
 GitHub App Installations. GitHub exposes that metadata through App-JWT
 endpoints, but installation-wide repository enumeration is a different
 authentication boundary: the repository-list endpoint is intended to use a
 GitHub App installation access token.
 
 The interface must therefore provide useful app-level discovery without
-turning the broker into a public GitHub proxy, introducing a second App
+turning the broker into a public GitHub proxy, introducing a per-call App
 selector, or minting an installation token as an implementation detail of a
 read operation.
 
@@ -24,7 +24,12 @@ Add one named Cloudflare `WorkerEntrypoint`,
 `GitHubAppInformationEntrypoint`, to the existing Worker. A consumer reaches
 it only through an explicitly configured trusted service binding; it is not an
 HTTP endpoint. The entrypoint exposes only read-only methods and uses the
-deployment's one configured GitHub App ID and private key to create an App JWT.
+GitHub App client ID and private key selected by the binding's static `props.githubAppClientId` to create an App JWT.
+The deployment constructs the class with `createGitHubAppInformationEntrypoint(githubApps)`;
+missing, malformed, or unconfigured selectors fail with `GitHubAppConfigurationError`
+before secret or network access. One consumer can hold several separately scoped bindings.
+This updates the original singleton-app design as described in the
+[multi-app decision](multiple-github-apps.md).
 
 The runtime-neutral implementation lives in
 `packages/github/src/app-information.ts`. The Worker entrypoint is a thin
@@ -124,6 +129,7 @@ not return GitHub error bodies, credentials, or installation access tokens.
 
 ## Consequences
 
+- Each trusted binding is scoped to one explicitly selected configured app; RPC methods cannot broaden it.
 - A trusted Worker can inspect app and installation metadata without receiving
   the private key or an installation token.
 - The caller must handle GitHub pagination itself and must treat metadata as a

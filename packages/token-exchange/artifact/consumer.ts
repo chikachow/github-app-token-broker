@@ -1,6 +1,7 @@
 import {
   createGitHubAppTokenExchange,
   type GitHubAppTokenExchangeConfiguration,
+  type GitHubAppTokenExchangeHandler,
   type TokenExchangeComposition,
   type TokenExchangeHandler,
   type TokenExchangeRequestContext,
@@ -11,8 +12,14 @@ declare const composition: TokenExchangeComposition;
 
 const configuration = Object.freeze({
   composition,
-  githubApp: Object.freeze({ appId: "1", privateKey: "fixture-private-key" }),
-  subjectTokenAudience: "https://broker.example",
+  githubApps: [
+    Object.freeze({
+      slug: "fixture-app",
+      clientId: "Iv1.fixtureApp",
+      privateKey: "fixture-private-key",
+      subjectTokenAudiences: ["https://broker.example"],
+    }),
+  ],
 }) satisfies GitHubAppTokenExchangeConfiguration;
 const context = Object.freeze({
   observe: async () => undefined,
@@ -22,18 +29,26 @@ const runtime = Object.freeze({
   fetch: (input: RequestInfo | URL, init?: RequestInit) => fetch(input, init),
   now: () => new Date(),
 }) satisfies TokenExchangeRuntimeDependencies;
-const handler: TokenExchangeHandler = createGitHubAppTokenExchange(configuration, runtime);
-const request = new Request("https://broker.example/token", { method: "POST" });
+const handler: GitHubAppTokenExchangeHandler = createGitHubAppTokenExchange(configuration, runtime);
+const paths: readonly string[] = handler.tokenEndpointPaths;
+const fetchHandler: TokenExchangeHandler = handler;
+void paths;
+void fetchHandler;
+const request = new Request("https://broker.example/github/apps/fixture-app/token", {
+  method: "POST",
+});
 
 void handler(request, context);
 
 const invalidConfiguration: GitHubAppTokenExchangeConfiguration = {
   ...configuration,
-  githubApp: {
-    ...configuration.githubApp,
-    // @ts-expect-error The GitHub API destination is intentionally absent from public config.
-    apiBaseUrl: "https://attacker.invalid",
-  },
+  githubApps: [
+    {
+      ...configuration.githubApps[0]!,
+      // @ts-expect-error The GitHub API destination is intentionally absent from public config.
+      apiBaseUrl: "https://attacker.invalid",
+    },
+  ],
 };
 
 void invalidConfiguration;
@@ -45,7 +60,7 @@ const workerBindings = {
 const invalidWorkerBindingConfiguration: GitHubAppTokenExchangeConfiguration = {
   ...configuration,
   // @ts-expect-error Worker binding names are adapted before runtime-neutral composition.
-  githubApp: workerBindings,
+  githubApps: workerBindings,
 };
 
 void invalidWorkerBindingConfiguration;

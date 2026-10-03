@@ -33,7 +33,7 @@ function assertGitHubAppRequest(request) {
   );
   const claims = JSON.parse(Buffer.from(payload, "base64url"));
   const now = Date.now() / 1000;
-  assert.equal(claims.iss, "123456");
+  assert.equal(claims.iss, "Iv1.fixtureApp");
   assert.ok(Number.isInteger(claims.iat) && claims.iat <= now);
   assert.ok(Number.isInteger(claims.exp) && claims.exp > now && claims.exp - claims.iat <= 600);
 }

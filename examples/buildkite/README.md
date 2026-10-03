@@ -24,11 +24,22 @@ After reviewing the recipe's issuer, Claim predicates, target repository, and
 permissions, a deployment-owned Worker entrypoint can import its local copy:
 
 ```ts
-import { createTokenExchangeWorker } from "@github-app-token-broker/worker";
+import {
+  createTokenExchangeWorker,
+  createGitHubAppInformationEntrypoint,
+} from "@github-app-token-broker/worker";
 import { buildkiteExampleComposition } from "./composition.ts";
 
-export { GitHubAppInformationEntrypoint } from "@github-app-token-broker/worker";
-export default createTokenExchangeWorker(buildkiteExampleComposition);
+const githubApps = [
+  {
+    slug: "fixture-app",
+    clientId: "Iv1.fixtureApp", // Matches every Permit Statement in this example.
+    privateKeyBinding: "EXAMPLE_APP_PRIVATE_KEY",
+    subjectTokenAudiences: ["https://broker.example"],
+  },
+];
+export const GitHubAppInformationEntrypoint = createGitHubAppInformationEntrypoint(githubApps);
+export default createTokenExchangeWorker({ ...buildkiteExampleComposition, githubApps });
 ```
 
 Follow the [Worker deployment contract](../../docs/deployment.md#external-cloudflare-worker-deployment-contract)

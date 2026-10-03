@@ -1,8 +1,13 @@
-import { createTokenExchangeWorker } from "@github-app-token-broker/worker";
+import {
+  createTokenExchangeWorker,
+  createGitHubAppInformationEntrypoint,
+} from "@github-app-token-broker/worker";
 import { composition } from "./composition.ts";
 
 /** @public */
-export { GitHubAppInformationEntrypoint } from "@github-app-token-broker/worker";
+export const GitHubAppInformationEntrypoint = createGitHubAppInformationEntrypoint(
+  composition.githubApps,
+);
 /** @public */
 export default createTokenExchangeWorker(composition, {
   fetch: (input, init) => fetch(input, init),

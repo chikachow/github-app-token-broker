@@ -34,10 +34,7 @@ export default defineConfig({
         plugins: [
           cloudflareTest({
             miniflare: {
-              bindings: {
-                GITHUB_APP_ID: "2419473",
-                TOKEN_BROKER_AUDIENCE: "https://broker.example",
-              },
+              bindings: {},
             },
             remoteBindings: false,
             wrangler: {
@@ -89,8 +86,8 @@ export default defineConfig({
           cloudflareTest({
             miniflare: {
               bindings: {
-                GITHUB_APP_ID: githubAppInformationNodeFixture.appId,
-                GITHUB_APP_PRIVATE_KEY: githubAppInformationNodeFixture.privateKeyPem,
+                APP_A_KEY: githubAppInformationNodeFixture.privateKeyPem,
+                APP_B_KEY: githubAppInformationNodeFixture.privateKeyPem,
               },
               outboundService(request) {
                 return githubAppInformationNodeFixture.responseForRequest(request);
@@ -98,7 +95,7 @@ export default defineConfig({
             },
             remoteBindings: false,
             wrangler: {
-              configPath: "./workers/github-app-token-broker/wrangler.jsonc",
+              configPath: "./test/worker-integration/wrangler.jsonc",
             },
           }),
         ],

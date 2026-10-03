@@ -1,5 +1,6 @@
 # github-app-token-broker documentation
 
+- [Multiple GitHub Apps decision](decisions/multiple-github-apps.md): explicit app selection, audience ownership, policy isolation, and scoped RPC bindings.
 - [Service contract](service-contract.md): authoritative public API, security boundaries, provider and policy behavior, runtime bindings, and errors.
 - [Implementation](implementation.md): package layout, composition Interface, request flow, and validation commands.
 - [Deployment](deployment.md): interface between this public source repository and an external deployment system.
@@ -16,5 +17,5 @@ Decision records may describe source-supported capabilities. The service contrac
 
 The source-supported Fly OIDC registration capability is documented in the [service contract](service-contract.md#source-supported-fly-oidc-registration), [implementation reference](implementation.md#oidc-security-boundary), and [domain glossary](../CONTEXT.md). Its availability does not imply that any deployment registers it or grants it a Permit Statement.
 
-The implemented public service surface is only `POST /token`.
+The implemented public service surface is only `POST /github/apps/{app_slug}/token`.
 The internal `GitHubAppInformationEntrypoint` is available only through an explicitly configured Worker service binding and is not a public endpoint.
