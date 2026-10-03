@@ -1,6 +1,7 @@
 import {
   createGitHubAppTokenExchange,
   type GitHubAppTokenExchangeConfiguration,
+  type GitHubAppTokenExchangeHandler,
   type TokenExchangeComposition,
   type TokenExchangeHandler,
   type TokenExchangeRequestContext,
@@ -28,7 +29,11 @@ const runtime = Object.freeze({
   fetch: (input: RequestInfo | URL, init?: RequestInit) => fetch(input, init),
   now: () => new Date(),
 }) satisfies TokenExchangeRuntimeDependencies;
-const handler: TokenExchangeHandler = createGitHubAppTokenExchange(configuration, runtime);
+const handler: GitHubAppTokenExchangeHandler = createGitHubAppTokenExchange(configuration, runtime);
+const paths: readonly string[] = handler.tokenEndpointPaths;
+const fetchHandler: TokenExchangeHandler = handler;
+void paths;
+void fetchHandler;
 const request = new Request("https://broker.example/github/apps/fixture-app/token", {
   method: "POST",
 });

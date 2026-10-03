@@ -37,8 +37,36 @@ describe("githubAppTokenExchangePlugin", () => {
     },
   );
 
+  it.each([
+    { contentType: "application/json", body: "{}" },
+    {
+      contentType: "application/x-www-form-urlencoded",
+      body: "x".repeat(maxTokenExchangeBodyBytes + 1),
+    },
+    { contentType: "not a type", body: "invalid" },
+  ])("rejects an unconfigured app before parsing $contentType", async ({ contentType, body }) => {
+    const tokenExchange = createGitHubAppTokenExchange({
+      composition: { oidcProviderRegistrations: [], tokenIssuancePolicy: { permitStatements: [] } },
+      githubApps: [],
+    });
+    const app = Fastify();
+    await app.register(githubAppTokenExchangePlugin, { tokenExchange });
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: "/github/apps/missing/token",
+        headers: { "content-type": contentType },
+        body,
+      });
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toEqual({ type: "about:blank", title: "Not Found", status: 404 });
+    } finally {
+      await app.close();
+    }
+  });
+
   it("preserves raw form bytes in its prefix without changing an ordinary sibling parser", async () => {
-    const tokenExchange = vi.fn<TokenExchangeHandler>(async (request) => {
+    const tokenExchange = tokenExchangeDouble(async (request) => {
       expect(request.headers.get("content-type")).toBe(
         "application/x-www-form-urlencoded; charset=utf-8",
       );
@@ -97,7 +125,7 @@ describe("githubAppTokenExchangePlugin", () => {
     { contentType: "not a type", scenario: "malformed media type" },
     { contentType: undefined, scenario: "missing content type" },
   ])("maps unsupported $scenario bodies to OAuth invalid_request", async ({ contentType }) => {
-    const tokenExchange = vi.fn<TokenExchangeHandler>();
+    const tokenExchange = tokenExchangeDouble();
     const app = Fastify();
     await app.register(githubAppTokenExchangePlugin, { tokenExchange });
 
@@ -117,7 +145,7 @@ describe("githubAppTokenExchangePlugin", () => {
   });
 
   it("lets an empty request with no content type reach the deep handler", async () => {
-    const tokenExchange = vi.fn<TokenExchangeHandler>(async () => Response.json({ reached: true }));
+    const tokenExchange = tokenExchangeDouble(async () => Response.json({ reached: true }));
     const app = Fastify();
     await app.register(githubAppTokenExchangePlugin, { tokenExchange });
 
@@ -133,7 +161,7 @@ describe("githubAppTokenExchangePlugin", () => {
   });
 
   it("maps body-limit and invalid-content-length failures to OAuth invalid_request", async () => {
-    const tokenExchange = vi.fn<TokenExchangeHandler>();
+    const tokenExchange = tokenExchangeDouble();
     const app = Fastify();
     await app.register(githubAppTokenExchangePlugin, { tokenExchange });
 
@@ -184,11 +212,13 @@ describe("githubAppTokenExchangePlugin", () => {
       return payload;
     });
     await app.register(githubAppTokenExchangePlugin, {
-      tokenExchange: async () =>
-        new Response(Uint8Array.from([0, 255, 1]), {
-          headers,
-          status: 207,
-        }),
+      tokenExchange: tokenExchangeDouble(
+        async () =>
+          new Response(Uint8Array.from([0, 255, 1]), {
+            headers,
+            status: 207,
+          }),
+      ),
     });
 
     try {
@@ -232,7 +262,7 @@ describe("githubAppTokenExchangePlugin", () => {
       request.log.warn = warn;
     });
     await app.register(githubAppTokenExchangePlugin, {
-      tokenExchange: async (_request, context) => {
+      tokenExchange: tokenExchangeDouble(async (_request, context) => {
         await context.observe({
           fields: { event: "issuance_failed", reason: "policy" },
           level: "error",
@@ -244,7 +274,7 @@ describe("githubAppTokenExchangePlugin", () => {
         });
         await context.observe({ fields: { diagnosticCode: "EXAMPLE" }, level: "warn" });
         return new Response(null, { status: 204 });
-      },
+      }),
     });
 
     try {
@@ -279,7 +309,7 @@ describe("githubAppTokenExchangePlugin", () => {
       request.log.warn = warn;
     });
     await app.register(githubAppTokenExchangePlugin, {
-      tokenExchange: async (_request, context) => {
+      tokenExchange: tokenExchangeDouble(async (_request, context) => {
         if (context.observeOidcDiagnostic === undefined) {
           throw new Error("Fastify adapter omitted the optional diagnostic callback");
         }
@@ -290,7 +320,7 @@ describe("githubAppTokenExchangePlugin", () => {
         });
         expect(result).toBeUndefined();
         return new Response(null, { status: 204 });
-      },
+      }),
     });
 
     try {
@@ -319,7 +349,7 @@ describe("githubAppTokenExchangePlugin", () => {
       };
     });
     await app.register(githubAppTokenExchangePlugin, {
-      tokenExchange: async (_request, context) => {
+      tokenExchange: tokenExchangeDouble(async (_request, context) => {
         try {
           await context.observe({ fields: { event: "issuance_succeeded" }, level: "info" });
           return Response.json({ access_token: "must-not-escape" });
@@ -330,7 +360,7 @@ describe("githubAppTokenExchangePlugin", () => {
             { headers: { "cache-control": "no-store", pragma: "no-cache" }, status: 500 },
           );
         }
-      },
+      }),
     });
 
     try {
@@ -401,7 +431,7 @@ describe("githubAppTokenExchangePlugin", () => {
   });
 
   it("leaves a transport-rejected TRACK request outside the adapter OAuth contract", async () => {
-    const tokenExchange = vi.fn<TokenExchangeHandler>();
+    const tokenExchange = tokenExchangeDouble();
     const app = Fastify();
     await app.register(githubAppTokenExchangePlugin, { tokenExchange });
     const address = await app.listen({ host: "127.0.0.1", port: 0 });
@@ -423,7 +453,7 @@ describe("githubAppTokenExchangePlugin", () => {
   it("bridges request URL, multi-value headers, and exact bounded bytes", async () => {
     const body = "x".repeat(maxTokenExchangeBodyBytes);
     let bridgedRequest: Record<string, unknown> | undefined;
-    const tokenExchange = vi.fn<TokenExchangeHandler>(async (request) => {
+    const tokenExchange = tokenExchangeDouble(async (request) => {
       bridgedRequest = {
         bodyMatches: (await request.text()) === body,
         clientHint: request.headers.get("x-client-hint"),
@@ -480,7 +510,7 @@ describe("githubAppTokenExchangePlugin", () => {
       trustProxy: false,
     },
   ])("sanitizes $scenario before token exchange", async ({ headers, trustProxy }) => {
-    const tokenExchange = vi.fn<TokenExchangeHandler>();
+    const tokenExchange = tokenExchangeDouble();
     const app = Fastify({ trustProxy });
     await app.register(githubAppTokenExchangePlugin, { tokenExchange });
 
@@ -501,7 +531,7 @@ describe("githubAppTokenExchangePlugin", () => {
   });
 
   it("lets host admission reject before body parsing and token exchange", async () => {
-    const tokenExchange = vi.fn<TokenExchangeHandler>();
+    const tokenExchange = tokenExchangeDouble();
     const app = Fastify();
     app.addHook("onRequest", async (_request, reply) => {
       await reply.code(429).send({ error: "host_rate_limit" });
@@ -532,7 +562,7 @@ describe("githubAppTokenExchangePlugin", () => {
       await reply.code(598).send({ error: "host_error" });
     });
     await app.register(githubAppTokenExchangePlugin, {
-      tokenExchange: async () => Promise.reject(sentinel),
+      tokenExchange: tokenExchangeDouble(async () => Promise.reject(sentinel)),
     });
 
     try {
@@ -557,14 +587,14 @@ describe("githubAppTokenExchangePlugin", () => {
     responseHeaders.append("set-cookie", "socket=value; Path=/; HttpOnly");
     await app.register(githubAppTokenExchangePlugin, {
       prefix: "/automation",
-      tokenExchange: async (request) => {
+      tokenExchange: tokenExchangeDouble(async (request) => {
         observed.push({
           body: await request.text(),
           clientHint: request.headers.get("x-client-hint"),
           url: request.url,
         });
         return Response.json({ ok: true }, { headers: responseHeaders });
-      },
+      }),
     });
     const address = await app.listen({ host: "127.0.0.1", port: 0 });
 
@@ -654,5 +684,11 @@ async function makeNodeRequest(
     );
     request.on("error", reject);
     request.end(input.body);
+  });
+}
+
+function tokenExchangeDouble(implementation?: TokenExchangeHandler) {
+  return Object.assign(vi.fn<TokenExchangeHandler>(implementation), {
+    tokenEndpointPaths: ["/github/apps/fixture-app/token"],
   });
 }

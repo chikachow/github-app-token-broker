@@ -87,10 +87,10 @@ if (typeof createGitHubAppTokenExchange !== "function") {
   githubAppTokenExchangePlugin,
   type GitHubAppTokenExchangePluginOptions,
 } from "@github-app-token-broker/fastify";
-import type { TokenExchangeHandler } from "@github-app-token-broker/token-exchange";
+import type { GitHubAppTokenExchangeHandler } from "@github-app-token-broker/token-exchange";
 import Fastify from "fastify";
 
-declare const tokenExchange: TokenExchangeHandler;
+declare const tokenExchange: GitHubAppTokenExchangeHandler;
 const options: GitHubAppTokenExchangePluginOptions = { tokenExchange };
 const app = Fastify();
 await app.register(githubAppTokenExchangePlugin, { prefix: "/automation", tokenExchange });

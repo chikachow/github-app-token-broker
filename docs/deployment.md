@@ -10,7 +10,7 @@ This public repository owns the broker source, tests, documentation, public-safe
 import {
   createGitHubAppInformationEntrypoint,
   createTokenExchangeWorker,
-  type GitHubAppWorkerConfiguration,
+  type TokenExchangeWorkerComposition,
 } from "@github-app-token-broker/worker";
 import { oidcProviderRegistrations, tokenIssuancePolicy } from "./policy.ts";
 
@@ -21,7 +21,7 @@ export const githubApps = [
     privateKeyBinding: "EXAMPLE_APP_PRIVATE_KEY",
     subjectTokenAudiences: ["https://broker.example", "https://app.example"],
   },
-] as const satisfies readonly GitHubAppWorkerConfiguration[];
+] as const satisfies TokenExchangeWorkerComposition["githubApps"];
 
 export const GitHubAppInformationEntrypoint = createGitHubAppInformationEntrypoint(githubApps);
 export default createTokenExchangeWorker({
@@ -53,7 +53,7 @@ must not be wired to the mandatory async adapter.
 
 ## Node 24 and Fastify 5 host adapter
 
-`@github-app-token-broker/fastify` mounts a prebuilt `TokenExchangeHandler` into a Fastify 5
+`@github-app-token-broker/fastify` mounts a prebuilt `GitHubAppTokenExchangeHandler` into a Fastify 5
 application. Its only plugin-specific option is `tokenExchange`; use Fastify's standard `prefix`
 registration option when mounting the canonical app paths below an application prefix.
 

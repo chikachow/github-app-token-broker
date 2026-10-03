@@ -47,13 +47,17 @@ export type TokenExchangeHandler = (
   context: TokenExchangeRequestContext,
 ) => Promise<Response>;
 
+export interface GitHubAppTokenExchangeHandler extends TokenExchangeHandler {
+  readonly tokenEndpointPaths: readonly string[];
+}
+
 export function createGitHubAppTokenExchange(
   configuration: GitHubAppTokenExchangeConfiguration,
   runtimeDependencies: TokenExchangeRuntimeDependencies = {
     fetch: (input, init) => fetch(input, init),
     now: () => new Date(),
   },
-): TokenExchangeHandler {
+): GitHubAppTokenExchangeHandler {
   const oidcProviderRegistrations = snapshotOidcProviderRegistrations(
     configuration.composition.oidcProviderRegistrations,
   );
@@ -98,8 +102,13 @@ export function createGitHubAppTokenExchange(
       }),
     );
   }
-  return async (request, context) => {
+  const handler: TokenExchangeHandler = async (request, context) => {
     const endpoint = endpoints.get(new URL(request.url).pathname);
     return endpoint === undefined ? problemResponse(404) : endpoint(request, context);
   };
+  return Object.freeze(
+    Object.assign(handler, {
+      tokenEndpointPaths: Object.freeze(Array.from(endpoints.keys())),
+    }),
+  );
 }

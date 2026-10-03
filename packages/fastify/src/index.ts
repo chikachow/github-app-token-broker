@@ -4,18 +4,20 @@ import { Buffer } from "node:buffer";
 import {
   maxTokenExchangeBodyBytes,
   tokenExchangeInvalidRequestResponse,
-  type TokenExchangeHandler,
+  type GitHubAppTokenExchangeHandler,
+  type TokenExchangeRequestContext,
   type TokenExchangeObservation,
 } from "@github-app-token-broker/token-exchange";
 import type { FastifyError, FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 
 export interface GitHubAppTokenExchangePluginOptions {
-  readonly tokenExchange: TokenExchangeHandler;
+  readonly tokenExchange: GitHubAppTokenExchangeHandler;
 }
 
 export const githubAppTokenExchangePlugin: FastifyPluginAsync<
   GitHubAppTokenExchangePluginOptions
 > = async (fastify, options) => {
+  const tokenEndpointPaths = new Set(options.tokenExchange.tokenEndpointPaths);
   fastify.removeAllContentTypeParsers();
   fastify.addContentTypeParser(
     "application/x-www-form-urlencoded",
@@ -42,7 +44,22 @@ export const githubAppTokenExchangePlugin: FastifyPluginAsync<
 
   fastify.all(
     "/github/apps/:app_slug/token",
-    { bodyLimit: maxTokenExchangeBodyBytes },
+    {
+      bodyLimit: maxTokenExchangeBodyBytes,
+      async onRequest(request, reply) {
+        const pathname = new URL(request.raw.url ?? request.url, "http://localhost").pathname.slice(
+          fastify.prefix.length,
+        );
+        if (tokenEndpointPaths.has(pathname)) return;
+        // Unknown Apps must be rejected before Fastify consumes or classifies a body.
+        const webRequest = fastifyRequestToWebRequest(request, fastify.prefix);
+        const response =
+          webRequest === null
+            ? tokenExchangeInvalidRequestResponse(400)
+            : await options.tokenExchange(webRequest, tokenExchangeContext(request));
+        await sendWebResponse(reply, response);
+      },
+    },
     async (request, reply) => {
       const webRequest = fastifyRequestToWebRequest(request, fastify.prefix);
 
@@ -51,25 +68,28 @@ export const githubAppTokenExchangePlugin: FastifyPluginAsync<
         return;
       }
 
-      const response = await options.tokenExchange(webRequest, {
-        async observe(observation) {
-          logObservation(request, observation);
-        },
-        observeOidcDiagnostic(observation) {
-          try {
-            logObservation(request, observation);
-          } catch {
-            // Optional OIDC diagnostics never control Token Exchange outcomes.
-          }
-
-          return undefined;
-        },
-      });
+      const response = await options.tokenExchange(webRequest, tokenExchangeContext(request));
 
       await sendWebResponse(reply, response);
     },
   );
 };
+
+function tokenExchangeContext(request: FastifyRequest): TokenExchangeRequestContext {
+  return {
+    async observe(observation) {
+      logObservation(request, observation);
+    },
+    observeOidcDiagnostic(observation) {
+      try {
+        logObservation(request, observation);
+      } catch {
+        // Optional OIDC diagnostics never control Token Exchange outcomes.
+      }
+      return undefined;
+    },
+  };
+}
 
 function logObservation(request: FastifyRequest, observation: TokenExchangeObservation): void {
   const event = observation.fields["event"];

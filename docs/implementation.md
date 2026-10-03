@@ -55,10 +55,14 @@ One issuer-verifier collection owns discovery, JWK Sets, refresh coalescing, and
 
 `createTokenExchangeWorker` accepts a `TokenExchangeWorkerComposition`, adding `githubApps` whose credentials are represented by `privateKeyBinding` names. It snapshots build-time trust, validates composition eagerly, admits only configured app paths, and rate limits before body parsing. It rebuilds the handler when a named secret binding reference changes, without changing captured identities, audiences, or policy. Each request captures its handler before asynchronous admission; overlapping requests cannot switch credentials. Secret values remain lazy and may rotate behind an unchanged binding. Admission and request identity belong to the host adapter.
 
-`githubAppTokenExchangePlugin` is an encapsulated Fastify adapter around an already-built handler.
-It registers the `/github/apps/{app_slug}/token` path broadly and normalizes routed non-`POST` methods to the OAuth
-`invalid_request` response before Fetch request construction because Fetch cannot represent every
-Node method. Node can reject `TRACK` and `CONNECT` before Fastify plugin routing, so those transport
+`githubAppTokenExchangePlugin` is an encapsulated Fastify adapter around a
+`GitHubAppTokenExchangeHandler`. The broker exposes its immutable
+`tokenEndpointPaths` inventory alongside its call signature. The adapter snapshots
+that inventory and delegates unknown App routes to the broker before framework
+body parsing, so malformed or oversized requests to unconfigured Apps receive 404.
+For configured paths, the deep endpoint classifies methods Fetch can represent;
+conversion failures receive OAuth `invalid_request`. Node can reject `TRACK` and
+`CONNECT` before Fastify plugin routing, so those transport
 failures have no adapter OAuth-shape promise. The plugin removes inherited parsers only in its child
 scope, installs one raw Buffer form parser, and applies the public Token Exchange body limit at the
 route. The adapter converts documented Fastify parser failures and malformed Fastify-to-Fetch
