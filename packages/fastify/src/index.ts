@@ -40,36 +40,40 @@ export const githubAppTokenExchangePlugin: FastifyPluginAsync<
     }
   });
 
-  fastify.all("/token", { bodyLimit: maxTokenExchangeBodyBytes }, async (request, reply) => {
-    if (request.method !== "POST") {
-      await sendWebResponse(reply, tokenExchangeInvalidRequestResponse(400));
-      return;
-    }
+  fastify.all(
+    "/github/apps/:app_slug/token",
+    { bodyLimit: maxTokenExchangeBodyBytes },
+    async (request, reply) => {
+      if (request.method !== "POST") {
+        await sendWebResponse(reply, tokenExchangeInvalidRequestResponse(400));
+        return;
+      }
 
-    const webRequest = fastifyRequestToWebRequest(request);
+      const webRequest = fastifyRequestToWebRequest(request, fastify.prefix);
 
-    if (webRequest === null) {
-      await sendWebResponse(reply, tokenExchangeInvalidRequestResponse(400));
-      return;
-    }
+      if (webRequest === null) {
+        await sendWebResponse(reply, tokenExchangeInvalidRequestResponse(400));
+        return;
+      }
 
-    const response = await options.tokenExchange(webRequest, {
-      async observe(observation) {
-        logObservation(request, observation);
-      },
-      observeOidcDiagnostic(observation) {
-        try {
+      const response = await options.tokenExchange(webRequest, {
+        async observe(observation) {
           logObservation(request, observation);
-        } catch {
-          // Optional OIDC diagnostics never control Token Exchange outcomes.
-        }
+        },
+        observeOidcDiagnostic(observation) {
+          try {
+            logObservation(request, observation);
+          } catch {
+            // Optional OIDC diagnostics never control Token Exchange outcomes.
+          }
 
-        return undefined;
-      },
-    });
+          return undefined;
+        },
+      });
 
-    await sendWebResponse(reply, response);
-  });
+      await sendWebResponse(reply, response);
+    },
+  );
 };
 
 function logObservation(request: FastifyRequest, observation: TokenExchangeObservation): void {
@@ -85,7 +89,7 @@ function logObservation(request: FastifyRequest, observation: TokenExchangeObser
   request.log[observation.level](observation.fields, message);
 }
 
-function fastifyRequestToWebRequest(request: FastifyRequest): Request | null {
+function fastifyRequestToWebRequest(request: FastifyRequest, prefix: string): Request | null {
   try {
     const headers = new Headers();
 
@@ -103,6 +107,8 @@ function fastifyRequestToWebRequest(request: FastifyRequest): Request | null {
     const body =
       mayHaveBody && requestBody !== undefined ? Uint8Array.from(requestBody) : undefined;
     const url = new URL(request.raw.url ?? request.url, `${request.protocol}://${request.host}`);
+
+    url.pathname = url.pathname.slice(prefix.length);
 
     return new Request(url, {
       ...(body === undefined ? {} : { body }),

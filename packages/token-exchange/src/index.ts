@@ -1,12 +1,14 @@
-import type { GitHubAppConfiguration } from "@github-app-token-broker/github/app";
-import { createOidcIdTokenAuthenticator } from "@github-app-token-broker/oidc/id-token-authenticator";
+import { createOidcIdTokenAuthenticatorFactory } from "@github-app-token-broker/oidc/id-token-authenticator";
 import {
   snapshotOidcProviderRegistrations,
   type OidcProviderRegistration,
 } from "@github-app-token-broker/oidc/provider-registration";
-import { parseSubjectTokenAudience } from "@github-app-token-broker/oidc/subject-token-audience";
+import { problemResponse } from "@github-app-token-broker/http/problem-details";
+import { snapshotGitHubApps, type TokenExchangeGitHubApp } from "./github-apps.ts";
+export { snapshotGitHubApps, type TokenExchangeGitHubApp } from "./github-apps.ts";
 import {
   assertTokenIssuancePolicyIssuersAreRegistered,
+  compileTokenIssuancePolicy,
   type TokenIssuancePolicy,
 } from "@github-app-token-broker/token-issuance-policy";
 
@@ -32,8 +34,7 @@ export interface TokenExchangeComposition {
 
 export interface GitHubAppTokenExchangeConfiguration {
   readonly composition: TokenExchangeComposition;
-  readonly githubApp: GitHubAppConfiguration;
-  readonly subjectTokenAudience: string;
+  readonly githubApps: readonly TokenExchangeGitHubApp[];
 }
 
 export interface TokenExchangeRuntimeDependencies {
@@ -56,28 +57,49 @@ export function createGitHubAppTokenExchange(
   const oidcProviderRegistrations = snapshotOidcProviderRegistrations(
     configuration.composition.oidcProviderRegistrations,
   );
-  const tokenIssuancePolicy = configuration.composition.tokenIssuancePolicy;
+  const tokenIssuancePolicy = compileTokenIssuancePolicy(
+    configuration.composition.tokenIssuancePolicy.permitStatements,
+  );
   assertTokenIssuancePolicyIssuersAreRegistered(tokenIssuancePolicy, oidcProviderRegistrations);
-  const subjectTokenAudience = parseSubjectTokenAudience(configuration.subjectTokenAudience);
-  const githubApp = Object.freeze({
-    appId: configuration.githubApp.appId,
-    privateKey: configuration.githubApp.privateKey,
-  });
+  const githubApps = snapshotGitHubApps(configuration.githubApps);
+  const appClientIds = new Set(githubApps.map((app) => app.clientId));
+  for (const statement of tokenIssuancePolicy.permitStatements) {
+    if (!appClientIds.has(statement.githubAppClientId)) {
+      throw new TypeError("Token Issuance Policy references an unconfigured GitHub App");
+    }
+  }
   const dependencies = Object.freeze({
     fetch: runtimeDependencies.fetch,
     now: runtimeDependencies.now,
   });
-  const oidcIdTokenAuthenticator = createOidcIdTokenAuthenticator(
-    { providerRegistrations: oidcProviderRegistrations, subjectTokenAudience },
+  const createAuthenticator = createOidcIdTokenAuthenticatorFactory(
+    oidcProviderRegistrations,
     dependencies,
   );
-  return createTokenExchangeEndpoint({
-    installationAccessTokenExchange: createInstallationAccessTokenExchange({
-      githubApp,
-      githubAppDependencies: dependencies,
-      oidcIdTokenAuthenticator,
-      tokenIssuancePolicy,
-    }),
-    now: dependencies.now,
-  });
+  const endpoints = new Map<string, TokenExchangeHandler>();
+  for (const app of githubApps) {
+    const policy = Object.freeze({
+      permitStatements: Object.freeze(
+        tokenIssuancePolicy.permitStatements.filter(
+          (statement) => statement.githubAppClientId === app.clientId,
+        ),
+      ),
+    });
+    endpoints.set(
+      `/github/apps/${app.slug}/token`,
+      createTokenExchangeEndpoint({
+        installationAccessTokenExchange: createInstallationAccessTokenExchange({
+          githubApp: app,
+          githubAppDependencies: dependencies,
+          oidcIdTokenAuthenticator: createAuthenticator(app.subjectTokenAudiences),
+          tokenIssuancePolicy: policy,
+        }),
+        now: dependencies.now,
+      }),
+    );
+  }
+  return async (request, context) => {
+    const endpoint = endpoints.get(new URL(request.url).pathname);
+    return endpoint === undefined ? problemResponse(404) : endpoint(request, context);
+  };
 }

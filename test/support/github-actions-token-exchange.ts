@@ -14,12 +14,15 @@ export const testGitHubActionsTokenExchangeConfiguration = {
     oidcProviderRegistrations: [githubActionsOidcProviderRegistration],
     tokenIssuancePolicy: testGitHubActionsTokenIssuancePolicy,
   },
-  githubApp: {
-    appId: "2419473",
-    privateKey: testPrivateKeyPem,
-  },
-  subjectTokenAudience: "https://broker.example",
-} satisfies GitHubAppTokenExchangeConfiguration;
+  githubApps: [
+    {
+      slug: "fixture-app",
+      subjectTokenAudiences: ["https://broker.example"],
+      clientId: "Iv1.fixtureApp",
+      privateKey: testPrivateKeyPem,
+    },
+  ],
+} as const satisfies GitHubAppTokenExchangeConfiguration;
 
 export function fetchGitHubActionsTokenExchangeExternalTestDouble(
   input: RequestInfo | URL,
@@ -58,7 +61,7 @@ export async function githubActionsTokenExchangeRequestBody({
 export async function githubActionsTokenExchangeRequest(
   options: GitHubActionsTokenExchangeRequestOptions = {},
 ): Promise<Request> {
-  return new Request("https://broker.example/token", {
+  return new Request("https://broker.example/github/apps/fixture-app/token", {
     body: await githubActionsTokenExchangeRequestBody(options),
     headers: { "content-type": "application/x-www-form-urlencoded" },
     method: "POST",

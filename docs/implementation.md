@@ -2,7 +2,7 @@
 
 ## Workspace layout
 
-- `workers/github-app-token-broker`: the Cloudflare adapter, package `@github-app-token-broker/worker`, and the only deployed public route (`POST /token`)
+- `workers/github-app-token-broker`: the Cloudflare adapter, package `@github-app-token-broker/worker`, and the only deployed public route (`POST /github/apps/{app_slug}/token`)
 - `packages/oidc`: exact-registration ID Token authentication, provider metadata/JWK Set retrieval, validation, caching, and diagnostics
 - `packages/oidc-provider-fly`: source-supported exact Fly organization-scoped OIDC Provider Registration construction with an explicit null OIDC ID Token Profile
 - `packages/oidc-provider-github-actions`: GitHub Actions OIDC Provider Registration and ID Token profile
@@ -16,15 +16,16 @@
 - `packages/fastify`: the Node 24/Fastify 5 adapter for mounting a prebuilt runtime-neutral handler
 - `test`: behavioral unit tests for the Token Endpoint, Fastify adapter, and domain packages; production-pruned Fastify fixtures; container HTTP integration against built Fastify and Worker deployments; and a real Workerd integration project for the GitHub App Information RPC entrypoint
 
-There is no webhook runtime, deployment endpoint, dynamic issuer registry, App selector, or multi-key service.
+There is no webhook runtime, deployment endpoint, or dynamic issuer registry. App selection is limited to the reviewed catalogue.
 
 ## GitHub App Information RPC
 
 `packages/github/src/app-information.ts` is the runtime-neutral read-only
 module behind the Worker's named `GitHubAppInformationEntrypoint`. The
-Cloudflare entrypoint remains a thin adapter around that module: it maps the
-`GITHUB_APP_ID` and `GITHUB_APP_PRIVATE_KEY` bindings to semantic `{ appId,
-privateKey }` configuration before crossing the runtime-neutral seam. It uses
+Cloudflare factory `createGitHubAppInformationEntrypoint(githubApps)` captures
+the reviewed catalogue. Each binding selects one record through
+`props.githubAppClientId`, and the adapter maps that record and its named private-key
+binding to semantic `{ clientId, privateKey }` configuration. It uses
 the same configured App JWT machinery as token issuance but never creates an
 Installation Access Token. Its four methods map directly to GitHub's App-JWT
 metadata endpoints and return GitHub-shaped values. The entrypoint is exported
@@ -48,19 +49,21 @@ the implemented capability and security boundary.
 
 ## Token Exchange composition
 
-`createGitHubAppTokenExchange` accepts a `TokenExchangeComposition` containing OIDC Provider Registrations and one compiled `TokenIssuancePolicy`, semantic `{ appId, privateKey }` GitHub App credentials, and the exact Subject-Token Audience. It snapshots the registration array and credentials, rejects duplicate issuers, and requires every Permit Statement issuer to have a registration before returning its Fetch-compatible handler. The GitHub API destination is not part of this interface and remains fixed inside `packages/github`. The policy compiler validates and recursively freezes its structural result, so composition needs no opaque identity map or module-owned state. Construction performs no network I/O.
+`createGitHubAppTokenExchange` accepts `{ composition, githubApps }`. The composition contains OIDC Provider Registrations and a compiled `TokenIssuancePolicy`; each app contains `slug`, `clientId`, `subjectTokenAudiences`, and `privateKey`. Construction snapshots metadata, registrations, and policy, rejects duplicate identities or missing app/issuer references, and compiles a private endpoint and policy partition for each canonical app path. Private-key binding references are captured without resolving their values. The GitHub destination remains fixed inside `packages/github`. Construction performs no network I/O.
 
-`createTokenExchangeWorker` is a Cloudflare adapter around that handler. It preserves construction-time composition validation, translates Worker credential and audience bindings to the semantic interface, owns path routing and rate limiting before the handler, and recreates the configured handler if App credentials change. Rate limiting is deliberately not a token-exchange configuration knob because admission policy and request identity belong to the hosting adapter.
+One issuer-verifier collection owns discovery, JWK Sets, refresh coalescing, and backoff. Construction binds each app's immutable audience set into its authentication capability. Its `authenticateIdToken` method accepts no caller-selected audience. Both JOSE validation and the scalar Claims schema enforce audience membership before provider profile validation. The original single-audience OIDC factory uses the same implementation for its existing internal consumers.
+
+`createTokenExchangeWorker` accepts a `TokenExchangeWorkerComposition`, adding `githubApps` whose credentials are represented by `privateKeyBinding` names. It snapshots build-time trust, validates composition eagerly, admits only configured app paths, and rate limits before body parsing. It rebuilds the handler when a named secret binding reference changes, without changing captured identities, audiences, or policy. Each request captures its handler before asynchronous admission; overlapping requests cannot switch credentials. Secret values remain lazy and may rotate behind an unchanged binding. Admission and request identity belong to the host adapter.
 
 `githubAppTokenExchangePlugin` is an encapsulated Fastify adapter around an already-built handler.
-It registers the `/token` path broadly and normalizes routed non-`POST` methods to the OAuth
+It registers the `/github/apps/{app_slug}/token` path broadly and normalizes routed non-`POST` methods to the OAuth
 `invalid_request` response before Fetch request construction because Fetch cannot represent every
 Node method. Node can reject `TRACK` and `CONNECT` before Fastify plugin routing, so those transport
 failures have no adapter OAuth-shape promise. The plugin removes inherited parsers only in its child
 scope, installs one raw Buffer form parser, and applies the public Token Exchange body limit at the
 route. The adapter converts documented Fastify parser failures and malformed Fastify-to-Fetch
 request metadata to the exported OAuth `invalid_request` response. Unrecognized handler and
-Fastify errors propagate to the host. It reconstructs duplicate request headers from Node raw
+Fastify errors propagate to the host. It removes its configured Fastify mount prefix from the routed path before calling the deep handler, reconstructs duplicate request headers from Node raw
 headers, copies Fetch response metadata and bytes into the Fastify reply, and preserves separate
 `Set-Cookie` fields.
 
@@ -73,27 +76,28 @@ handler's outbound operations use their own broker-owned deadlines rather than i
 signal.
 
 The compiled policy snapshot is a public structural Interface. Its
+`permitStatements[].githubAppClientId` identifies the app;
 `permitStatements[].resource` is a Repository Resource Constraint with an
 `owner` and either a string `repository` or `repository: null`. Policy
 consumers discriminate owner-wide constraints with `repository === null`.
 
-An external deployment owns the TypeScript entrypoint that supplies those two values. The source package root has named exports only. `generic-worker.ts` is the public-safe Wrangler entrypoint and deliberately composes empty registrations with an empty, deny-all Token Issuance Policy. A built artifact cannot replace its composition through bindings or requests.
+An external deployment owns the TypeScript entrypoint that supplies the catalogue, registrations, and policy. The source package root has named exports only. `generic-worker.ts` is the public-safe Wrangler entrypoint and deliberately composes an empty app catalogue and registrations with an empty, deny-all Token Issuance Policy. It exposes no configured Token Exchange routes. A built artifact cannot replace its composition through bindings or requests.
 
 The runtime-neutral handler accepts a request context with mandatory `observe` and separately named optional `observeOidcDiagnostic` callbacks. `observe` returns `Promise<void>` and is awaited; fulfillment acknowledges the observation but does not itself prove durable persistence. `observeOidcDiagnostic` is synchronous and returns exactly `undefined`. It is never wired to the mandatory observer, and diagnostic callback failures are contained. The Worker adapter supplies these callbacks from `TokenExchangeWorkerRuntimeDependencies`; its request-scoped mandatory-observer wrapper enriches fields with the Cloudflare Ray ID and returns the underlying observer promise so failures remain fail closed. The runtime-neutral module does not inspect Cloudflare headers. The default Worker adapters write both event classes to the console; the Fastify adapter uses its request logger. Fetch and time remain construction/test seams. These dependencies are not trust or authorization configuration surfaces, although mandatory observation availability deliberately controls whether the endpoint can return a token.
 
-The deployment supplies one non-secret `TOKEN_BROKER_AUDIENCE` Worker binding. Before routing any request, the OIDC package's single Subject-Token Audience parser validates it as an exact non-empty, non-whitespace, single-line domain value. `worker.ts` constructs and caches the exchange with that explicit audience and rejects an audience change within an isolate. It owns no public endpoint-location binding and does not derive the audience from the incoming request URL, headers, or source-owned `/token` route. The OIDC ID Token Authenticator accepts this composed domain value rather than embedding a project name, preserving reuse and exact scalar-audience validation.
+Each app's accepted Subject-Token Audiences are reviewed TypeScript. Every value is parsed as an exact non-empty, non-whitespace, single-line scalar; the list must be non-empty and contain no duplicates. The Worker has no audience or app-identity runtime override and never infers audience from a request URL or headers.
 
 Source GitHub Actions workflows use a pinned external action as their transport seam, relying on its caller-side Repository Resource and least-privilege Requested Permissions defaults where appropriate and explicitly overriding them when needed. The workflow files are authoritative for that caller-side contract; the broker does not own a permission default.
 
-App credentials remain Worker environment bindings. One Worker instance receives one App ID/private key pair. The request surface never selects an App.
+App private keys remain separate Worker secrets or Secrets Store bindings. The route selects one configured app; Permit Statements independently authorize its requested repository and permissions.
 
 ## Cloudflare Worker request flow
 
-1. `worker.ts` rejects every path except `/token` and every method except `POST`; the Token Endpoint applies the deployment rate limit with `CF-Connecting-IP` as its only request-derived key and uses `unknown` when that header is absent.
+1. `worker.ts` rejects every path except the configured `/github/apps/{app_slug}/token` routes and every method except `POST`; the Token Endpoint applies the deployment rate limit with `CF-Connecting-IP` as its only request-derived key and uses `unknown` when that header is absent.
 2. `token-exchange.ts` enforces OAuth media type, bounded body size, form multiplicity, unsupported fields, and RFC 8693 identifiers; `installation-access-token-request.ts` requires explicit resource and scope values and normalizes their canonical domain forms without permission defaults.
-3. `authentication.ts` passes the serialized ID Token to the deep OIDC authenticator and exposes only the immutable verified Claims snapshot and verification evidence.
-4. `packages/token-issuance-policy` evaluates immutable, independently complete Permit Statements once and returns one of `permitted`, `target_unsupported`, `requested_permissions_unsupported`, or `subject_token_unacceptable`.
-5. `installation-access-token-issuance.ts` maps that single evaluation result and awaits a token-free `installation_access_token_issuance_started` observation before any GitHub request.
+3. `authentication.ts` passes the serialized ID Token to the selected app's bound OIDC authenticator and exposes only the immutable verified Claims snapshot and verification evidence.
+4. `packages/token-issuance-policy` evaluates immutable, independently complete Permit Statements for the selected client ID once and returns one of `permitted`, `target_unsupported`, `requested_permissions_unsupported`, or `subject_token_unacceptable`.
+5. `installation-access-token-issuance.ts` includes `github_app.client_id`, maps that single evaluation result and awaits a token-free `installation_access_token_issuance_started` observation before any GitHub request.
 6. `packages/github` accepts the normalized Installation Access Token Request at one issuance boundary, resolves App authentication once for the exchange, resolves the requested repository installation, validates the returned installation owner, and mints a token limited to the repository and Requested Permissions. It returns either the token with its bound revocation capability or a classified failure with sanitized operational evidence; raw GitHub HTTP errors do not cross into Token Exchange.
 7. The issuance module awaits `installation_access_token_issuance_succeeded` before returning a token. Rejection triggers one awaited best-effort invocation of the token's bound revocation capability and never re-enters the failed observer.
 8. The Token Endpoint maps authentication, policy, and issuance failure reasons directly to stable OAuth errors and sanitizes every otherwise unexpected failure to non-cacheable `500 {"error":"server_error"}` without logging raw tokens.

@@ -29,6 +29,14 @@ const tokenExchangeTests = propertyTestLanes(tokenExchangePropertyTest, "token-e
 
 export const propertyMutations = Object.freeze([
   mutation({
+    description: "let a different app contribute target support and permissions",
+    file: policySource,
+    id: "policy-ignore-app",
+    replacement: "(void githubAppClientId, false) ||",
+    search: "statement.githubAppClientId !== githubAppClientId ||",
+    tests: policyTests,
+  }),
+  mutation({
     description: "overwrite the body reassembly offset with each chunk length",
     file: bodySource,
     id: "http-body-chunk-offset",

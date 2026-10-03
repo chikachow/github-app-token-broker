@@ -12,10 +12,7 @@ import {
   type OidcProviderRegistration,
 } from "@github-app-token-broker/oidc/provider-registration";
 
-import {
-  createRegisteredOidcProviderVerifier,
-  type RegisteredOidcProviderVerifier,
-} from "../packages/oidc/src/registered-provider-verifier.ts";
+import { createRegisteredOidcProviderVerifier } from "../packages/oidc/src/registered-provider-verifier.ts";
 import {
   authenticationTestNow,
   expectedFailure,
@@ -2040,12 +2037,20 @@ function testVerifier(
   fetchOidcRemoteDocumentResponse: typeof fetch,
   now: () => Date = () => authenticationTestNow,
   providerRegistration: OidcProviderRegistration = registration,
-): RegisteredOidcProviderVerifier {
-  return createRegisteredOidcProviderVerifier({
+): {
+  verifyIdToken(
+    idToken: string,
+    observe?: (event: OidcDiagnosticEvent) => void,
+  ): ReturnType<ReturnType<typeof createRegisteredOidcProviderVerifier>["verifyIdToken"]>;
+} {
+  const verifier = createRegisteredOidcProviderVerifier({
     dependencies: { fetch: fetchOidcRemoteDocumentResponse, now },
     providerRegistration,
-    subjectTokenAudience,
   });
+  return {
+    verifyIdToken: (idToken, observe) =>
+      verifier.verifyIdToken(idToken, [subjectTokenAudience], observe),
+  };
 }
 
 function oidcRedirectResponse(): Response {

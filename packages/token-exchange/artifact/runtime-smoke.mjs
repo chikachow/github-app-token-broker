@@ -5,6 +5,7 @@ import * as tokenExchange from "../dist/index.js";
 assert.deepEqual(Object.keys(tokenExchange).sort(), [
   "createGitHubAppTokenExchange",
   "maxTokenExchangeBodyBytes",
+  "snapshotGitHubApps",
   "tokenExchangeInvalidRequestResponse",
 ]);
 assert.equal(tokenExchange.maxTokenExchangeBodyBytes, 64 * 1024);

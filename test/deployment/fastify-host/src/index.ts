@@ -10,11 +10,14 @@ export async function createExampleFastifyHost(): Promise<FastifyInstance> {
       oidcProviderRegistrations: [],
       tokenIssuancePolicy: { permitStatements: [] },
     },
-    githubApp: {
-      appId: "example",
-      privateKey: "example-only-not-a-real-private-key",
-    },
-    subjectTokenAudience: "https://broker.example",
+    githubApps: [
+      {
+        slug: "fixture-app",
+        subjectTokenAudiences: ["https://broker.example"],
+        clientId: "example",
+        privateKey: "example-only-not-a-real-private-key",
+      },
+    ],
   });
 
   await app.register(githubAppTokenExchangePlugin, {

@@ -105,7 +105,7 @@ async function exchange({
     claimOverrides,
     signingKeyName,
   });
-  const response = await request(`${broker}/token`, {
+  const response = await request(`${broker}/github/apps/fixture-app/token`, {
     method,
     headers: {
       "content-type": "application/x-www-form-urlencoded",
@@ -302,7 +302,7 @@ void describe(host === "worker" ? "Workerd" : "Fastify", { concurrency: false },
     void it("preserves valid HTTP authentication schemes in rejected Client challenges", async () => {
       await reset();
       for (const scheme of ["1custom", "!custom"]) {
-        const response = await request(`${broker}/token`, {
+        const response = await request(`${broker}/github/apps/fixture-app/token`, {
           body: "grant_type=ignored",
           headers: {
             authorization: `${scheme} private-credentials`,

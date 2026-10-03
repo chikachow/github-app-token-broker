@@ -41,7 +41,7 @@ describe("githubAppTokenExchangePlugin", () => {
           "content-type": "application/x-www-form-urlencoded; charset=utf-8",
         },
         method: "POST",
-        url: "/automation/token",
+        url: "/automation/github/apps/fixture-app/token",
       });
       const ordinaryResponse = await app.inject({
         body: "field=value",
@@ -52,7 +52,9 @@ describe("githubAppTokenExchangePlugin", () => {
 
       expect(response.statusCode).toBe(200);
       expect(tokenExchange).toHaveBeenCalledOnce();
-      expect((await app.inject({ method: "POST", url: "/token" })).statusCode).toBe(404);
+      expect(
+        (await app.inject({ method: "POST", url: "/github/apps/fixture-app/token" })).statusCode,
+      ).toBe(404);
       expect(ordinaryResponse.statusCode).toBe(200);
       expect(ordinaryResponse.json()).toEqual({ ok: true });
       expect(ordinaryParsedBody).toEqual({ parsed: "field=value" });
@@ -76,7 +78,7 @@ describe("githubAppTokenExchangePlugin", () => {
         body: "grant_type=ignored",
         ...(contentType === undefined ? {} : { headers: { "content-type": contentType } }),
         method: "POST",
-        url: "/token",
+        url: "/github/apps/fixture-app/token",
       });
 
       expectOAuthInvalidRequest(response, 400);
@@ -92,7 +94,7 @@ describe("githubAppTokenExchangePlugin", () => {
     await app.register(githubAppTokenExchangePlugin, { tokenExchange });
 
     try {
-      const response = await app.inject({ method: "POST", url: "/token" });
+      const response = await app.inject({ method: "POST", url: "/github/apps/fixture-app/token" });
 
       expect(response.statusCode).toBe(200);
       expect(response.json()).toEqual({ reached: true });
@@ -112,7 +114,7 @@ describe("githubAppTokenExchangePlugin", () => {
         body: "x".repeat(maxTokenExchangeBodyBytes + 1),
         headers: { "content-type": "application/x-www-form-urlencoded" },
         method: "POST",
-        url: "/token",
+        url: "/github/apps/fixture-app/token",
       });
       const invalidContentLength = await app.inject({
         body: "x=1",
@@ -121,7 +123,7 @@ describe("githubAppTokenExchangePlugin", () => {
           "content-type": "application/x-www-form-urlencoded",
         },
         method: "POST",
-        url: "/token",
+        url: "/github/apps/fixture-app/token",
       });
 
       expectOAuthInvalidRequest(oversized, 413);
@@ -165,7 +167,7 @@ describe("githubAppTokenExchangePlugin", () => {
       const response = await app.inject({
         headers: { "content-type": "application/x-www-form-urlencoded" },
         method: "POST",
-        url: "/token",
+        url: "/github/apps/fixture-app/token",
       });
 
       expect(response.statusCode).toBe(207);
@@ -221,7 +223,7 @@ describe("githubAppTokenExchangePlugin", () => {
       const response = await app.inject({
         headers: { "content-type": "application/x-www-form-urlencoded" },
         method: "POST",
-        url: "/token",
+        url: "/github/apps/fixture-app/token",
       });
 
       expect(response.statusCode).toBe(204);
@@ -267,7 +269,7 @@ describe("githubAppTokenExchangePlugin", () => {
       const response = await app.inject({
         headers: { "content-type": "application/x-www-form-urlencoded" },
         method: "POST",
-        url: "/token",
+        url: "/github/apps/fixture-app/token",
       });
 
       expect(response.statusCode).toBe(204);
@@ -307,7 +309,7 @@ describe("githubAppTokenExchangePlugin", () => {
       const response = await app.inject({
         headers: { "content-type": "application/x-www-form-urlencoded" },
         method: "POST",
-        url: "/token",
+        url: "/github/apps/fixture-app/token",
       });
 
       expect(response.statusCode).toBe(500);
@@ -338,7 +340,7 @@ describe("githubAppTokenExchangePlugin", () => {
 
     try {
       for (const method of methods) {
-        const response = await makeNodeRequest(`${address}/token`, {
+        const response = await makeNodeRequest(`${address}/github/apps/fixture-app/token`, {
           body: "",
           headers: {},
           method,
@@ -365,7 +367,7 @@ describe("githubAppTokenExchangePlugin", () => {
     const address = await app.listen({ host: "127.0.0.1", port: 0 });
 
     try {
-      const response = await makeNodeRequest(`${address}/token`, {
+      const response = await makeNodeRequest(`${address}/github/apps/fixture-app/token`, {
         body: "",
         headers: {},
         method: "TRACK",
@@ -402,7 +404,7 @@ describe("githubAppTokenExchangePlugin", () => {
           "x-client-hint": ["one", "two"],
         },
         method: "POST",
-        url: "/token?trace=one",
+        url: "/github/apps/fixture-app/token?trace=one",
       });
 
       expect(response.statusCode).toBe(204);
@@ -410,7 +412,7 @@ describe("githubAppTokenExchangePlugin", () => {
       expect(bridgedRequest).toEqual({
         bodyMatches: true,
         clientHint: "one,two",
-        url: "http://broker.example:8443/token?trace=one",
+        url: "http://broker.example:8443/github/apps/fixture-app/token?trace=one",
       });
     } finally {
       await app.close();
@@ -450,7 +452,7 @@ describe("githubAppTokenExchangePlugin", () => {
           "content-type": "application/x-www-form-urlencoded",
         },
         method: "POST",
-        url: "/token",
+        url: "/github/apps/fixture-app/token",
       });
 
       expectOAuthInvalidRequest(response, 400);
@@ -473,7 +475,7 @@ describe("githubAppTokenExchangePlugin", () => {
         body: "x".repeat(maxTokenExchangeBodyBytes + 1),
         headers: { "content-type": "application/x-www-form-urlencoded" },
         method: "POST",
-        url: "/token",
+        url: "/github/apps/fixture-app/token",
       });
 
       expect(response.statusCode).toBe(429);
@@ -500,7 +502,7 @@ describe("githubAppTokenExchangePlugin", () => {
       const response = await app.inject({
         headers: { "content-type": "application/x-www-form-urlencoded" },
         method: "POST",
-        url: "/token",
+        url: "/github/apps/fixture-app/token",
       });
 
       expect(response.statusCode).toBe(598);
@@ -530,13 +532,16 @@ describe("githubAppTokenExchangePlugin", () => {
     const address = await app.listen({ host: "127.0.0.1", port: 0 });
 
     try {
-      const response = await makeNodeRequest(`${address}/automation/token?transport=socket`, {
-        body: "scope=contents%3Aread&scope=actions%3Awrite",
-        headers: {
-          "content-type": "application/x-www-form-urlencoded",
-          "x-client-hint": ["one", "two"],
+      const response = await makeNodeRequest(
+        `${address}/automation/github/apps/fixture-app/token?transport=socket`,
+        {
+          body: "scope=contents%3Aread&scope=actions%3Awrite",
+          headers: {
+            "content-type": "application/x-www-form-urlencoded",
+            "x-client-hint": ["one", "two"],
+          },
         },
-      });
+      );
 
       expect(response).toEqual({
         body: '{"ok":true}',
@@ -549,7 +554,7 @@ describe("githubAppTokenExchangePlugin", () => {
         {
           body: "scope=contents%3Aread&scope=actions%3Awrite",
           clientHint: "one, two",
-          url: `${address}/automation/token?transport=socket`,
+          url: `${address}/github/apps/fixture-app/token?transport=socket`,
         },
       ]);
     } finally {

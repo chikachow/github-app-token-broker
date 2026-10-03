@@ -47,11 +47,14 @@ describe("Token Exchange Worker boundary", () => {
   );
 
   it("rejects non-POST requests at the Token Endpoint boundary", async () => {
-    const response = await fetchGitHubActionsTokenExchange("https://example.test/token", {
-      body: await githubActionsTokenExchangeRequestBody(),
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      method: "PUT",
-    });
+    const response = await fetchGitHubActionsTokenExchange(
+      "https://example.test/github/apps/fixture-app/token",
+      {
+        body: await githubActionsTokenExchangeRequestBody(),
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        method: "PUT",
+      },
+    );
 
     expect(response.status).toBe(400);
     expect(response.headers.get("cache-control")).toBe("no-store");
@@ -116,7 +119,7 @@ describe("Token Exchange Worker boundary", () => {
     });
     const response = await invokeWorker(
       worker,
-      new Request("https://example.test/token", {
+      new Request("https://example.test/github/apps/fixture-app/token", {
         body,
         headers: {
           authorization: "Basic private-client-credentials",
@@ -136,11 +139,14 @@ describe("Token Exchange Worker boundary", () => {
   });
 
   it("wires a representative valid request through OIDC authentication, policy, and GitHub issuance", async () => {
-    const response = await fetchGitHubActionsTokenExchange("https://example.test/token", {
-      body: await githubActionsTokenExchangeRequestBody(),
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      method: "POST",
-    });
+    const response = await fetchGitHubActionsTokenExchange(
+      "https://example.test/github/apps/fixture-app/token",
+      {
+        body: await githubActionsTokenExchangeRequestBody(),
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        method: "POST",
+      },
+    );
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("application/json; charset=utf-8");
@@ -217,7 +223,7 @@ describe("Token Exchange Worker boundary", () => {
       const worker = createTokenExchangeWorker(testGitHubActionsTokenExchangeComposition);
       const response = await invokeWorker(
         worker,
-        new Request("https://example.test/token", {
+        new Request("https://example.test/github/apps/fixture-app/token", {
           body,
           headers: {
             "cf-ray": "fixture-ray-id",
@@ -234,7 +240,7 @@ describe("Token Exchange Worker boundary", () => {
       expect(fetchExternal).not.toHaveBeenCalled();
       expect(consoleWarn).toHaveBeenCalledExactlyOnceWith("OIDC authentication failed", {
         diagnosticCode: "ERR_JWT_INVALID",
-        path: "/token",
+        path: "/github/apps/fixture-app/token",
         rayId: "fixture-ray-id",
         reason: "invalid_token",
         userAgent: "fixture-test-agent",
@@ -248,7 +254,7 @@ describe("Token Exchange Worker boundary", () => {
   it("accepts a structural GitHub App private-key binding", async () => {
     const getPrivateKey = vi.fn(async () => testEnv.GITHUB_APP_PRIVATE_KEY);
     const response = await fetchGitHubActionsTokenExchangeWithEnv(
-      "https://example.test/token",
+      "https://example.test/github/apps/fixture-app/token",
       {
         body: await githubActionsTokenExchangeRequestBody(),
         headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -330,6 +336,7 @@ describe("Token Exchange Worker boundary", () => {
       ...testGitHubActionsTokenExchangeComposition.oidcProviderRegistrations,
     ];
     const composition = {
+      githubApps: testGitHubActionsTokenExchangeComposition.githubApps,
       oidcProviderRegistrations,
       tokenIssuancePolicy: testGitHubActionsTokenIssuancePolicy,
     };
@@ -350,7 +357,7 @@ describe("Token Exchange Worker boundary", () => {
     expect(replacementFetch).not.toHaveBeenCalled();
   });
 
-  it("rebuilds the runtime when GitHub App credentials change", async () => {
+  it("does not let runtime bindings remap the configured GitHub App identity", async () => {
     const observedIssuers: unknown[] = [];
     const fetchExternal = vi.fn<typeof fetch>((input, init) => {
       const request = new Request(input, init);
@@ -377,7 +384,7 @@ describe("Token Exchange Worker boundary", () => {
 
     const methodResponse = await invokeWorker(
       worker,
-      new Request("https://example.test/token"),
+      new Request("https://example.test/github/apps/fixture-app/token"),
       originalEnv,
     );
     const tokenResponse = await invokeWorker(
@@ -388,7 +395,7 @@ describe("Token Exchange Worker boundary", () => {
 
     expect(methodResponse.status).toBe(400);
     expect(tokenResponse.status).toBe(200);
-    expect(observedIssuers).toEqual(["222", "222"]);
+    expect(observedIssuers).toEqual(["Iv1.fixtureApp", "Iv1.fixtureApp"]);
   });
 
   it("keeps each overlapping request on the GitHub App selected before admission", async () => {
@@ -415,12 +422,32 @@ describe("Token Exchange Worker boundary", () => {
     const appAWaiting = new Promise<void>((resolve) => {
       markAppAWaiting = resolve;
     });
-    const worker = createTokenExchangeWorker(testGitHubActionsTokenExchangeComposition, {
-      fetch: fetchExternal,
-      now: () => testNow,
-      observe: async () => undefined,
-      observeOidcDiagnostic: () => undefined,
-    });
+    const worker = createTokenExchangeWorker(
+      {
+        ...testGitHubActionsTokenExchangeComposition,
+        githubApps: [
+          ...testGitHubActionsTokenExchangeComposition.githubApps,
+          {
+            ...testGitHubActionsTokenExchangeComposition.githubApps[0],
+            clientId: "Iv1.otherApp",
+            slug: "other-app",
+          },
+        ],
+        tokenIssuancePolicy: compileTokenIssuancePolicy([
+          ...testGitHubActionsTokenIssuancePolicy.permitStatements,
+          ...testGitHubActionsTokenIssuancePolicy.permitStatements.map((statement) => ({
+            ...statement,
+            githubAppClientId: "Iv1.otherApp",
+          })),
+        ]),
+      },
+      {
+        fetch: fetchExternal,
+        now: () => testNow,
+        observe: async () => undefined,
+        observeOidcDiagnostic: () => undefined,
+      },
+    );
     const appAEnv = {
       ...testEnv,
       GITHUB_APP_ID: "111",
@@ -443,7 +470,10 @@ describe("Token Exchange Worker boundary", () => {
     await appAWaiting;
     const appBResponse = await invokeWorker(
       worker,
-      await githubActionsTokenExchangeRequest(),
+      new Request(
+        "https://example.test/github/apps/other-app/token",
+        await githubActionsTokenExchangeRequest(),
+      ),
       appBEnv,
     );
     releaseAppA();
@@ -451,7 +481,12 @@ describe("Token Exchange Worker boundary", () => {
 
     expect(appAResponse.status).toBe(200);
     expect(appBResponse.status).toBe(200);
-    expect(observedIssuers).toEqual(["222", "222", "111", "111"]);
+    expect(observedIssuers).toEqual([
+      "Iv1.otherApp",
+      "Iv1.otherApp",
+      "Iv1.fixtureApp",
+      "Iv1.fixtureApp",
+    ]);
   });
 
   it("keeps each overlapping request on its selected private-key binding", async () => {
@@ -515,21 +550,16 @@ describe("Token Exchange Worker boundary", () => {
     expect(bindingReads).toEqual(["B", "A"]);
   });
 
-  it("sanitizes a changed audience after configuration is cached", async () => {
+  it("does not read a legacy audience binding or infer audiences from the host", async () => {
     const worker = createTokenExchangeWorker(
       testGitHubActionsTokenExchangeComposition,
       testGitHubActionsTokenExchangeWorkerRuntimeDependencies,
     );
-
-    expect((await invokeWorker(worker, new Request("https://example.test/not-token"))).status).toBe(
-      404,
-    );
-    const response = await invokeWorker(worker, new Request("https://example.test/not-token"), {
+    const response = await invokeWorker(worker, await githubActionsTokenExchangeRequest(), {
       ...testEnv,
       TOKEN_BROKER_AUDIENCE: "https://different-broker.example",
     });
-
-    await expectSanitizedServerError(response);
+    expect(response.status).toBe(200);
   });
 
   it("sanitizes a rejected rate-limit binding call without leaking its detail", async () => {
@@ -586,30 +616,25 @@ describe("Token Exchange Worker boundary", () => {
     }
   });
 
-  it("sanitizes invalid audience configuration without leaking its detail", async () => {
-    const failureDetail = "private invalid audience detail";
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const worker = createTokenExchangeWorker(
-      testGitHubActionsTokenExchangeComposition,
-      testGitHubActionsTokenExchangeWorkerRuntimeDependencies,
-    );
-
-    try {
-      const response = await invokeWorker(worker, await githubActionsTokenExchangeRequest(), {
-        ...testEnv,
-        TOKEN_BROKER_AUDIENCE: `invalid\n${failureDetail}`,
-      });
-
-      await expectSanitizedServerError(response);
-      expectSanitizedLog(consoleError, failureDetail);
-    } finally {
-      consoleError.mockRestore();
-    }
+  it("rejects invalid build-time audiences before receiving requests", () => {
+    expect(() =>
+      createTokenExchangeWorker({
+        ...testGitHubActionsTokenExchangeComposition,
+        githubApps: [
+          {
+            ...testGitHubActionsTokenExchangeComposition.githubApps[0],
+            subjectTokenAudiences: ["invalid\naudience"],
+          },
+        ],
+      }),
+    ).toThrow("Subject-Token Audience");
   });
 
   it("sanitizes URL routing failures at the Worker boundary", async () => {
     const failureDetail = "private URL routing failure";
-    const request = new Request("https://example.test/token", { method: "GET" });
+    const request = new Request("https://example.test/github/apps/fixture-app/token", {
+      method: "GET",
+    });
     Object.defineProperty(request, "url", {
       get() {
         throw new Error(failureDetail);
@@ -658,7 +683,7 @@ describe("Token Exchange Worker boundary", () => {
     try {
       const response = await invokeWorker(
         worker,
-        new Request("https://example.test/token", { method: "GET" }),
+        new Request("https://example.test/github/apps/fixture-app/token", { method: "GET" }),
       );
 
       await expectSanitizedServerError(response);
@@ -710,7 +735,7 @@ describe("Token Exchange Worker boundary", () => {
 async function githubActionsTokenExchangeRequest(
   headers: Readonly<Record<string, string>> = {},
 ): Promise<Request> {
-  return new Request("https://example.test/token", {
+  return new Request("https://example.test/github/apps/fixture-app/token", {
     body: await githubActionsTokenExchangeRequestBody(),
     headers: { "content-type": "application/x-www-form-urlencoded", ...headers },
     method: "POST",
@@ -720,7 +745,11 @@ async function githubActionsTokenExchangeRequest(
 async function invokeWorker(
   worker: ExportedHandler<TokenExchangeWorkerEnv>,
   request: Request,
-  env: TokenExchangeWorkerEnv = testEnv,
+  env: TokenExchangeWorkerEnv & {
+    readonly GITHUB_APP_PRIVATE_KEY?: unknown;
+    readonly GITHUB_APP_ID?: unknown;
+    readonly TOKEN_BROKER_AUDIENCE?: unknown;
+  } = testEnv,
 ): Promise<Response> {
   const handler = worker.fetch;
 

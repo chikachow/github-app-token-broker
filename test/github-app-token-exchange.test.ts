@@ -2,7 +2,6 @@ import { tokenExchangeRequestContext as requestContext } from "./support/token-e
 import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-github-actions";
 import {
   createGitHubAppTokenExchange,
-  type GitHubAppTokenExchangeConfiguration,
   type TokenExchangeHandler,
   type TokenExchangeObservation,
   type TokenExchangeRuntimeDependencies,
@@ -100,11 +99,13 @@ describe("GitHub App Token Exchange public interface", () => {
     });
     const configurationWithIgnoredDestination = {
       ...testGitHubActionsTokenExchangeConfiguration,
-      githubApp: {
-        ...testGitHubActionsTokenExchangeConfiguration.githubApp,
-        apiBaseUrl: "https://attacker.invalid",
-      },
-    } as GitHubAppTokenExchangeConfiguration;
+      githubApps: [
+        {
+          ...testGitHubActionsTokenExchangeConfiguration.githubApps[0],
+          apiBaseUrl: "https://attacker.invalid",
+        },
+      ],
+    };
     const tokenExchange = createGitHubAppTokenExchange(configurationWithIgnoredDestination, {
       fetch: fetchExternal,
       now: () => testNow,
@@ -153,11 +154,14 @@ describe("GitHub App Token Exchange public interface", () => {
         oidcProviderRegistrations: [githubActionsOidcProviderRegistration],
         tokenIssuancePolicy: testGitHubActionsTokenIssuancePolicy,
       },
-      githubApp: {
-        appId: "2419473",
-        privateKey: testPrivateKeyPem,
-      },
-      subjectTokenAudience: "https://broker.example",
+      githubApps: [
+        {
+          slug: "fixture-app",
+          subjectTokenAudiences: ["https://broker.example"],
+          clientId: "Iv1.fixtureApp",
+          privateKey: testPrivateKeyPem,
+        },
+      ],
     };
     const mutableRuntimeDependencies = { fetch: initialFetch, now: initialNow };
     const tokenExchange = createGitHubAppTokenExchange(
@@ -166,9 +170,9 @@ describe("GitHub App Token Exchange public interface", () => {
     );
 
     mutableConfiguration.composition.oidcProviderRegistrations.length = 0;
-    mutableConfiguration.githubApp.appId = "mutated";
-    mutableConfiguration.githubApp.privateKey = "mutated";
-    mutableConfiguration.subjectTokenAudience = "mutated";
+    mutableConfiguration.githubApps[0]!.clientId = "mutated";
+    mutableConfiguration.githubApps[0]!.privateKey = "mutated";
+    mutableConfiguration.githubApps[0]!.subjectTokenAudiences[0] = "mutated";
     mutableRuntimeDependencies.fetch = replacementFetch;
     mutableRuntimeDependencies.now = replacementNow;
 
@@ -178,7 +182,7 @@ describe("GitHub App Token Exchange public interface", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(observedIssuers).toEqual(["2419473", "2419473"]);
+    expect(observedIssuers).toEqual(["Iv1.fixtureApp", "Iv1.fixtureApp"]);
     expect(initialFetch).toHaveBeenCalled();
     expect(initialNow).toHaveBeenCalled();
     expect(replacementFetch).not.toHaveBeenCalled();
@@ -539,7 +543,7 @@ describe("GitHub App Token Exchange public interface", () => {
         fields: {
           diagnosticCode: "ERR_OIDC_PROVIDER_CONFIGURATION_HTTP_STATUS",
           providerHttpStatus: 503,
-          path: "/token",
+          path: "/github/apps/fixture-app/token",
           reason: "oidc_provider_failure",
           userAgent: null,
         },
@@ -568,7 +572,7 @@ describe("GitHub App Token Exchange public interface", () => {
       throw new Error("test Token Exchange request did not contain a subject token");
     }
     const response = await tokenExchange(
-      new Request("https://broker.example/token", {
+      new Request("https://broker.example/github/apps/fixture-app/token", {
         body,
         headers: {
           "cf-ray": "must-not-enter-neutral-observation",
@@ -593,7 +597,7 @@ describe("GitHub App Token Exchange public interface", () => {
     expect(observations).toEqual([
       {
         fields: {
-          path: "/token",
+          path: "/github/apps/fixture-app/token",
           reason: "oidc_internal_failure",
           userAgent: "fixture-test-agent",
         },
@@ -607,24 +611,14 @@ describe("GitHub App Token Exchange public interface", () => {
     expect(serializedObservations).not.toContain(failureDetail);
     expect(serializedObservations).not.toContain(subjectToken);
     expect(serializedObservations).not.toContain(
-      testGitHubActionsTokenExchangeConfiguration.githubApp.privateKey,
+      testGitHubActionsTokenExchangeConfiguration.githubApps[0].privateKey,
     );
     expect(serializedObservations).not.toContain("ghs_test_token");
   });
 
   it.each([
     {
-      appId: "not-an-app-id",
-      expectedError: {
-        message: "invalid GitHub App configuration",
-        name: "GitHubAppConfigurationError",
-      },
-      privateDetails: ["not-an-app-id"],
-      privateKey: testGitHubActionsTokenExchangeConfiguration.githubApp.privateKey,
-      scenario: "an invalid App ID",
-    },
-    {
-      appId: testGitHubActionsTokenExchangeConfiguration.githubApp.appId,
+      clientId: testGitHubActionsTokenExchangeConfiguration.githubApps[0].clientId,
       expectedError: {
         message: "invalid GitHub App configuration",
         name: "GitHubAppConfigurationError",
@@ -634,7 +628,7 @@ describe("GitHub App Token Exchange public interface", () => {
       scenario: "an empty private key",
     },
     {
-      appId: testGitHubActionsTokenExchangeConfiguration.githubApp.appId,
+      clientId: testGitHubActionsTokenExchangeConfiguration.githubApps[0].clientId,
       expectedError: {
         message: "invalid GitHub App configuration",
         name: "GitHubAppConfigurationError",
@@ -644,7 +638,7 @@ describe("GitHub App Token Exchange public interface", () => {
       scenario: "an invalid private key",
     },
     {
-      appId: testGitHubActionsTokenExchangeConfiguration.githubApp.appId,
+      clientId: testGitHubActionsTokenExchangeConfiguration.githubApps[0].clientId,
       expectedError: {
         message: "unexpected Installation Access Token Issuance error",
         name: "Error",
@@ -661,13 +655,20 @@ describe("GitHub App Token Exchange public interface", () => {
     },
   ] as const)(
     "sanitizes $scenario before GitHub I/O",
-    async ({ appId, expectedError, privateDetails, privateKey }) => {
+    async ({ clientId, expectedError, privateDetails, privateKey }) => {
       const githubRequests: Request[] = [];
       const observations: TokenExchangeObservation[] = [];
       const tokenExchange = createGitHubAppTokenExchange(
         {
           ...testGitHubActionsTokenExchangeConfiguration,
-          githubApp: { appId, privateKey },
+          githubApps: [
+            {
+              slug: "fixture-app",
+              subjectTokenAudiences: ["https://broker.example"],
+              clientId,
+              privateKey,
+            },
+          ],
         },
         {
           fetch: async (input, init) => {
@@ -689,7 +690,7 @@ describe("GitHub App Token Exchange public interface", () => {
         throw new Error("test Token Exchange request did not contain a subject token");
       }
       const response = await tokenExchange(
-        new Request("https://broker.example/token", {
+        new Request("https://broker.example/github/apps/fixture-app/token", {
           body,
           headers: { "content-type": "application/x-www-form-urlencoded" },
           method: "POST",
@@ -740,7 +741,7 @@ describe("GitHub App Token Exchange public interface", () => {
 
     try {
       const response = await tokenExchange(
-        new Request("https://broker.example/token", {
+        new Request("https://broker.example/github/apps/fixture-app/token", {
           body,
           headers: { "content-type": "application/x-www-form-urlencoded" },
           method: "POST",
@@ -977,7 +978,7 @@ describe("GitHub App Token Exchange public interface", () => {
 });
 
 function invalidSubjectTokenRequest(): Request {
-  return new Request("https://broker.example/token", {
+  return new Request("https://broker.example/github/apps/fixture-app/token", {
     body: new URLSearchParams({
       grant_type: tokenExchangeGrantType,
       requested_token_type: accessTokenType,
@@ -1003,6 +1004,7 @@ function expectedIssuanceObservationFields({
   outcome: string;
 }): Record<string, unknown> {
   return {
+    github_app: { client_id: "Iv1.fixtureApp" },
     installation_access_token_request: installationAccessTokenRequest,
     subject_token: {
       issuer: "https://token.actions.githubusercontent.com",
