@@ -37,6 +37,8 @@ updates:
           - "@cloudflare/vitest-plugin"
           - "@cloudflare/workers-types"
           - wrangler
+      vitest:
+        patterns:
           - vitest
           - "@vitest/*"
       oxc-tooling:
