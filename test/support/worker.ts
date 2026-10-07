@@ -1,6 +1,6 @@
 import {
   createTokenExchangeWorker,
-  type TokenExchangeComposition,
+  type TokenExchangeWorkerComposition,
   type TokenExchangeWorkerEnv,
   type TokenExchangeWorkerRuntimeDependencies,
 } from "@github-app-token-broker/worker";
@@ -14,10 +14,21 @@ import { testEnv } from "./worker-env.ts";
 
 export { testEnv };
 
-type TestEnv = TokenExchangeWorkerEnv;
+type TestEnv = TokenExchangeWorkerEnv & {
+  readonly GITHUB_APP_PRIVATE_KEY: import("@github-app-token-broker/github/secrets").SecretTextBinding;
+};
 
-export const testGitHubActionsTokenExchangeComposition =
-  testGitHubActionsTokenExchangeConfiguration.composition satisfies TokenExchangeComposition;
+export const testGitHubActionsTokenExchangeComposition = {
+  ...testGitHubActionsTokenExchangeConfiguration.composition,
+  githubApps: [
+    {
+      clientId: "Iv1.fixtureApp",
+      slug: "fixture-app",
+      privateKeyBinding: "GITHUB_APP_PRIVATE_KEY",
+      subjectTokenAudiences: ["https://broker.example"],
+    },
+  ],
+} as const satisfies TokenExchangeWorkerComposition;
 
 export const testGitHubActionsTokenExchangeWorkerRuntimeDependencies = {
   fetch: fetchGitHubActionsTokenExchangeExternalTestDouble,

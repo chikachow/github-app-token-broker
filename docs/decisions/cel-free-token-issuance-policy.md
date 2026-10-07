@@ -2,12 +2,22 @@
 
 ## Status
 
-Decision status: Accepted.
+Decision status: Accepted and amended below.
 
 Decision scope: This record defines authorization-model capabilities, not any
 deployment's Permit Statement inventory. Conditional examples describe what a
 reviewed application composition can express. A deployment-owned TypeScript
 composition and its tests record the inventory compiled into that artifact.
+
+## Amendment: GitHub App identity
+
+The [multiple GitHub Apps decision](multiple-github-apps.md) extends each complete
+Permit Statement with `githubAppClientId`. Composition requires every referenced
+App to exist in the catalogue. Evaluation restricts target support, permission
+coverage and Claim matching to the selected App before determining its outcome.
+The original decision below records the policy-language design before this
+extension; the [service contract](../service-contract.md#token-issuance-policy)
+defines the current authoring and evaluation contract.
 
 ## Context
 

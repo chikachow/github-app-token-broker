@@ -21,14 +21,27 @@ tag builds or any trigger source; those claims are unselected. See the
 ## Use the composition in a deployment
 
 After reviewing the recipe's issuer, Claim predicates, target repository, and
-permissions, a deployment-owned Worker entrypoint can import its local copy:
+permissions, a deployment-owned Worker entrypoint can import its local copy.
+Replace the synthetic App slug and client ID below, including the matching
+`githubAppClientId` in each Permit Statement:
 
 ```ts
-import { createTokenExchangeWorker } from "@github-app-token-broker/worker";
+import {
+  createTokenExchangeWorker,
+  createGitHubAppInformationEntrypoint,
+} from "@github-app-token-broker/worker";
 import { buildkiteExampleComposition } from "./composition.ts";
 
-export { GitHubAppInformationEntrypoint } from "@github-app-token-broker/worker";
-export default createTokenExchangeWorker(buildkiteExampleComposition);
+const githubApps = [
+  {
+    slug: "fixture-app",
+    clientId: "Iv1.fixtureApp", // Matches every Permit Statement in this example.
+    privateKeyBinding: "EXAMPLE_APP_PRIVATE_KEY",
+    subjectTokenAudiences: ["https://broker.example"],
+  },
+];
+export const GitHubAppInformationEntrypoint = createGitHubAppInformationEntrypoint(githubApps);
+export default createTokenExchangeWorker({ ...buildkiteExampleComposition, githubApps });
 ```
 
 Follow the [Worker deployment contract](../../docs/deployment.md#external-cloudflare-worker-deployment-contract)
@@ -41,8 +54,9 @@ Deployment-owned identifiers and credentials stay outside this example.
 
 Run inside a Buildkite job whose claims match your reviewed composition. The
 `organization_id` and `pipeline_id` claims must be explicitly requested. Use your
-deployment's exact audience and trusted canonical HTTPS Token Exchange Endpoint;
-the audience is configured separately from the endpoint URL.
+selected App's accepted audience and trusted canonical HTTPS Token Exchange
+Endpoint, such as `https://broker.example/github/apps/fixture-app/token` for the
+synthetic catalogue above. The audience is configured separately from that URL.
 
 This snippet demonstrates ID Token acquisition and the HTTP exchange. It checks
 the HTTP status and stores the response in a private temporary directory, which

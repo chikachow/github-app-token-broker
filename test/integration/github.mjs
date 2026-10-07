@@ -10,8 +10,10 @@ import {
 
 const server = createMockServer("github");
 const appPublicKey = readFixture("app.public.pem");
+const otherAppPublicKey = readFixture("other-app.public.pem");
 let mode = "normal";
 let releaseRevocation;
+const heldApps = new Map();
 
 function assertGitHubAppRequest(request) {
   assert.equal(request.headers.accept, "application/vnd.github+json");
@@ -22,36 +24,64 @@ function assertGitHubAppRequest(request) {
   const [header, payload, signature, extra] = authorization.slice(7).split(".");
   assert.equal(extra, undefined);
   assert.equal(JSON.parse(Buffer.from(header, "base64url")).alg, "RS256");
+  const claims = JSON.parse(Buffer.from(payload, "base64url"));
+  assert.ok(claims.iss === "Iv1.fixtureApp" || claims.iss === "Iv1.otherApp");
   assert.ok(
     verify(
       "RSA-SHA256",
       Buffer.from(`${header}.${payload}`),
-      appPublicKey,
+      claims.iss === "Iv1.fixtureApp" ? appPublicKey : otherAppPublicKey,
       Buffer.from(signature, "base64url"),
     ),
     "invalid App JWT signature",
   );
-  const claims = JSON.parse(Buffer.from(payload, "base64url"));
   const now = Date.now() / 1000;
-  assert.equal(claims.iss, "123456");
   assert.ok(Number.isInteger(claims.iat) && claims.iat <= now);
   assert.ok(Number.isInteger(claims.exp) && claims.exp > now && claims.exp - claims.iat <= 600);
+  return claims.iss;
 }
 
 async function protocol(request, response) {
   assert.equal(request.headers.host, "api.github.com");
   if (request.url === "/installation/token") {
     assert.equal(request.method, "DELETE");
-    assert.equal(request.headers.authorization, "Bearer ghs_disposable_integration_token");
+    const otherApp = request.headers.authorization === "Bearer ghs_disposable_other_app_token";
+    assert.ok(
+      otherApp || request.headers.authorization === "Bearer ghs_disposable_integration_token",
+    );
     assert.equal(mode, "revocation-gated");
     await new Promise((resolve) => {
       releaseRevocation = resolve;
     });
-    server.record({ kind: "revoked" });
+    server.record(otherApp ? { kind: "revoked", clientId: "Iv1.otherApp" } : { kind: "revoked" });
     response.writeHead(204).end();
     return;
   }
-  assertGitHubAppRequest(request);
+  const clientId = assertGitHubAppRequest(request);
+  if (request.method === "GET" && heldApps.has(clientId)) {
+    server.record({ kind: "held", clientId });
+    await heldApps.get(clientId).promise;
+  }
+  if (clientId === "Iv1.otherApp") {
+    if (request.url === "/repos/integration-owner/target/installation") {
+      assert.equal(request.method, "GET");
+      return sendJson(response, 200, { id: 54321, account: { login: "integration-owner" } });
+    }
+    assert.equal(request.url, "/app/installations/54321/access_tokens");
+    assert.equal(request.method, "POST");
+    assert.equal(request.headers["content-type"], "application/json");
+    const body = await readJson(request);
+    assert.deepEqual(body, {
+      repositories: ["target"],
+      permissions: { contents: "read", pull_requests: "read" },
+    });
+    server.record({ kind: "mint", clientId, body });
+    return sendJson(response, 201, {
+      token: "ghs_disposable_other_app_token",
+      expires_at: new Date(Date.now() + 3600000).toISOString(),
+      permissions: { contents: "read", pull_requests: "read" },
+    });
+  }
   if (request.url === "/repos/integration-buildkite-owner/target/installation") {
     assert.equal(request.method, "GET");
     return sendJson(response, 200, {
@@ -119,6 +149,21 @@ async function protocol(request, response) {
 }
 
 async function controls(request, response) {
+  if (
+    request.method === "POST" &&
+    (request.url === "/hold-app" || request.url === "/release-app")
+  ) {
+    const { clientId } = await readJson(request);
+    assert.ok(clientId === "Iv1.fixtureApp" || clientId === "Iv1.otherApp");
+    if (request.url === "/hold-app") {
+      assert.ok(!heldApps.has(clientId));
+      heldApps.set(clientId, Promise.withResolvers());
+    } else {
+      heldApps.get(clientId)?.resolve();
+      heldApps.delete(clientId);
+    }
+    return sendJson(response, 200, { ready: true });
+  }
   if (request.method === "POST" && request.url === "/release-revocation") {
     releaseRevocation?.();
     releaseRevocation = undefined;
@@ -141,6 +186,8 @@ async function controls(request, response) {
       ].includes(input.mode),
     );
     mode = input.mode;
+    for (const gate of heldApps.values()) gate.resolve();
+    heldApps.clear();
     server.reset();
     return sendJson(response, 200, { ready: true });
   }

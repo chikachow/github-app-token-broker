@@ -13,8 +13,15 @@ export default createTokenExchangeWorker(composition, {
   fetch: (input, init) => fetch(input, init),
   now: () => new Date(),
   observe: async (observation) => {
-    if (observation.fields["event"] === "installation_access_token_issuance_succeeded") {
-      throw new Error("synthetic observation failure");
+    const app = observation.fields["github_app"];
+    if (
+      observation.fields["event"] === "installation_access_token_issuance_succeeded" &&
+      typeof app === "object" &&
+      app !== null &&
+      "client_id" in app &&
+      app.client_id === "Iv1.otherApp"
+    ) {
+      throw new Error("synthetic App B observation failure");
     }
   },
 });

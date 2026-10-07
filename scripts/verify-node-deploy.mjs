@@ -55,7 +55,9 @@ if (typeof createGitHubAppTokenExchange !== "function") {
   const address = await app.listen({ host: "127.0.0.1", port: 0 });
 
   try {
-    const response = await fetch(`${address}/automation/token`, { method: "GET" });
+    const response = await fetch(`${address}/automation/github/apps/fixture-app/token`, {
+      method: "GET",
+    });
 
     if (response.status !== 400 || (await response.json()).error !== "invalid_request") {
       throw new Error(
@@ -66,7 +68,7 @@ if (typeof createGitHubAppTokenExchange !== "function") {
       throw new Error("deployed Fastify host omitted the non-cacheable OAuth response contract");
     }
 
-    const postResponse = await fetch(`${address}/automation/token`, {
+    const postResponse = await fetch(`${address}/automation/github/apps/fixture-app/token`, {
       body: new URLSearchParams({ grant_type: "unsupported" }),
       method: "POST",
     });
@@ -85,10 +87,10 @@ if (typeof createGitHubAppTokenExchange !== "function") {
   githubAppTokenExchangePlugin,
   type GitHubAppTokenExchangePluginOptions,
 } from "@github-app-token-broker/fastify";
-import type { TokenExchangeHandler } from "@github-app-token-broker/token-exchange";
+import type { GitHubAppTokenExchangeHandler } from "@github-app-token-broker/token-exchange";
 import Fastify from "fastify";
 
-declare const tokenExchange: TokenExchangeHandler;
+declare const tokenExchange: GitHubAppTokenExchangeHandler;
 const options: GitHubAppTokenExchangePluginOptions = { tokenExchange };
 const app = Fastify();
 await app.register(githubAppTokenExchangePlugin, { prefix: "/automation", tokenExchange });

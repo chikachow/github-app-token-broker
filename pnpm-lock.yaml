@@ -248,9 +248,6 @@ importers:
       '@github-app-token-broker/http':
         specifier: workspace:*
         version: link:../../packages/http
-      '@github-app-token-broker/oidc':
-        specifier: workspace:*
-        version: link:../../packages/oidc
       '@github-app-token-broker/token-exchange':
         specifier: workspace:*
         version: link:../../packages/token-exchange

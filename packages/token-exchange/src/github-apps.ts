@@ -1,0 +1,67 @@
+import {
+  isGitHubAppClientId,
+  type GitHubAppConfiguration,
+} from "@github-app-token-broker/github/app";
+import { parseSubjectTokenAudience } from "@github-app-token-broker/oidc/subject-token-audience";
+
+export interface TokenExchangeGitHubAppMetadata {
+  readonly clientId: string;
+  readonly slug: string;
+  readonly subjectTokenAudiences: readonly string[];
+}
+
+export interface TokenExchangeGitHubApp
+  extends TokenExchangeGitHubAppMetadata, GitHubAppConfiguration {}
+
+export function snapshotGitHubAppMetadata(
+  apps: readonly TokenExchangeGitHubAppMetadata[],
+): readonly TokenExchangeGitHubAppMetadata[] {
+  if (!Array.isArray(apps)) {
+    throw new TypeError("GitHub Apps must be an array");
+  }
+  const slugs = new Set<string>();
+  const clientIds = new Set<string>();
+  return Object.freeze(
+    Array.from(apps, (app) => {
+      if (
+        typeof app !== "object" ||
+        app === null ||
+        typeof app.slug !== "string" ||
+        app.slug.length > 100 ||
+        !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(app.slug) ||
+        !isGitHubAppClientId(app.clientId)
+      ) {
+        throw new TypeError("Invalid GitHub App identity");
+      }
+      if (slugs.has(app.slug) || clientIds.has(app.clientId)) {
+        throw new TypeError("GitHub App slugs and client IDs must be unique");
+      }
+      slugs.add(app.slug);
+      clientIds.add(app.clientId);
+      if (!Array.isArray(app.subjectTokenAudiences) || app.subjectTokenAudiences.length === 0) {
+        throw new TypeError("GitHub App Subject-Token Audiences must not be empty");
+      }
+      const audiences = Object.freeze(
+        Array.from(app.subjectTokenAudiences, parseSubjectTokenAudience),
+      );
+      if (new Set(audiences).size !== audiences.length) {
+        throw new TypeError("GitHub App Subject-Token Audiences must be unique");
+      }
+      return Object.freeze({
+        clientId: app.clientId,
+        slug: app.slug,
+        subjectTokenAudiences: audiences,
+      });
+    }),
+  );
+}
+
+export function snapshotGitHubApps(
+  apps: readonly TokenExchangeGitHubApp[],
+): readonly TokenExchangeGitHubApp[] {
+  return Object.freeze(
+    snapshotGitHubAppMetadata(apps).map((app, index) =>
+      Object.freeze({ ...app, privateKey: apps[index]!.privateKey }),
+    ),
+  );
+}

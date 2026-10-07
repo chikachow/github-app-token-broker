@@ -1,11 +1,12 @@
 import { generateKeyPairSync } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const directory = "test/integration/.generated";
 mkdirSync(directory, { recursive: true });
 for (const name of [
   "app",
+  "other-app",
   "github-actions",
   "buildkite",
   "google",
@@ -17,15 +18,26 @@ for (const name of [
   writeFileSync(`${directory}/${name}.pem`, privateKey.export({ type: "pkcs8", format: "pem" }), {
     mode: 0o600,
   });
-  if (name === "app") {
-    writeFileSync(`${directory}/app.public.pem`, publicKey.export({ type: "spki", format: "pem" }));
+  if (name === "app" || name === "other-app") {
     writeFileSync(
-      `${directory}/.env`,
-      `GITHUB_APP_PRIVATE_KEY=${JSON.stringify(privateKey.export({ type: "pkcs8", format: "pem" }))}\n`,
+      `${directory}/${name}.public.pem`,
+      publicKey.export({ type: "spki", format: "pem" }),
+    );
+    writeFileSync(
+      `${directory}/${name === "app" ? ".env" : ".other-env"}`,
+      `${name === "app" ? "GITHUB_APP_PRIVATE_KEY" : "OTHER_GITHUB_APP_PRIVATE_KEY"}=${JSON.stringify(privateKey.export({ type: "pkcs8", format: "pem" }))}\n`,
       { mode: 0o600 },
     );
   }
 }
+// Wrangler reads both independently generated App secrets from one disposable env file.
+appendFileSync(`${directory}/.env`, readFileSync(`${directory}/.other-env`));
+writeFileSync(`${directory}/bad-other-app.pem`, "invalid synthetic private key", { mode: 0o600 });
+writeFileSync(
+  `${directory}/.bad-other-env`,
+  `${readFileSync(`${directory}/.env`, "utf8").split("\n")[0]}\nOTHER_GITHUB_APP_PRIVATE_KEY="invalid synthetic private key"\n`,
+  { mode: 0o600 },
+);
 execFileSync(
   "openssl",
   [
