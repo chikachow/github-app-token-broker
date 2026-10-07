@@ -4,19 +4,36 @@ This document describes the public interface, security boundaries, and externall
 
 ## Public Endpoints
 
-| Route    | Method | Purpose                                      | Success response          |
-| -------- | ------ | -------------------------------------------- | ------------------------- |
-| `/token` | `POST` | Accept OpenID Connect ID Tokens for exchange | OAuth token response JSON |
+| Route                           | Method | Purpose                                      | Success response          |
+| ------------------------------- | ------ | -------------------------------------------- | ------------------------- |
+| `/github/apps/{app_slug}/token` | `POST` | Accept OpenID Connect ID Tokens for exchange | OAuth token response JSON |
 
-Unknown routes return `404` problem details. Routed unsupported methods on `/token` return OAuth error JSON with `400 {"error":"invalid_request"}`. A transport may reject a method it cannot represent before the endpoint route; no OAuth response shape is promised in that case.
+The runtime-neutral handler and Worker return `404` problem details for unknown
+routes. The Fastify adapter returns that shape for unconfigured App paths that
+reach its route; Fastify routing and parsing outside that route retain their
+framework responses. With the pinned default router, overlong App path parameters
+return `414`, malformed percent encoding returns `400`, and unrelated routes may
+fail body parsing before their eventual `404`. These requests perform no broker
+authentication, secret resolution, or GitHub I/O. Routed unsupported methods on `/github/apps/{app_slug}/token` return OAuth error JSON with `400 {"error":"invalid_request"}`. A transport may reject a method it cannot represent before the endpoint route; no OAuth response shape is promised in that case.
+
+App selection uses the exact configured lowercase, hyphen-separated slug in the path. Slugs match `[a-z0-9]+(?:-[a-z0-9]+)*` and contain at most 100 ASCII characters, matching Fastify's default route-parameter limit. There is no default app, body selector, numeric App ID route, or built-in `/token` alias. An unconfigured app route performs no authentication, secret resolution, or GitHub I/O. Catalogue construction rejects duplicate slugs or client IDs, malformed identities, empty or duplicate audience lists, and policy references to absent apps. Client IDs are non-empty ASCII identifiers beginning with a letter, followed by letters, digits, `_`, `.`, or `-`, bounded to 128 characters. They are used as GitHub JWT issuers; numeric metadata App IDs are unchanged.
+
+The operator configures the reviewed GitHub App slug and maintains its correspondence with GitHub. Construction validates its syntax without looking up the App. A GitHub slug rename requires an explicit endpoint migration; routes never follow a remote rename automatically.
+
+Convenience URLs, when needed, belong to a separate deployment-owned proxy outside the broker. That proxy forwards the signed subject token unchanged to an explicit canonical app route.
 
 ## Internal GitHub App Information RPC
 
-The Worker also exports a named `GitHubAppInformationEntrypoint` for an
+A deployment exports the class returned by
+`createGitHubAppInformationEntrypoint(githubApps)` as
+`GitHubAppInformationEntrypoint` for an
 explicitly configured Cloudflare Worker service binding. This is an internal
 Worker-to-Worker capability, not a public HTTP endpoint. The binding is the
-caller authorization boundary; callers do not provide an App selector, App
-JWT, private key, or Installation Access Token.
+caller authorization boundary. Each deployment-configured binding sets exactly
+`props.githubAppClientId` to one configured app; a consumer may hold several
+bindings with different selectors. Missing, malformed, or unconfigured selectors
+fail with `GitHubAppConfigurationError` before secret or GitHub access. Methods
+accept no per-call App selector, App JWT, private key, or Installation Access Token.
 
 The v1 methods are:
 
@@ -62,7 +79,7 @@ responses, broker-deadline expiry, and other transport failures remain
 RPC failures use stable error names: `GitHubAppNotFoundError`,
 `GitHubAppUnavailableError`, `GitHubAppUpstreamError`,
 `GitHubAppConfigurationError`, `GitHubAppInputError`, and
-`GitHubAppInternalError`. The configuration category covers an invalid App ID,
+`GitHubAppInternalError`. The configuration category covers an invalid App client ID, binding selector,
 private key, or GitHub rejecting the service-owned App JWT or credentials with
 HTTP `401`; the internal category covers other sanitized
 local implementation failures. GitHub error bodies, credentials, tokens, and
@@ -74,7 +91,7 @@ and [research findings](research/github-app-information.md).
 
 ### Request and response behaviour
 
-`POST /token` accepts `application/x-www-form-urlencoded` token exchange input aligned with [RFC 8693](https://www.rfc-editor.org/rfc/rfc8693):
+`POST /github/apps/{app_slug}/token` accepts `application/x-www-form-urlencoded` token exchange input aligned with [RFC 8693](https://www.rfc-editor.org/rfc/rfc8693):
 
 - `grant_type=urn:ietf:params:oauth:grant-type:token-exchange`
 - `subject_token=<openid-connect-id-token>`
@@ -91,7 +108,7 @@ Resource Server for the issued GitHub App installation access token. github-app-
 does not authenticate the Client. The ID Token in `subject_token` represents
 the token's Subject, which is not assumed to be the Client.
 
-The Cloudflare Worker adapter rate limits requests through the `TOKEN_EXCHANGE_RATE_LIMIT` binding before the body is parsed. `CF-Connecting-IP` is its only request-derived rate-limit key; when it is absent, the Worker uses the constant `unknown`. `X-Forwarded-For` does not supply rate-limit identity. Other hosting adapters must place their deployment-owned admission policy before body parsing; admission and request identity are not configuration surfaces of the runtime-neutral handler or Fastify plugin.
+The Cloudflare Worker adapter rate limits requests through the `TOKEN_EXCHANGE_RATE_LIMIT` binding before the body is parsed. `CF-Connecting-IP` is its only request-derived rate-limit key; when it is absent, the Worker uses the constant `unknown`. `X-Forwarded-For` does not supply rate-limit identity. Apps share this admission binding and capacity; the App slug is not part of the rate-limit key. Apps in one deployment have no independent availability guarantee. Other hosting adapters must place their deployment-owned admission policy before body parsing; admission and request identity are not configuration surfaces of the runtime-neutral handler or Fastify plugin.
 
 `resource` must be exactly one canonical GitHub repository API URI:
 
@@ -112,7 +129,7 @@ stored as independently mutable request state.
 
 An empty `scope` is not a no-permissions request and is never translated to an empty GitHub permissions object. The broker does not infer permissions from the Repository Resource, Subject Token Claims, Token Issuance Policy maxima, GitHub App grants, or deployment configuration. Source workflows either use the pinned action's least-privilege default scope or explicitly override it. Caller behavior does not make `scope` optional at the Token Exchange Endpoint.
 
-The OpenID Connect ID Token supplied as the RFC 8693 subject token must have non-empty Issuer Identifier (`iss`), Audience (`aud`), and Subject (`sub`) Claims plus numeric Expiration Time (`exp`) and Issued At (`iat`) Claims. github-app-token-broker accepts only the ID Token subject-token-type identifier, verifies the configured Issuer Identifier and expiration, and does not impose a separate maximum token age based on `iat`. The ID Token must have the single Subject-Token Audience value owned by the deployment. This value is parsed and validated into an exact non-empty, non-whitespace, single-line domain value and may be URL-shaped or opaque; the Cloudflare Worker obtains it from `TOKEN_BROKER_AUDIENCE`. Missing or plural token audiences, and every scalar value that does not exactly equal the configured value, receive `400 {"error":"invalid_request"}`. One authentication operation captures one value from the injected clock and uses it for JOSE time validation and cache decisions. After central verification, the authenticator copies and recursively freezes the verified JSON Claims. A non-null OIDC ID Token Profile validates that immutable snapshot as the provider-specific token kind; an explicit `null` profile means central validation is sufficient. Token Issuance Policy receives the same immutable snapshot only after profile admission, so profile validation and policy authorization remain separate decisions.
+The OpenID Connect ID Token supplied as the RFC 8693 subject token must have non-empty Issuer Identifier (`iss`), Audience (`aud`), and Subject (`sub`) Claims plus numeric Expiration Time (`exp`) and Issued At (`iat`) Claims. github-app-token-broker accepts only the ID Token subject-token-type identifier, verifies the configured Issuer Identifier and expiration, and does not impose a separate maximum token age based on `iat`. The token's `aud` must be one scalar exactly matching an entry in the selected app's non-empty `subjectTokenAudiences`. Configured values are non-empty, non-whitespace, single-line strings and may be URL-shaped or opaque. Missing or array-valued token audiences, including singleton arrays, and unmatched scalars receive `400 {"error":"invalid_request"}`. Audience membership is checked before provider profile admission and policy evaluation; sharing an issuer cache does not share audience acceptance. One authentication operation captures one value from the injected clock and uses it for JOSE time validation and cache decisions. After central verification, the authenticator copies and recursively freezes the verified JSON Claims. A non-null OIDC ID Token Profile validates that immutable snapshot as the provider-specific token kind; an explicit `null` profile means central validation is sufficient. Token Issuance Policy receives the same immutable snapshot only after profile admission, so profile validation and policy authorization remain separate decisions.
 
 An OIDC ID Token Profile must return a synchronous Boolean decision. `false`
 rejects the subject token. A non-Boolean result, including a Promise, is a
@@ -121,7 +138,7 @@ response.
 
 github-app-token-broker does not support RFC 8693 `audience`, `actor_token`, or `actor_token_type` form parameters. Non-empty `audience` parameters are rejected with `invalid_target` because this profile uses `resource` for the issued token target and service-owned GitHub App credentials. Actor-token parameters are rejected as malformed for this profile with `invalid_request`.
 
-github-app-token-broker also does not support OAuth client authentication or Rich Authorization Requests at `/token`. Requests containing non-empty `client_id`, `client_secret`, `client_assertion`, `client_assertion_type`, or `authorization_details` fields are rejected with `invalid_request` rather than silently ignored. Requests containing an `Authorization` header are rejected with `401 {"error":"invalid_client"}` and a matching `WWW-Authenticate` challenge. Value-less form parameters are treated as omitted, and other unrecognized extension parameters are ignored, according to OAuth Token Endpoint rules.
+github-app-token-broker also does not support OAuth client authentication or Rich Authorization Requests at `/github/apps/{app_slug}/token`. Requests containing non-empty `client_id`, `client_secret`, `client_assertion`, `client_assertion_type`, or `authorization_details` fields are rejected with `invalid_request` rather than silently ignored. Requests containing an `Authorization` header are rejected with `401 {"error":"invalid_client"}` and a matching `WWW-Authenticate` challenge. Value-less form parameters are treated as omitted, and other unrecognized extension parameters are ignored, according to OAuth Token Endpoint rules.
 
 The standards-defined access-token identifier is canonical for new Clients.
 The deprecated `urn:chikachow:github-app-installation-access-token` literal is
@@ -129,7 +146,7 @@ also accepted as a requested-token-type compatibility alias for pinned action
 releases. A successful response returns the supported identifier supplied by
 the Client as `issued_token_type`. No other requested token type is accepted.
 
-Successful ID Token verification establishes that the configured issuer signed the token for the exact deployment-owned Subject-Token Audience and establishes its Subject Token Claims; it does not authenticate the Client. The service owns the configured GitHub App credentials; `resource` names the GitHub API repository target where the issued token will be used; and Token Issuance Policy decides whether issuance is permitted for the resulting Verified Subject Token and Installation Access Token Request. Plural token audiences are rejected rather than interpreted by containment. The Worker reads the Subject-Token Audience only from `TOKEN_BROKER_AUDIENCE`; it owns no endpoint-location binding and never derives identity from the request URL, `Host`, forwarded headers, or `/token` path.
+Successful ID Token verification establishes that the configured issuer signed the token for the exact deployment-owned Subject-Token Audience and establishes its Subject Token Claims; it does not authenticate the Client. The service owns the configured GitHub App credentials; `resource` names the GitHub API repository target where the issued token will be used; and Token Issuance Policy decides whether issuance is permitted for the resulting Verified Subject Token and Installation Access Token Request. Plural token audiences are rejected rather than interpreted by containment. Accepted audiences come only from reviewed app configuration and never from request URL, `Host`, or forwarded headers. GitHub credential rebinding preserves the compiled broker's issuer state under its existing freshness, bounded-stale, refresh, and backoff rules. A common broker audience can be explicitly accepted by several apps; an app-specific vanity audience is accepted only by apps whose configuration lists it. Neither choice grants policy authority.
 
 When Token Issuance Policy does not permit issuance, github-app-token-broker distinguishes the
 Token Endpoint failure at the protocol boundary. An unsupported Repository Resource
@@ -222,6 +239,9 @@ before any GitHub request, and issuance success before returning a token. A reje
 acknowledgement replaces the otherwise applicable response with non-cacheable
 `500 {"error":"server_error"}`. The response and fallback log contain neither the observation
 failure detail nor a subject or access token.
+
+Issuance intent, denial, failure, and success observations include the selected
+`github_app.client_id`. This field comes from the configured App record. These issuance observations do not contain credentials.
 
 Authenticated Token Exchange observations include `subject_token.id_token_header_key_id`: the
 verified ID Token protected header's `kid`, or `null` when the header omits it.
@@ -332,7 +352,7 @@ The source-supported Fly provider package constructs a reviewed registration for
 
 A deployment composition may register that exact issuer and must independently add Permit Statements selecting every Fly Claim material to authorization. An already-built deployment artifact cannot add the registration or policy at runtime. Fly documents both its [organization-specific OpenID Connect issuers and Machine identity Claims](https://fly.io/docs/security/openid-connect/) and [Machine token acquisition with a caller-selected audience](https://fly.io/docs/machines/api/tokens-resource/).
 
-For a deployment whose Subject-Token Audience is `https://broker.example`, a Fly workload requests its ID Token with that exact value in the Fly Tokens resource `aud` field; `/token` is not part of the audience:
+For an App configured to accept `https://broker.example`, a Fly workload requests its ID Token with that exact value in the Fly Tokens resource `aud` field. The endpoint path is not appended to that configured audience:
 
 ```http
 POST /v1/tokens/oidc
@@ -368,7 +388,7 @@ for primary sources and the live-verification boundary.
 
 ### Token Issuance Policy
 
-Installation Access Token Issuance is allowed only when the normalized request is covered by the closed, immutable set of Permit Statements compiled into the deployment artifact. Each independently complete statement contains an exact issuer, Claim Predicates over Subject Token Claims, one Repository Resource Constraint, and a non-empty permission map. A constraint selects either one exact repository or every repository owned by one owner. Missing or wrongly typed selected Claims make a statement non-applicable; evaluation never throws for verified Claim data.
+Installation Access Token Issuance is allowed only when the normalized request is covered by the closed, immutable set of Permit Statements compiled into the deployment artifact. Each independently complete statement contains a `githubAppClientId`, an exact issuer, Claim Predicates over Subject Token Claims, one Repository Resource Constraint, and a non-empty permission map. A constraint selects either one exact repository or every repository owned by one owner. Missing or wrongly typed selected Claims make a statement non-applicable; evaluation never throws for verified Claim data.
 
 The `TokenIssuancePolicy` returned by `compileTokenIssuancePolicy` is a
 structural package Interface. Its compiled
@@ -377,9 +397,9 @@ repository }` for an exact repository or `{ owner, repository: null }` for every
 repository under that owner. Consumers discriminate owner-wide constraints with
 `repository === null`.
 
-All statements whose issuer, Claim Predicates, and Repository Resource Constraint apply contribute permissions pointwise using `omitted < read < write < admin`. One total policy evaluation returns exactly one outcome: `permitted`, `target_unsupported`, `requested_permissions_unsupported`, or `subject_token_unacceptable`. It derives protocol classification and the authorization answer in one traversal; no caller recomputes support through separate Boolean queries. Statement order is irrelevant, stronger contributed permissions cover weaker Requested Permissions, and several statements may jointly cover a request. Permission names are extensible, but every Requested Permission still requires explicit Permit Statement coverage; arbitrary names are never authorized by default. There are no deny statements, inheritance, dynamic configuration, generic expression language, matched-statement result, or contributor list.
+Only statements for the selected GitHub App client ID whose issuer, Claim Predicates, and Repository Resource Constraint apply contribute permissions pointwise using `omitted < read < write < admin`. One total policy evaluation returns exactly one outcome: `permitted`, `target_unsupported`, `requested_permissions_unsupported`, or `subject_token_unacceptable`. It derives protocol classification and the authorization answer in one traversal; no caller recomputes support through separate Boolean queries. Statement order is irrelevant, stronger contributed permissions cover weaker Requested Permissions, and several statements may jointly cover a request. Permission names are extensible, but every Requested Permission still requires explicit Permit Statement coverage; arbitrary names are never authorized by default. There are no deny statements, inheritance, dynamic configuration, generic expression language, matched-statement result, or contributor list.
 
-Every policy issuer must resolve to an OIDC Provider Registration when the application is composed; the reverse is intentionally not required. The deployment-owned TypeScript entrypoint and its independent tests are authoritative for an artifact's exact inventory.
+Every policy app client ID must resolve to the configured app catalogue, and every policy issuer must resolve to an OIDC Provider Registration when the application is composed; the reverse is intentionally not required. Target support and both permission-coverage checks exclude other apps before denial classification. The deployment-owned TypeScript entrypoint and its independent tests are authoritative for an artifact's exact inventory.
 
 #### GitHub Actions
 
@@ -405,11 +425,11 @@ Contexts not covered by the compiled Permit Statements are denied.
 
 #### Shared enforcement and issuance
 
-The Client cannot select arbitrary GitHub Apps or repository IDs. It may name any structurally valid GitHub permission in `scope`, but Token Issuance Policy answers whether its Effective Permissions cover every Requested Permission; names are never authorized merely because they parse. If policy does not permit issuance, github-app-token-broker returns `invalid_target` when the Repository Resource is unsupported, `invalid_scope` when the resource is supported but the Requested Permissions are not, and `invalid_request` when both are supported but the Verified Subject Token is unacceptable to policy. The [GitHub App installation](https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app) independently remains the upper bound on repositories and permissions.
+The Client selects one configured GitHub App by its exact route slug, and independently selects its Repository Resource and Requested Permissions. It cannot configure an app or supply repository IDs. It may name any structurally valid GitHub permission in `scope`, but Token Issuance Policy answers whether its Effective Permissions cover every Requested Permission; names are never authorized merely because they parse. If policy does not permit issuance, github-app-token-broker returns `invalid_target` when the Repository Resource is unsupported, `invalid_scope` when the resource is supported but the Requested Permissions are not, and `invalid_request` when both are supported but the Verified Subject Token is unacceptable to policy. The [GitHub App installation](https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app) independently remains the upper bound on repositories and permissions.
 
 Missing or incorrectly typed claims selected by Permit Statements authenticate as verified token data but make the Verified Subject Token unacceptable to policy for a supported target, returning `400 {"error":"invalid_request"}`. An invalid standard ID Token claim or failed non-null OIDC ID Token Profile is also an invalid subject token and returns `400 {"error":"invalid_request"}` before policy evaluation.
 
-After policy permits issuance, the broker passes the normalized Repository Resource and Requested Permissions to one broker-owned GitHub issuance capability. That capability resolves the GitHub App credentials and App JWT once for the exchange, uses them to resolve the target installation with `GET /repos/{owner}/{repo}/installation`, and requires the returned installation account's `login` to match the requested owner case-insensitively before minting. The shared GitHub HTTP client rejects redirect responses before any follow-up request, so App credentials are never forwarded through a redirect; owner validation independently protects the repository selected by Token Issuance Policy. It then mints the final Installation Access Token with GitHub's `repositories` selector and the exact Requested Permissions. It sends no [temporary stateful-token override](https://github.blog/changelog/2026-05-15-github-app-installation-tokens-per-request-override-header/) and treats the returned token string as an opaque credential, accepting both GitHub's legacy opaque and JWT-shaped installation-token formats. It does not fetch source repository metadata or use live default-branch metadata as policy criteria. A successful GitHub lookup whose installation owner does not match the requested owner is treated as an upstream failure and returns `502 {"error":"server_error"}`. Other GitHub validation failure after policy approval, including HTTP `422` for a name or level GitHub does not accept, is a service/configuration failure and returns `500 {"error":"server_error"}` rather than `invalid_scope`.
+After policy permits issuance, the broker passes the normalized Repository Resource and Requested Permissions to one broker-owned GitHub issuance capability. That capability resolves only the selected GitHub App's private key and creates an App JWT whose `iss` is its configured client ID once for the exchange, uses them to resolve the target installation with `GET /repos/{owner}/{repo}/installation`, and requires the returned installation account's `login` to match the requested owner case-insensitively before minting. The shared GitHub HTTP client rejects redirect responses before any follow-up request, so App credentials are never forwarded through a redirect; owner validation independently protects the repository selected by Token Issuance Policy. It then mints the final Installation Access Token with GitHub's `repositories` selector and the exact Requested Permissions. It sends no [temporary stateful-token override](https://github.blog/changelog/2026-05-15-github-app-installation-tokens-per-request-override-header/) and treats the returned token string as an opaque credential, accepting both GitHub's legacy opaque and JWT-shaped installation-token formats. It does not fetch source repository metadata or use live default-branch metadata as policy criteria. A successful GitHub lookup whose installation owner does not match the requested owner is treated as an upstream failure and returns `502 {"error":"server_error"}`. Other GitHub validation failure after policy approval, including HTTP `422` for a name or level GitHub does not accept, is a service/configuration failure and returns `500 {"error":"server_error"}` rather than `invalid_scope`.
 
 Every GitHub request is restricted to `https://api.github.com`, rejects redirects without making a follow-up request, and has one fixed broker-owned 10-second deadline covering response headers and complete bounded body consumption. A deadline or other transport failure maps to `503 {"error":"temporarily_unavailable"}` at the Token Endpoint and `GitHubAppUnavailableError` through the GitHub App Information RPC. Operational logs distinguish the actual `error.upstream_status`, when response headers were received even if body consumption fails, from the broker's classified `error.status`; a synthetic `502` is never logged as if GitHub returned `502`. After installation resolution succeeds, its ID remains available to the failure log even if the subsequent token-minting request fails.
 
@@ -453,16 +473,9 @@ github-app-token-broker denies malformed `scope` values, Requested Permissions n
 
 ## Cloudflare Worker Runtime Bindings
 
-The implementation uses these runtime bindings:
+The Worker requires `TOKEN_EXCHANGE_RATE_LIMIT` and each private-key binding named in its reviewed `githubApps` catalogue. A key may be a Worker secret string or a Secrets Store binding. Keys are resolved lazily only for authorized issuance or an explicitly scoped RPC call; an unusable selected key does not require resolving another App's key. This is not an availability guarantee: Apps share the Worker, admission binding, and upstream services.
 
-- `GITHUB_APP_ID`
-- `GITHUB_APP_PRIVATE_KEY` Secrets Store binding or Worker secret
-- `TOKEN_BROKER_AUDIENCE`
-- `TOKEN_EXCHANGE_RATE_LIMIT` Cloudflare rate-limit binding
-
-The public Wrangler configs declare binding names for local development, tests,
-and dry-runs. `GITHUB_APP_ID` is a positive decimal identifier. The GitHub API
-destination is fixed to `https://api.github.com` and is not a runtime binding.
+App slugs, client IDs, accepted audiences, and private-key binding names are build-time configuration, not runtime identity overrides. `GITHUB_APP_ID` and `TOKEN_BROKER_AUDIENCE` no longer configure the broker. The public template has an empty app catalogue and requires no app secret. The GitHub API destination remains fixed to `https://api.github.com`.
 
 ## Unsupported Behaviour
 

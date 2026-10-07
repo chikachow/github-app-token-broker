@@ -36,6 +36,7 @@ function validPermitStatement(): PermitStatementDefinition {
   return {
     permissions: { contents: "write" },
     resource: githubRepositoryResourceConstraint("owner", "repository"),
+    githubAppClientId: "Iv1.fixtureApp",
     subjectToken: oidcSubjectTokenConstraint(
       issuer,
       claimEquals("repository", "owner/source"),
@@ -118,6 +119,7 @@ describe("Token Issuance Policy compilation", () => {
       {
         permissions: { contents: "write" },
         resource: { owner: "owner", repository: "repository" },
+        githubAppClientId: "Iv1.fixtureApp",
         subjectToken: {
           claimPredicates: [
             { claimName: "trusted", expectedValue: true, kind: "claim-equals" as const },
@@ -151,6 +153,7 @@ describe("Token Issuance Policy compilation", () => {
             owner: "owner",
             repository: "repository",
           },
+          githubAppClientId: "Iv1.fixtureApp",
           subjectToken: {
             claimPredicates: [
               { claimName: "trusted", expectedValue: true, kind: "claim-equals" },
@@ -173,6 +176,7 @@ describe("Token Issuance Policy compilation", () => {
       {
         permissions: { contents: "read" },
         resource: githubRepositoryOwnerResourceConstraint("Owner.Name"),
+        githubAppClientId: "Iv1.fixtureApp",
         subjectToken: oidcSubjectTokenConstraint(issuer),
       },
     ]);
@@ -192,6 +196,7 @@ describe("Token Issuance Policy compilation", () => {
       [
         {
           ...validPermitStatement(),
+          githubAppClientId: "Iv1.fixtureApp",
           subjectToken: { ...validPermitStatement().subjectToken, issuer: "not an issuer" },
         },
       ],
@@ -201,6 +206,7 @@ describe("Token Issuance Policy compilation", () => {
       [
         {
           ...validPermitStatement(),
+          githubAppClientId: "Iv1.fixtureApp",
           subjectToken: { ...validPermitStatement().subjectToken, issuer: null },
         },
       ],
@@ -210,6 +216,7 @@ describe("Token Issuance Policy compilation", () => {
       [
         {
           ...validPermitStatement(),
+          githubAppClientId: "Iv1.fixtureApp",
           subjectToken: {
             ...validPermitStatement().subjectToken,
             claimPredicates: [{ claimName: "claim", expectedValue: 1, kind: "claim-equals" }],
@@ -222,6 +229,7 @@ describe("Token Issuance Policy compilation", () => {
       [
         {
           ...validPermitStatement(),
+          githubAppClientId: "Iv1.fixtureApp",
           subjectToken: {
             ...validPermitStatement().subjectToken,
             claimPredicates: [{ claimName: null, expectedValue: true, kind: "claim-equals" }],
@@ -234,6 +242,7 @@ describe("Token Issuance Policy compilation", () => {
       [
         {
           ...validPermitStatement(),
+          githubAppClientId: "Iv1.fixtureApp",
           subjectToken: {
             ...validPermitStatement().subjectToken,
             claimPredicates: [
@@ -249,6 +258,7 @@ describe("Token Issuance Policy compilation", () => {
       [
         {
           ...validPermitStatement(),
+          githubAppClientId: "Iv1.fixtureApp",
           subjectToken: {
             ...validPermitStatement().subjectToken,
             claimPredicates: [{ claimName: "claim", expectedValues: [], kind: "claim-one-of" }],
@@ -261,6 +271,7 @@ describe("Token Issuance Policy compilation", () => {
       [
         {
           ...validPermitStatement(),
+          githubAppClientId: "Iv1.fixtureApp",
           subjectToken: {
             ...validPermitStatement().subjectToken,
             claimPredicates: [
@@ -279,6 +290,7 @@ describe("Token Issuance Policy compilation", () => {
       [
         {
           ...validPermitStatement(),
+          githubAppClientId: "Iv1.fixtureApp",
           subjectToken: {
             ...validPermitStatement().subjectToken,
             claimPredicates: [
@@ -327,6 +339,7 @@ describe("Token Issuance Policy compilation", () => {
         return [
           {
             ...statement,
+            githubAppClientId: "Iv1.fixtureApp",
             subjectToken: {
               ...statement.subjectToken,
               claimPredicates: [{ ...claimEquals("claim", "value"), unknown: true }],
@@ -343,6 +356,7 @@ describe("Token Issuance Policy compilation", () => {
         return [
           {
             ...statement,
+            githubAppClientId: "Iv1.fixtureApp",
             subjectToken: {
               ...statement.subjectToken,
               claimPredicates: [{ claimName: "claim", expectedValue: true }],
@@ -359,6 +373,7 @@ describe("Token Issuance Policy compilation", () => {
         return [
           {
             ...statement,
+            githubAppClientId: "Iv1.fixtureApp",
             subjectToken: {
               ...statement.subjectToken,
               claimPredicates: [{ claimName: "claim", expectedValue: true, kind: "unsupported" }],
@@ -375,6 +390,7 @@ describe("Token Issuance Policy compilation", () => {
         return [
           {
             ...statement,
+            githubAppClientId: "Iv1.fixtureApp",
             subjectToken: {
               ...statement.subjectToken,
               claimPredicates: [{ claimName: "claim", expectedValue: true, kind: 1 }],
@@ -390,11 +406,13 @@ describe("Token Issuance Policy compilation", () => {
   it("rejects missing, accessor-backed, and symbol-bearing structural fields", () => {
     const statement = validPermitStatement();
     const missingSubjectToken = {
+      githubAppClientId: statement.githubAppClientId,
       permissions: statement.permissions,
       resource: statement.resource,
     };
     const accessorSubjectToken = Object.defineProperty(
       {
+        githubAppClientId: statement.githubAppClientId,
         permissions: statement.permissions,
         resource: statement.resource,
       },
@@ -420,6 +438,7 @@ describe("Token Issuance Policy compilation", () => {
       compileTokenIssuancePolicy([
         {
           ...statement,
+          githubAppClientId: "Iv1.fixtureApp",
           subjectToken: { ...statement.subjectToken, claimPredicates: [accessorKind] },
         } as never,
       ]),
@@ -452,6 +471,7 @@ describe("Token Issuance Policy compilation", () => {
   it("rejects inherited definition fields", () => {
     const statement = Object.assign(Object.create({ permissions: { contents: "write" } }), {
       resource: githubRepositoryResourceConstraint("owner", "repository"),
+      githubAppClientId: "Iv1.fixtureApp",
       subjectToken: oidcSubjectTokenConstraint(issuer),
     });
 
@@ -536,6 +556,7 @@ function statementFor(
   return {
     permissions,
     resource: githubRepositoryResourceConstraint("owner", "repository"),
+    githubAppClientId: "Iv1.fixtureApp",
     subjectToken: oidcSubjectTokenConstraint(issuer),
     ...overrides,
   };
@@ -605,7 +626,10 @@ function policyEvaluationPermits(
   verifiedSubjectToken: Parameters<typeof evaluateTokenIssuancePolicy>[1],
   request: Parameters<typeof evaluateTokenIssuancePolicy>[2],
 ): boolean {
-  return evaluateTokenIssuancePolicy(policy, verifiedSubjectToken, request).outcome === "permitted";
+  return (
+    evaluateTokenIssuancePolicy(policy, verifiedSubjectToken, request, "Iv1.fixtureApp").outcome ===
+    "permitted"
+  );
 }
 
 function expectRecursivelyFrozen(value: unknown, seen = new Set<object>()): void {
@@ -629,13 +653,19 @@ describe("Token Issuance Policy evaluation", () => {
       statementFor(
         { contents: "write" },
         {
+          githubAppClientId: "Iv1.fixtureApp",
           subjectToken: oidcSubjectTokenConstraint(issuer, claimEquals("trusted", true)),
         },
       ),
     ]);
 
     expect(
-      evaluateTokenIssuancePolicy(policy, matchingSubjectToken, requestFor({ contents: "read" })),
+      evaluateTokenIssuancePolicy(
+        policy,
+        matchingSubjectToken,
+        requestFor({ contents: "read" }),
+        "Iv1.fixtureApp",
+      ),
     ).toEqual({ outcome: "permitted" });
     expect(
       evaluateTokenIssuancePolicy(
@@ -645,16 +675,23 @@ describe("Token Issuance Policy evaluation", () => {
           { contents: "read" },
           createGitHubRepositoryResource({ owner: "other", repository: "repository" }),
         ),
+        "Iv1.fixtureApp",
       ),
     ).toEqual({ outcome: "target_unsupported" });
     expect(
-      evaluateTokenIssuancePolicy(policy, matchingSubjectToken, requestFor({ contents: "admin" })),
+      evaluateTokenIssuancePolicy(
+        policy,
+        matchingSubjectToken,
+        requestFor({ contents: "admin" }),
+        "Iv1.fixtureApp",
+      ),
     ).toEqual({ outcome: "requested_permissions_unsupported" });
     expect(
       evaluateTokenIssuancePolicy(
         policy,
         verifiedSubjectTokenFor({ trusted: false }),
         requestFor({ contents: "read" }),
+        "Iv1.fixtureApp",
       ),
     ).toEqual({ outcome: "subject_token_unacceptable" });
   });
@@ -709,6 +746,7 @@ describe("Token Issuance Policy evaluation", () => {
       statementFor(
         { contents: "read" },
         {
+          githubAppClientId: "Iv1.fixtureApp",
           subjectToken: oidcSubjectTokenConstraint(
             issuer,
             claimEquals("trusted", true),
@@ -761,10 +799,14 @@ describe("Token Issuance Policy evaluation", () => {
     ).toBe(true);
     expect(policyEvaluationPermits(policy, matchingSubjectToken, otherRepository)).toBe(true);
     expect(policyEvaluationPermits(policy, matchingSubjectToken, otherOwner)).toBe(false);
-    expect(evaluateTokenIssuancePolicy(policy, matchingSubjectToken, otherRepository)).toEqual({
+    expect(
+      evaluateTokenIssuancePolicy(policy, matchingSubjectToken, otherRepository, "Iv1.fixtureApp"),
+    ).toEqual({
       outcome: "permitted",
     });
-    expect(evaluateTokenIssuancePolicy(policy, matchingSubjectToken, otherOwner)).toEqual({
+    expect(
+      evaluateTokenIssuancePolicy(policy, matchingSubjectToken, otherOwner, "Iv1.fixtureApp"),
+    ).toEqual({
       outcome: "target_unsupported",
     });
   });
@@ -779,10 +821,14 @@ describe("Token Issuance Policy evaluation", () => {
 
     expect(policyEvaluationPermits(policy, matchingSubjectToken, exactRequest)).toBe(true);
     expect(policyEvaluationPermits(policy, matchingSubjectToken, otherRepository)).toBe(false);
-    expect(evaluateTokenIssuancePolicy(policy, matchingSubjectToken, exactRequest)).toEqual({
+    expect(
+      evaluateTokenIssuancePolicy(policy, matchingSubjectToken, exactRequest, "Iv1.fixtureApp"),
+    ).toEqual({
       outcome: "permitted",
     });
-    expect(evaluateTokenIssuancePolicy(policy, matchingSubjectToken, otherRepository)).toEqual({
+    expect(
+      evaluateTokenIssuancePolicy(policy, matchingSubjectToken, otherRepository, "Iv1.fixtureApp"),
+    ).toEqual({
       outcome: "target_unsupported",
     });
   });
@@ -792,6 +838,7 @@ describe("Token Issuance Policy evaluation", () => {
       statementFor(
         { contents: "read" },
         {
+          githubAppClientId: "Iv1.fixtureApp",
           subjectToken: oidcSubjectTokenConstraint(
             issuer,
             claimEquals("inherited", "value"),
@@ -829,6 +876,7 @@ describe("Token Issuance Policy evaluation", () => {
       statementFor(
         { actions: "read" },
         {
+          githubAppClientId: "Iv1.fixtureApp",
           subjectToken: oidcSubjectTokenConstraint(issuer, claimEquals("branch", "main")),
         },
       ),
@@ -876,6 +924,7 @@ describe("Token Issuance Policy evaluation", () => {
       statementFor(
         { contents: "write" },
         {
+          githubAppClientId: "Iv1.fixtureApp",
           subjectToken: oidcSubjectTokenConstraint(issuer, claimEquals("branch", "other")),
         },
       ),
@@ -909,13 +958,16 @@ describe("Token Issuance Policy evaluation", () => {
       statementFor(
         { actions: "read" },
         {
+          githubAppClientId: "Iv1.fixtureApp",
           subjectToken: oidcSubjectTokenConstraint(issuer, claimEquals("branch", "other")),
         },
       ),
     ]);
     const supportedTarget = requestFor({ actions: "read", contents: "read" });
 
-    expect(evaluateTokenIssuancePolicy(policy, matchingSubjectToken, supportedTarget)).toEqual({
+    expect(
+      evaluateTokenIssuancePolicy(policy, matchingSubjectToken, supportedTarget, "Iv1.fixtureApp"),
+    ).toEqual({
       outcome: "subject_token_unacceptable",
     });
     expect(
@@ -926,10 +978,16 @@ describe("Token Issuance Policy evaluation", () => {
           { contents: "read" },
           createGitHubRepositoryResource({ owner: "other", repository: "repository" }),
         ),
+        "Iv1.fixtureApp",
       ),
     ).toEqual({ outcome: "target_unsupported" });
     expect(
-      evaluateTokenIssuancePolicy(policy, matchingSubjectToken, requestFor({ actions: "write" })),
+      evaluateTokenIssuancePolicy(
+        policy,
+        matchingSubjectToken,
+        requestFor({ actions: "write" }),
+        "Iv1.fixtureApp",
+      ),
     ).toEqual({ outcome: "requested_permissions_unsupported" });
   });
 
@@ -956,6 +1014,7 @@ describe("Token Issuance Policy evaluation", () => {
     const statement = {
       permissions,
       resource: { owner: "owner", repository: "repository" },
+      githubAppClientId: "Iv1.fixtureApp",
       subjectToken: {
         claimPredicates: [
           { claimName: "environment", expectedValues, kind: "claim-one-of" as const },
@@ -1048,3 +1107,19 @@ function verifiedSubjectTokenFor(claims: Record<string, unknown>): VerifiedSubje
     },
   };
 }
+
+describe("Permit Statement App identity", () => {
+  it.each([undefined, null, 12345, "", "12345", " Iv1.example", "Iv1.example\n", "I".repeat(129)])(
+    "rejects invalid App client ID %j",
+    (githubAppClientId) => {
+      expect(() =>
+        compileTokenIssuancePolicy([
+          {
+            ...validPermitStatement(),
+            githubAppClientId: githubAppClientId as never,
+          },
+        ]),
+      ).toThrow("permitStatements[0].githubAppClientId");
+    },
+  );
+});

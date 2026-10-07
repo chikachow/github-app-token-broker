@@ -1,3 +1,4 @@
+import { testGitHubActionsTokenExchangeComposition } from "./support/worker.ts";
 import { githubActionsTokenExchangeRequestBody } from "./support/github-actions-token-exchange.ts";
 import { describe, expect, it, vi } from "vitest";
 
@@ -9,7 +10,7 @@ import {
 } from "@github-app-token-broker/token-issuance-policy";
 import {
   createTokenExchangeWorker,
-  GitHubAppInformationEntrypoint,
+  createGitHubAppInformationEntrypoint,
 } from "@github-app-token-broker/worker";
 import { parseOidcIssuerIdentifier } from "@github-app-token-broker/oidc/provider-registration";
 import genericTokenExchangeWorker from "../workers/github-app-token-broker/src/generic-worker.ts";
@@ -17,7 +18,7 @@ import { testGitHubActionsTokenIssuancePolicy } from "./support/github-actions-t
 
 describe("worker entrypoint shapes", () => {
   it("exports only the reviewed GitHub App Information RPC methods", () => {
-    expect(Object.getOwnPropertyNames(GitHubAppInformationEntrypoint.prototype)).toEqual([
+    expect(Object.getOwnPropertyNames(createGitHubAppInformationEntrypoint([]).prototype)).toEqual([
       "constructor",
       "getApp",
       "listInstallations",
@@ -29,6 +30,7 @@ describe("worker entrypoint shapes", () => {
   it("rejects duplicate OIDC Provider Registration issuers when composed", () => {
     expect(() =>
       createTokenExchangeWorker({
+        githubApps: testGitHubActionsTokenExchangeComposition.githubApps,
         oidcProviderRegistrations: [
           githubActionsOidcProviderRegistration,
           githubActionsOidcProviderRegistration,
@@ -47,9 +49,11 @@ describe("worker entrypoint shapes", () => {
 
     expect(() =>
       createTokenExchangeWorker({
+        githubApps: testGitHubActionsTokenExchangeComposition.githubApps,
         oidcProviderRegistrations: [],
         tokenIssuancePolicy: compileTokenIssuancePolicy([
           {
+            githubAppClientId: "Iv1.fixtureApp",
             permissions: { contents: "read" },
             resource: githubRepositoryResourceConstraint("owner", "repository"),
             subjectToken: oidcSubjectTokenConstraint(issuer),
@@ -62,6 +66,7 @@ describe("worker entrypoint shapes", () => {
   it("allows an empty deny-all policy and unused registrations", () => {
     expect(() =>
       createTokenExchangeWorker({
+        githubApps: testGitHubActionsTokenExchangeComposition.githubApps,
         oidcProviderRegistrations: [githubActionsOidcProviderRegistration],
         tokenIssuancePolicy: compileTokenIssuancePolicy([]),
       }),
@@ -73,6 +78,7 @@ describe("worker entrypoint shapes", () => {
 
     createTokenExchangeWorker(
       {
+        githubApps: testGitHubActionsTokenExchangeComposition.githubApps,
         oidcProviderRegistrations: [githubActionsOidcProviderRegistration],
         tokenIssuancePolicy: testGitHubActionsTokenIssuancePolicy,
       },
@@ -97,24 +103,21 @@ describe("worker entrypoint shapes", () => {
 
       const response = await Promise.resolve(
         handler(
-          new Request("https://example.test/token", {
+          new Request("https://example.test/github/apps/fixture-app/token", {
             body: await githubActionsTokenExchangeRequestBody(),
             headers: { "content-type": "application/x-www-form-urlencoded" },
             method: "POST",
           }) as Parameters<typeof handler>[0],
           {
-            GITHUB_APP_ID: "000000",
-            GITHUB_APP_PRIVATE_KEY: "unused",
-            TOKEN_BROKER_AUDIENCE: "https://broker.example",
             TOKEN_EXCHANGE_RATE_LIMIT: { limit: async () => ({ success: true }) },
           },
           {} as ExecutionContext,
         ),
       );
 
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(404);
       expect(response.headers.get("www-authenticate")).toBeNull();
-      await expect(response.json()).resolves.toEqual({ error: "invalid_request" });
+      await expect(response.json()).resolves.toMatchObject({ status: 404 });
       expect(fetchExternal).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();

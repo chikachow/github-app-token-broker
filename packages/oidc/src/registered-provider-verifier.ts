@@ -64,6 +64,7 @@ interface RegisteredOidcProviderVerifierDependencies {
 export interface RegisteredOidcProviderVerifier {
   verifyIdToken(
     idToken: string,
+    subjectTokenAudiences: readonly SubjectTokenAudience[],
     observe?: (event: OidcDiagnosticEvent) => void,
   ): Promise<OidcIdTokenAuthenticationResult>;
 }
@@ -117,20 +118,18 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
   readonly #dependencies: RegisteredOidcProviderVerifierDependencies;
   readonly #providerRegistration: OidcProviderRegistration;
   readonly #state: ProviderState = { metadataGeneration: 0 };
-  readonly #subjectTokenAudience: SubjectTokenAudience;
 
   public constructor(
     providerRegistration: OidcProviderRegistration,
-    subjectTokenAudience: SubjectTokenAudience,
     dependencies: RegisteredOidcProviderVerifierDependencies,
   ) {
     this.#dependencies = dependencies;
     this.#providerRegistration = providerRegistration;
-    this.#subjectTokenAudience = subjectTokenAudience;
   }
 
   public async verifyIdToken(
     idToken: string,
+    subjectTokenAudiences: readonly SubjectTokenAudience[],
     observe?: (event: OidcDiagnosticEvent) => void,
   ): Promise<OidcIdTokenAuthenticationResult> {
     try {
@@ -158,7 +157,7 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
           providerRegistration: this.#providerRegistration,
           idToken,
           operationDate,
-          subjectTokenAudience: this.#subjectTokenAudience,
+          subjectTokenAudiences,
         });
       } catch (error) {
         if (!hasJoseErrorCode(error, "ERR_JWKS_NO_MATCHING_KEY")) {
@@ -181,7 +180,7 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
           providerRegistration: this.#providerRegistration,
           idToken,
           operationDate,
-          subjectTokenAudience: this.#subjectTokenAudience,
+          subjectTokenAudiences,
         });
       }
 
@@ -656,11 +655,9 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
 export function createRegisteredOidcProviderVerifier(input: {
   readonly dependencies: RegisteredOidcProviderVerifierDependencies;
   readonly providerRegistration: OidcProviderRegistration;
-  readonly subjectTokenAudience: SubjectTokenAudience;
 }): RegisteredOidcProviderVerifier {
   return new RegisteredOidcProviderVerifierImplementation(
     input.providerRegistration,
-    input.subjectTokenAudience,
     input.dependencies,
   );
 }
@@ -671,17 +668,17 @@ async function verifyIdToken(input: {
   idToken: string;
   operationDate: Date;
   providerRegistration: OidcProviderRegistration;
-  subjectTokenAudience: SubjectTokenAudience;
+  subjectTokenAudiences: readonly SubjectTokenAudience[];
 }): Promise<VerifiedOidcIdToken> {
   const { payload, protectedHeader } = await jwtVerify(input.idToken, input.cachedJwks.getKey, {
     algorithms: [...input.acceptedIdTokenSigningAlgorithms],
-    audience: input.subjectTokenAudience,
+    audience: [...input.subjectTokenAudiences],
     issuer: input.providerRegistration.issuer,
     currentDate: input.operationDate,
     requiredClaims: ["aud", "sub", "exp", "iat"],
   });
 
-  const claims = parseVerifiedOidcIdTokenClaims(payload, input.subjectTokenAudience);
+  const claims = parseVerifiedOidcIdTokenClaims(payload, input.subjectTokenAudiences);
 
   if (claims === null) {
     throw new OidcSubjectTokenError("ERR_JWT_CLAIM_VALIDATION_FAILED");
@@ -961,11 +958,11 @@ function internalFailure(diagnosticCode?: string): OidcIdTokenAuthenticationFail
 
 function parseVerifiedOidcIdTokenClaims(
   input: Record<string, unknown>,
-  subjectTokenAudience: SubjectTokenAudience,
+  subjectTokenAudiences: readonly SubjectTokenAudience[],
 ): VerifiedOidcIdTokenClaims | null {
   const parsed = verifiedOidcIdTokenClaimsSchema.safeParse(input);
 
-  if (!parsed.success || parsed.data.aud !== subjectTokenAudience) {
+  if (!parsed.success || !subjectTokenAudiences.some((audience) => audience === parsed.data.aud)) {
     return null;
   }
 

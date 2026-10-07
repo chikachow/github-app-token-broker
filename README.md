@@ -2,23 +2,16 @@
 
 `github-app-token-broker` is a narrowly scoped Security Token Service for trusted automation workloads. It authenticates OpenID Connect ID Tokens from configured issuers and performs Installation Access Token Issuance only when Token Issuance Policy permits the resulting Verified Subject Token and Installation Access Token Request.
 
-The only public service route is `POST /token`. The service has no webhook receiver, deployment trigger endpoint, app selector, multi-key endpoint, or client-controlled issuer configuration.
+The only public service route is `POST /github/apps/{app_slug}/token`. The route selects one configured GitHub App; it does not grant authority. The service has no webhook receiver, deployment trigger endpoint, or client-controlled issuer configuration.
 
-## Architecture
+The runtime-neutral Token Exchange module is available through Cloudflare Worker
+and Node 24/Fastify 5 adapters. Deployments supply a reviewed App catalogue, OIDC
+Provider Registrations, and app-qualified Token Issuance Policy; private keys
+remain runtime secrets. See the [implementation guide](docs/implementation.md)
+for the package map and the [multi-App decision](docs/decisions/multiple-github-apps.md)
+for isolation and audience ownership.
 
-- `workers/github-app-token-broker` is the sole deployable Cloudflare Worker package (`@github-app-token-broker/worker`).
-- `packages/oidc` owns the deep ID Token authenticator, OIDC Provider Registration validation, discovery/JWK Set validation, bounded caches, and fail-closed error classification.
-- `packages/github` owns Installation Access Token Request normalization, the Repository Resource-oriented issuance capability, GitHub App JWT authentication, owner binding, installation-token minting, and GitHub App Information queries.
-- `packages/token-exchange` owns the runtime-neutral Token Exchange handler that composes request validation, OIDC authentication, Token Issuance Policy, GitHub issuance, mandatory observations, and OAuth responses behind one Fetch-compatible interface.
-- `packages/fastify` is a Node 24/Fastify 5 adapter around a prebuilt Token Exchange handler. It owns only the encapsulated `/token` route, raw form parsing, Fetch request/response translation, and request-scoped observation logging.
-- `packages/token-issuance-policy` owns Permit Statement compilation and evaluation.
-- `packages/http` owns bounded request/response body helpers and problem responses.
-- Provider packages contain reviewed GitHub Actions, Google service-account, and Buildkite registrations plus exact organization-scoped Fly OIDC Provider Registration construction.
-- `createGitHubAppTokenExchange` accepts one semantic GitHub App configuration, an exact Subject-Token Audience, OIDC Provider Registrations, and a compiled Token Issuance Policy. `createTokenExchangeWorker` is the Cloudflare adapter that supplies bindings, admission control, and observation adapters. The Fastify plugin accepts only the already-built handler; its host owns credentials, admission, lifecycle, proxy trust, and listening. An external deployment owns the TypeScript composition and compiles it into its artifact. The source Wrangler template instead uses a generic deny-all entrypoint.
-
-The intended model is one GitHub App per deployment. OIDC Provider Registrations and Token Issuance Policy are build-time composition values, while App credentials, Subject-Token Audience, and admission policy are deployment configuration. Changing trust or policy requires a reviewed composition change and a newly built deployment artifact. The public API deliberately exposes no App selector or runtime policy loader.
-
-## `POST /token`
+## `POST /github/apps/{app_slug}/token`
 
 The endpoint implements the repository's RFC 8693 profile using `application/x-www-form-urlencoded` requests:
 
@@ -37,33 +30,16 @@ remains accepted for compatibility with pinned action releases; the response
 echoes whichever supported identifier the Client requested in
 `issued_token_type`.
 
-Important invariants:
+Authentication does not grant authorization. The selected App's Permit Statements
+must cover the requested repository and permissions, within that App's installation
+grants. The broker never infers issuer trust, audience, repository, or permissions
+from the request location.
 
-- issuer trust comes only from exact OIDC Provider Registrations compiled into the reviewed deployment artifact
-- the ID Token must have the deployment's exact single-string Subject-Token Audience; the Cloudflare Worker obtains it from `TOKEN_BROKER_AUDIENCE`, and the RFC 8693 `audience` parameter is unsupported and grants nothing
-- verified Claims are copied into an immutable snapshot before a provider profile or Token Issuance Policy can inspect them; profile admission and policy authorization remain separate decisions
-- every request names exactly one canonical Repository Resource
-- every request explicitly names a non-empty `scope`; the broker has no default Requested Permissions
-- Subject Token Claims never select the target repository
-- authentication never grants authorization; independently complete Permit Statements must cover the requested resource and every permission
-- installation lookup must return an installation whose `account.login` matches the requested owner, case-insensitively, before minting
-- the configured GitHub App installation remains the upper bound on repositories and permissions
-- GitHub requests use only `https://api.github.com` and have a broker-owned 10-second deadline covering response headers and the complete bounded body
-- no Installation Access Token is returned until mandatory pre-mint intent and post-mint success observations are acknowledged; failed post-mint acknowledgement triggers awaited best-effort fixed-origin revocation
-- every Token Endpoint success and error response is non-cacheable; an unexpected failure is sanitized to `500 {"error":"server_error"}`, and raw subject/access tokens are not logged
-
-See [the service contract](docs/service-contract.md) for complete request, response, error, provider, and policy behavior; [implementation](docs/implementation.md) for code boundaries; and [deployment](docs/deployment.md) for the public-source/external-deployment interface.
-
-## Cloudflare Worker configuration
-
-The Worker consumes one App identity per deployment:
-
-- `GITHUB_APP_ID`: non-secret positive decimal GitHub App identifier
-- `GITHUB_APP_PRIVATE_KEY`: Worker secret or Secrets Store binding containing its PKCS#8 private key
-- `TOKEN_BROKER_AUDIENCE`: required non-secret exact scalar Subject-Token Audience supplied by the deployment
-- `TOKEN_EXCHANGE_RATE_LIMIT`: Cloudflare rate-limit binding
-
-The audience must be a non-empty, non-whitespace, single-line string and is validated before request routing. It is an identity, not a Worker location binding: the Worker never derives it from the incoming URL, `Host`, forwarded headers, or `/token` route. OIDC Provider Registrations and Token Issuance Policy are reviewed TypeScript supplied to `createTokenExchangeWorker` and compiled into the artifact; neither is a runtime deployment binding or Client input. The GitHub API destination is fixed by the broker and is not a runtime binding.
+The [service contract](docs/service-contract.md) owns request validation, responses,
+errors, and security semantics. The [deployment guide](docs/deployment.md) shows
+Worker and Fastify composition, key bindings, and the trusted read-only RPC.
+Use the [consumer migration](docs/decisions/multiple-github-apps.md#consumer-migration)
+when upgrading a singleton deployment.
 
 ## Local development
 
@@ -74,11 +50,14 @@ fnm exec --using=24 corepack pnpm install --frozen-lockfile
 fnm exec --using=24 corepack pnpm run check
 ```
 
-For local Worker development, copy `.dev.vars.example` to `.dev.vars`, add a local App ID and private key, then run:
+The source Worker has an empty app catalogue and returns `404` for every HTTP route. It needs no App credentials. The development command expects a `.dev.vars` file; create an empty one if needed and run the generic template:
 
 ```bash
+touch .dev.vars
 fnm exec --using=24 corepack pnpm run dev
 ```
+
+Use an external deployment-owned entrypoint to configure app identities, audiences, policy, and matching private-key binding names for real exchanges. The [container suite](test/integration/README.md) provides a complete synthetic deployment. `.dev.vars.example` illustrates an optional key binding for a custom local composition.
 
 Do not commit keys, `.dev.vars`, `.env`, `.wrangler/`, `.local-secrets/`, or private deployment overlays.
 
@@ -87,7 +66,7 @@ Do not commit keys, `.dev.vars`, `.env`, `.wrangler/`, `.local-secrets/`, or pri
 This public repository does not deploy the service. A deployment system outside
 this repository must pin a reviewed source revision, run the source checks,
 supply deployment-owned configuration and secrets, deploy the selected host,
-and verify `POST /token`. A Cloudflare deployment also re-exports and tests
+and verify `POST /github/apps/{app_slug}/token`. A Cloudflare deployment also constructs and tests
 `GitHubAppInformationEntrypoint` when providing the internal service-binding RPC;
 a Node deployment composes the runtime-neutral handler into its Fastify host.
 

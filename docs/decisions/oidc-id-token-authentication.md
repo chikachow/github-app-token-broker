@@ -5,8 +5,8 @@
 Decision status: Accepted and amended below.
 
 Implementation status: Complete. The authentication architecture remains
-active; the original Token Policy boundary is retained as historical text and
-superseded by the amendment below.
+active; the original text is retained as historical context. The amendments
+below supersede its Token Policy boundary and singleton audience configuration.
 
 ## Amendment: CEL-free Token Issuance Policy
 
@@ -39,6 +39,34 @@ the [domain glossary](../../CONTEXT.md) and [service contract](../service-contra
 
 The original decision text is retained below so the record continues to show
 the architecture and policy boundary that was accepted before this amendment.
+
+## Amendment: App-specific audience binding and issuer state
+
+The [multiple GitHub Apps decision](multiple-github-apps.md) supersedes the
+historical singleton audience and `/token` routing assumptions below. Each App
+accepts an explicit, non-empty list of exact scalar audiences; the incoming ID
+Token still contains one scalar audience. The canonical App path selects the
+catalogue entry, independently of audience, repository, and requested scope.
+
+The compiled broker owns issuer discovery, JWK Set, refresh and backoff state.
+Audience-bound authenticators share that state while checking the selected App's
+audiences before provider profiles and authorization. Binding different GitHub
+credentials does not replace issuer state or extend its existing freshness and
+bounded-stale rules. A new trusted composition constructs a new compiled broker;
+verification state is not shared globally across compositions.
+
+## Consumer migration
+
+OIDC consumers use `idTokenHeaderKeyId` in `OidcVerificationEvidence` and
+`VerifiedOidcIdToken`, replacing `resolvedKeyId`. Observation consumers use
+`subject_token.id_token_header_key_id`, replacing `subject_token.resolved_key_id`.
+The value remains the verified token header's `kid`, or `null` when absent,
+including when a singleton JWK Set supplies the verification key. Update log
+queries, dashboards, and observation adapters; the old field is not also emitted.
+
+The optional diagnostic union is `OidcDiagnosticEvent`, replacing
+`OidcIdTokenAuthenticationEvent`; callback arguments and delivery semantics are
+unchanged. Rebuild consumers against the renamed exports before deployment.
 
 ## Context
 

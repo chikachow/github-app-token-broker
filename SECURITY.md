@@ -13,8 +13,8 @@ github-app-token-broker accepts Client-presented OpenID Connect ID Tokens from c
 - issuer trust is configured, not discovered from Client-presented tokens
 - OpenID Provider Configuration and JWK Set requests reject redirects and use a broker-owned fixed five-second deadline spanning response headers and complete bounded body consumption
 - the Verified Subject Token is derived only from an immutable copy of Subject Token Claims in an ID Token accepted through an exact OIDC Provider Registration; a non-null OIDC ID Token Profile evaluates that immutable verified snapshot before the separate Token Issuance Policy decision
-- the ID Token audience must be the exact single-string value in the deployment-owned `TOKEN_BROKER_AUDIENCE` binding; the binding is a non-empty, non-whitespace, single-line scalar, and the unsupported token-exchange `audience` parameter grants nothing
-- the Worker owns no public-location binding and never derives the audience from the incoming URL, `Host`, forwarded headers, or `/token` route
+- the ID Token audience must be one scalar exactly matching the selected app's reviewed `subjectTokenAudiences`; every configured value is non-empty, non-whitespace, and single-line, and the unsupported token-exchange `audience` parameter grants nothing
+- the Worker owns no public-location binding and never derives the audience from the incoming URL, `Host`, forwarded headers, or token route
 - source workflows pin an immutable external action release; each invocation uses the pinned action's broker request configuration, with workflows explicitly overriding the Repository Resource and Requested Permissions where needed
 - the action validates its configured Token Exchange Endpoint URL as a canonical credential-free HTTPS URL before OIDC or broker network I/O, rejects redirects, requires the returned scope to exactly match the explicit requested scope, and never derives or changes the audience from the endpoint; the selected endpoint (the pinned action's default unless `cyspbot-token-url` is explicitly supplied) receives the ID Token subject token and can observe an Installation Access Token when it proxies the request, so the authority controlling that action configuration is already trusted to obtain and handle those credentials
 - OIDC Provider Registrations and Permit Statements are independent, reviewed build-time trust decisions; registration authenticates tokens but never authorizes Installation Access Token Issuance
@@ -22,15 +22,18 @@ github-app-token-broker accepts Client-presented OpenID Connect ID Tokens from c
 - Clients must supply exactly one effective canonical Repository Resource; value-less occurrences are omitted, and Subject Token Claims never select the target
 - Clients must explicitly supply a non-empty `scope`; the broker rejects omitted and exactly empty scope with `invalid_scope` and never infers Requested Permissions from Claims, policy, App grants, or deployment configuration
 - Clients may name structurally valid GitHub permissions, but every Requested Permission must be covered by compiled Permit Statements
-- compiled Token Issuance Policy Permit Statements must compose Effective Permissions that cover the Requested Permissions for the Verified Subject Token and Repository Resource before a token is issued
+- compiled Token Issuance Policy Permit Statements must compose Effective Permissions that cover the Requested Permissions for the selected GitHub App client ID, Verified Subject Token, and Repository Resource before a token is issued
 - the GitHub App installation independently remains the upper bound on repositories and permissions
-- the GitHub App private key remains inside the deployment secret boundary
+- app slugs, client IDs, accepted audiences, and app-qualified Permit Statements are immutable build-time configuration; no runtime binding or form field remaps app identity
+- issuer discovery and JWK Set caches may be shared across apps, but audience acceptance, target support, permission aggregation, and credential selection never cross the selected app boundary
+- for Token Exchange, only the selected GitHub App private key is resolved after authentication, policy approval, and pre-mint acknowledgement; each key remains inside the deployment secret boundary
 - GitHub API requests are restricted to `https://api.github.com` and to a broker-owned 10-second deadline spanning response headers and the complete bounded response body
 - Installation Access Token values are treated as opaque credentials; the broker sends no temporary stateful-token override and accepts both GitHub's opaque and JWT-shaped token formats
 
 The GitHub App Information RPC is a separate privileged capability boundary:
 
 - only an explicitly configured, trusted Cloudflare Worker service binding may reach it
+- each binding must set `props.githubAppClientId`; missing, malformed, or unconfigured selectors fail closed with the existing sanitized configuration error, and methods accept no app selector
 - it is read-only and exposes no public HTTP route
 - it never returns the GitHub App private key or an App JWT
 - it never mints or returns an Installation Access Token

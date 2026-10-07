@@ -12,7 +12,7 @@ import { testPrivateKeyPem } from "../support/rsa-test-key-pair.ts";
 import { testNow } from "../support/constants.ts";
 import { testGitHubAppResponse } from "../support/github-app-information.ts";
 
-const configuration = { appId: "2419473", privateKey: testPrivateKeyPem };
+const configuration = { clientId: "Iv1.fixtureApp", privateKey: testPrivateKeyPem };
 
 describe("GitHub HTTP Node runtime", () => {
   it("rejects malformed UTF-8 without replacing a GitHub App metadata field", async () => {

@@ -25,6 +25,7 @@ import {
 } from "@github-app-token-broker/token-issuance-policy";
 
 interface PolicyScenario {
+  readonly githubAppClientId: string;
   readonly claims: Readonly<Record<string, unknown>>;
   readonly issuer: OidcIssuerIdentifier;
   readonly permitStatements: readonly PermitStatementDefinition[];
@@ -42,6 +43,7 @@ type PolicyScenarioCategory =
   | "single-statement-permit"
   | "subject-token-unacceptable"
   | "subject-token-unacceptable-cross-contribution"
+  | "target-unsupported-other-app"
   | "target-unsupported"
   | "unsupported-permissions-before-unacceptable-subject";
 
@@ -159,6 +161,7 @@ const mixedPolicyScenarioArbitrary: fc.Arbitrary<PolicyScenario> = claimEntriesA
       );
     const statementArbitrary = fc
       .record({
+        githubAppClientId: fc.constantFrom("Iv1.fixtureApp", "Iv1.otherApp"),
         issuer: fc.constantFrom(matchingIssuer, otherIssuer),
         permissions: permissionMapArbitrary,
         predicates: predicateArbitrary,
@@ -170,8 +173,8 @@ const mixedPolicyScenarioArbitrary: fc.Arbitrary<PolicyScenario> = claimEntriesA
           otherOwnerResourceConstraint,
         ),
       })
-      .map(({ issuer, permissions, predicates, resource }) =>
-        statement(permissions, { issuer, predicates, resource }),
+      .map(({ githubAppClientId, issuer, permissions, predicates, resource }) =>
+        statement(permissions, { githubAppClientId, issuer, predicates, resource }),
       );
 
     return fc
@@ -189,6 +192,7 @@ const mixedPolicyScenarioArbitrary: fc.Arbitrary<PolicyScenario> = claimEntriesA
         requestPermissions: permissionMapArbitrary,
       })
       .map(({ decoration, permitStatements, requestPermissions }): PolicyScenario => ({
+        githubAppClientId: "Iv1.fixtureApp",
         claims: claimsRecord(claimEntries),
         issuer: matchingIssuer,
         permitStatements: decorateStatements(permitStatements, decoration),
@@ -314,6 +318,15 @@ const tokenIssuancePolicyScenarioArbitrary: fc.Arbitrary<TaggedPolicyScenario> =
   { arbitrary: multiStatementCompositionArbitrary, weight: 1 },
   { arbitrary: crossContributionArbitrary, weight: 1 },
   { arbitrary: targetUnsupportedArbitrary, weight: 1 },
+  {
+    arbitrary: permissionMapArbitrary.map((permissions) =>
+      taggedScenario(
+        "target-unsupported-other-app",
+        scenario([statement(permissions, { githubAppClientId: "Iv1.otherApp" })], permissions),
+      ),
+    ),
+    weight: 1,
+  },
   { arbitrary: requestedPermissionsUnsupportedArbitrary, weight: 1 },
   { arbitrary: subjectTokenUnacceptableArbitrary, weight: 1 },
   { arbitrary: simultaneousFailurePrecedenceArbitrary, weight: 1 },
@@ -430,6 +443,7 @@ const expectedOutcomeByCategory = {
   "subject-token-unacceptable": "subject_token_unacceptable",
   "subject-token-unacceptable-cross-contribution": "subject_token_unacceptable",
   "target-unsupported": "target_unsupported",
+  "target-unsupported-other-app": "target_unsupported",
   "unsupported-permissions-before-unacceptable-subject": "requested_permissions_unsupported",
 } satisfies Readonly<Record<PolicyScenarioCategory, ExpectedPolicyOutcome | undefined>>;
 
@@ -460,12 +474,18 @@ function evaluatePublicPolicy(policyScenario: PolicyScenario): ExpectedPolicyOut
     issuer: policyScenario.issuer,
   } as VerifiedSubjectToken;
 
-  return evaluateTokenIssuancePolicy(policy, verifiedSubjectToken, request).outcome;
+  return evaluateTokenIssuancePolicy(
+    policy,
+    verifiedSubjectToken,
+    request,
+    policyScenario.githubAppClientId,
+  ).outcome;
 }
 
 function evaluatePolicyScenario(policyScenario: PolicyScenario): ExpectedPolicyOutcome {
   const targetStatements = policyScenario.permitStatements.filter(
-    ({ resource }) =>
+    ({ githubAppClientId, resource }) =>
+      githubAppClientId === policyScenario.githubAppClientId &&
       resource.owner === policyScenario.request.owner &&
       (resource.repository === null || resource.repository === policyScenario.request.repository),
   );
@@ -613,6 +633,7 @@ function scenario(
   resource: { readonly owner: string; readonly repository: string } = targetResource,
 ): PolicyScenario {
   return {
+    githubAppClientId: "Iv1.fixtureApp",
     claims,
     issuer: matchingIssuer,
     permitStatements,
@@ -623,6 +644,7 @@ function scenario(
 function statement(
   permissions: GitHubInstallationPermissions,
   options: {
+    readonly githubAppClientId?: string;
     readonly issuer?: OidcIssuerIdentifier;
     readonly predicates?: readonly ClaimPredicateDefinition[];
     readonly resource?: { readonly owner: string; readonly repository: string | null };
@@ -636,6 +658,7 @@ function statement(
       resource.repository === null
         ? githubRepositoryOwnerResourceConstraint(resource.owner)
         : githubRepositoryResourceConstraint(resource.owner, resource.repository),
+    githubAppClientId: options.githubAppClientId ?? "Iv1.fixtureApp",
     subjectToken: oidcSubjectTokenConstraint(
       options.issuer ?? matchingIssuer,
       ...(options.predicates ?? []),

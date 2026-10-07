@@ -6,17 +6,17 @@ import Fastify, { type FastifyServerOptions } from "fastify";
 import { composition } from "../../../integration/composition.ts";
 
 export async function startServer(options: FastifyServerOptions) {
-  const { GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY_FILE, TOKEN_BROKER_AUDIENCE } = process.env;
-  assert.ok(GITHUB_APP_ID && GITHUB_APP_PRIVATE_KEY_FILE && TOKEN_BROKER_AUDIENCE);
   const app = Fastify(options);
   await app.register(githubAppTokenExchangePlugin, {
     tokenExchange: createGitHubAppTokenExchange({
       composition,
-      githubApp: {
-        appId: GITHUB_APP_ID,
-        privateKey: await readFile(GITHUB_APP_PRIVATE_KEY_FILE, "utf8"),
-      },
-      subjectTokenAudience: TOKEN_BROKER_AUDIENCE,
+      githubApps: await Promise.all(
+        composition.githubApps.map(async (configured) => {
+          const file = process.env[`${configured.privateKeyBinding}_FILE`];
+          assert.ok(file);
+          return { ...configured, privateKey: await readFile(file, "utf8") };
+        }),
+      ),
     }),
   });
   await app.listen({ host: "0.0.0.0", port: 8080 });

@@ -30,7 +30,7 @@ describe("Token Exchange Endpoint public handler", () => {
     );
 
     const methodResponse = await tokenExchange(
-      new Request("https://broker.example/token", {
+      new Request("https://broker.example/github/apps/fixture-app/token", {
         body: await githubActionsTokenExchangeRequestBody(),
         headers: { "content-type": "application/x-www-form-urlencoded" },
         method: "PUT",
@@ -38,7 +38,10 @@ describe("Token Exchange Endpoint public handler", () => {
       requestContext(),
     );
     const mediaTypeResponse = await tokenExchange(
-      new Request("https://broker.example/token", { body: "ignored", method: "POST" }),
+      new Request("https://broker.example/github/apps/fixture-app/token", {
+        body: "ignored",
+        method: "POST",
+      }),
       requestContext(),
     );
 
@@ -226,7 +229,7 @@ describe("Token Exchange Endpoint public handler", () => {
     expect(observe).toHaveBeenCalledWith({
       fields: {
         diagnosticCode: "ERR_JWT_INVALID",
-        path: "/token",
+        path: "/github/apps/fixture-app/token",
         reason: "invalid_token",
         userAgent: null,
       },
@@ -275,7 +278,7 @@ describe("Token Exchange Endpoint public handler", () => {
     const validBody = new URLSearchParams(await githubActionsTokenExchangeRequestBody());
     const form = new URLSearchParams([["grant_type", ""], ...validBody]);
     const response = await tokenExchange(
-      new Request("https://broker.example/token", {
+      new Request("https://broker.example/github/apps/fixture-app/token", {
         body: form,
         headers: { "content-type": "application/x-www-form-urlencoded" },
         method: "POST",
@@ -305,7 +308,7 @@ describe("Token Exchange Endpoint public handler", () => {
       },
     );
     const response = await tokenExchange(
-      new Request("https://broker.example/token", {
+      new Request("https://broker.example/github/apps/fixture-app/token", {
         body: `grant_type=x&subject_token=${"x".repeat(64 * 1024)}`,
         headers: { "content-type": "application/x-www-form-urlencoded" },
         method: "POST",
@@ -347,7 +350,7 @@ function formRequest(
   overrides: Record<string, string | null> = {},
   form: URLSearchParams = structurallyValidTokenExchangeForm(overrides),
 ): Request {
-  return new Request("https://broker.example/token", {
+  return new Request("https://broker.example/github/apps/fixture-app/token", {
     body: form,
     headers: { "content-type": "application/x-www-form-urlencoded" },
     method: "POST",

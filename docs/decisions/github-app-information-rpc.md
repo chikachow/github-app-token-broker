@@ -2,7 +2,19 @@
 
 ## Status
 
-Decision status: Accepted.
+Decision status: Accepted and amended below.
+
+## Amendment: Fixed App selection per binding
+
+The [multiple GitHub Apps decision](multiple-github-apps.md) supersedes the
+singleton App identity below. A deployment constructs the named entrypoint with
+`createGitHubAppInformationEntrypoint(githubApps)`. Each trusted binding selects
+one configured App through `props.githubAppClientId`; the four methods remain
+read-only and accept no per-call App selector. Missing, malformed or unknown
+selectors fail with `GitHubAppConfigurationError` before secret or GitHub access.
+The original decision below is retained as history; the
+[service contract](../service-contract.md#internal-github-app-information-rpc)
+defines the current interface.
 
 ## Context
 

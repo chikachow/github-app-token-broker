@@ -18,7 +18,6 @@
   "dependencies": {
     "@github-app-token-broker/github": "workspace:*",
     "@github-app-token-broker/http": "workspace:*",
-    "@github-app-token-broker/oidc": "workspace:*",
     "@github-app-token-broker/token-exchange": "workspace:*",
     "@github-app-token-broker/token-issuance-policy": "workspace:*"
   }

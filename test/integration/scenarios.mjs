@@ -99,13 +99,14 @@ async function exchange({
   method = "POST",
   ip,
   suffix = "",
+  appSlug = "fixture-app",
 }) {
   const { token } = await control(oidc, "subject", {
     providerFixtureId,
     claimOverrides,
     signingKeyName,
   });
-  const response = await request(`${broker}/token`, {
+  const response = await request(`${broker}/github/apps/${appSlug}/token`, {
     method,
     headers: {
       "content-type": "application/x-www-form-urlencoded",
@@ -133,7 +134,11 @@ async function exchange({
   assert.match(response.headers.get("content-type"), /^application\/json\b/u);
   return { status: response.status, body: await response.json() };
 }
-function success(result, scope = "contents:read pull_requests:write") {
+function success(
+  result,
+  scope = "contents:read pull_requests:write",
+  token = "ghs_disposable_integration_token",
+) {
   assert.equal(result.status, 200);
   assert.deepEqual(Object.keys(result.body).sort(), [
     "access_token",
@@ -142,7 +147,7 @@ function success(result, scope = "contents:read pull_requests:write") {
     "scope",
     "token_type",
   ]);
-  assert.equal(result.body.access_token, "ghs_disposable_integration_token");
+  assert.equal(result.body.access_token, token);
   assert.equal(result.body.token_type, "Bearer");
   assert.equal(result.body.issued_token_type, "urn:ietf:params:oauth:token-type:access_token");
   assert.equal(result.body.scope, scope);
@@ -208,7 +213,15 @@ void describe(host === "worker" ? "Workerd" : "Fastify", { concurrency: false },
   function restartHost(profile = "normal") {
     compose(["up", "--no-deps", "--force-recreate", "--wait", "--wait-timeout", "60", host], {
       ...process.env,
-      INTEGRATION_PROFILE: profile === "observation-failure" ? profile : "normal",
+      INTEGRATION_PROFILE: ["untrusted-ca", "bad-other-key"].includes(profile) ? "normal" : profile,
+      INTEGRATION_OTHER_APP_KEY_FILE:
+        profile === "bad-other-key"
+          ? "/app/test/integration/.generated/bad-other-app.pem"
+          : "/app/test/integration/.generated/other-app.pem",
+      INTEGRATION_APP_ENV_FILE:
+        profile === "bad-other-key"
+          ? "/app/test/integration/.generated/.bad-other-env"
+          : "/app/test/integration/.generated/.env",
       INTEGRATION_CA_FILE:
         profile === "untrusted-ca" ? "" : "/app/test/integration/.generated/ca.pem",
     });
@@ -296,13 +309,122 @@ void describe(host === "worker" ? "Workerd" : "Fastify", { concurrency: false },
       assert.deepEqual(await evidence(), [[], []]);
     });
   });
+  void describe("multi-App deployment", () => {
+    before(() => restartHost());
+    void it("keeps forced-overlap exchanges on distinct App keys and installations", async () => {
+      await reset("cache");
+      await control(github, "hold-app", { clientId: "Iv1.fixtureApp" });
+      const first = githubActionsExchange();
+      try {
+        const deadline = Date.now() + 5000;
+        while (
+          !(await control(github, "state")).events.some(
+            (event) => event.kind === "held" && event.clientId === "Iv1.fixtureApp",
+          )
+        ) {
+          assert.ok(Date.now() < deadline, "App A did not reach its barrier");
+          await delay(25);
+        }
+        success(
+          await githubActionsExchange({
+            appSlug: "other-app",
+            formOverrides: { scope: "contents:read pull_requests:read" },
+          }),
+          "contents:read pull_requests:read",
+          "ghs_disposable_other_app_token",
+        );
+      } finally {
+        await control(github, "release-app", { clientId: "Iv1.fixtureApp" });
+        await Promise.allSettled([first]);
+      }
+      success(await first);
+      const [documents, events] = await evidence();
+      assert.deepEqual(
+        documents.map((event) => event.path),
+        ["/.well-known/openid-configuration", "/jwks"],
+      );
+      assert.deepEqual(
+        events.filter((event) => event.kind === "mint").map((event) => event.body),
+        [
+          { repositories: ["target"], permissions: { contents: "read", pull_requests: "read" } },
+          { repositories: ["target"], permissions: { contents: "read", pull_requests: "write" } },
+        ],
+      );
+      assert.deepEqual(
+        events.filter((event) => event.method === "POST").map((event) => event.path),
+        ["/app/installations/54321/access_tokens", "/app/installations/12345/access_tokens"],
+      );
+    });
+    void it("does not borrow another App's permissions or vanity audience with warm issuer state", async () => {
+      await reset();
+      failure(await githubActionsExchange({ appSlug: "other-app" }), 400, "invalid_scope");
+      failure(
+        await githubActionsExchange({
+          appSlug: "other-app",
+          claimOverrides: { aud: "urn:integration:primary" },
+          formOverrides: { scope: "contents:read pull_requests:read" },
+        }),
+        400,
+        "invalid_request",
+      );
+      const [, events] = await evidence();
+      assert.deepEqual(events, []);
+    });
+  });
+  void it("isolates an unusable App B key from App A", async () => {
+    await reset();
+    restartHost("bad-other-key");
+    failure(
+      await githubActionsExchange({
+        appSlug: "other-app",
+        formOverrides: { scope: "contents:read pull_requests:read" },
+      }),
+      500,
+      "server_error",
+    );
+    const [, before] = await evidence();
+    assert.deepEqual(before, []);
+    success(await githubActionsExchange());
+    const [, after] = await evidence();
+    assert.equal(after.filter((event) => event.kind === "mint").length, 1);
+  });
+  void it("withholds and revokes App B's token while App A remains usable", async () => {
+    await reset("normal", "revocation-gated");
+    restartHost("other-app-observation-failure");
+    let settled = false;
+    const pending = githubActionsExchange({
+      appSlug: "other-app",
+      formOverrides: { scope: "contents:read pull_requests:read" },
+    }).finally(() => {
+      settled = true;
+    });
+    try {
+      const deadline = Date.now() + 5000;
+      while (!(await control(github, "state")).events.some((event) => event.method === "DELETE")) {
+        assert.ok(Date.now() < deadline, "App B did not attempt revocation");
+        await delay(25);
+      }
+      success(await githubActionsExchange());
+      assert.equal(settled, false, "App B must await its revocation while App A can complete");
+    } finally {
+      await control(github, "release-revocation", {});
+      await Promise.allSettled([pending]);
+    }
+    failure(await pending, 500, "server_error");
+    const [, events] = await evidence();
+    assert.deepEqual(
+      events.filter((event) => event.kind === "revoked"),
+      [{ kind: "revoked", clientId: "Iv1.otherApp" }],
+    );
+    assert.equal(events.filter((event) => event.kind === "mint").length, 2);
+  });
   void describe("ordinary deployment", () => {
     // Valid no-cache OIDC documents permit fresh authentication between mock resets.
     before(() => restartHost());
     void it("preserves valid HTTP authentication schemes in rejected Client challenges", async () => {
       await reset();
       for (const scheme of ["1custom", "!custom"]) {
-        const response = await request(`${broker}/token`, {
+        const response = await request(`${broker}/github/apps/fixture-app/token`, {
           body: "grant_type=ignored",
           headers: {
             authorization: `${scheme} private-credentials`,

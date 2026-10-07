@@ -2,9 +2,12 @@ import { compileTokenIssuancePolicy } from "@github-app-token-broker/token-issua
 
 import { createTokenExchangeWorker } from "./worker.ts";
 
-export { GitHubAppInformationEntrypoint } from "./app-information-entrypoint.ts";
+import { createGitHubAppInformationEntrypoint } from "./app-information-entrypoint.ts";
+
+export const GitHubAppInformationEntrypoint = createGitHubAppInformationEntrypoint([]);
 
 export default createTokenExchangeWorker({
+  githubApps: [],
   oidcProviderRegistrations: [],
   tokenIssuancePolicy: compileTokenIssuancePolicy([]),
 });

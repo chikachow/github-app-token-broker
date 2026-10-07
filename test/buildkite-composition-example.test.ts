@@ -85,8 +85,14 @@ function fixture(composition: TokenExchangeComposition = buildkiteExampleComposi
   const exchange = createGitHubAppTokenExchange(
     {
       composition,
-      githubApp: { appId: "2419473", privateKey: testPrivateKeyPem },
-      subjectTokenAudience: "https://broker.example",
+      githubApps: [
+        {
+          slug: "fixture-app",
+          subjectTokenAudiences: ["https://broker.example"],
+          clientId: "Iv1.fixtureApp",
+          privateKey: testPrivateKeyPem,
+        },
+      ],
     },
     dependencies,
   );
@@ -97,7 +103,7 @@ function fixture(composition: TokenExchangeComposition = buildkiteExampleComposi
     oidcRequests,
     async request(token: string, formOverrides: Record<string, string> = {}) {
       return exchange(
-        new Request("https://broker.example/token", {
+        new Request("https://broker.example/github/apps/fixture-app/token", {
           method: "POST",
           headers: { "content-type": "application/x-www-form-urlencoded" },
           body: tokenExchangeRequestBody(
