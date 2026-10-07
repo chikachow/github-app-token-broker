@@ -1,8 +1,6 @@
 import { cloudflareTest } from "@cloudflare/vitest-plugin";
 import { configDefaults, defineConfig } from "vitest/config";
 
-import { githubAppInformationNodeFixture } from "./test/support/github-app-information-node-fixture.ts";
-
 const tokenExchangeSourceAlias = {
   "@github-app-token-broker/token-exchange": new URL(
     "./packages/token-exchange/src/index.ts",
@@ -34,10 +32,7 @@ export default defineConfig({
         plugins: [
           cloudflareTest({
             miniflare: {
-              bindings: {
-                GITHUB_APP_ID: "2419473",
-                TOKEN_BROKER_AUDIENCE: "https://broker.example",
-              },
+              bindings: {},
             },
             remoteBindings: false,
             wrangler: {
@@ -85,27 +80,8 @@ export default defineConfig({
         },
       },
       {
-        plugins: [
-          cloudflareTest({
-            miniflare: {
-              bindings: {
-                GITHUB_APP_ID: githubAppInformationNodeFixture.appId,
-                GITHUB_APP_PRIVATE_KEY: githubAppInformationNodeFixture.privateKeyPem,
-              },
-              outboundService(request) {
-                return githubAppInformationNodeFixture.responseForRequest(request);
-              },
-            },
-            remoteBindings: false,
-            wrangler: {
-              configPath: "./workers/github-app-token-broker/wrangler.jsonc",
-            },
-          }),
-        ],
-        resolve: { alias: tokenExchangeSourceAlias },
         test: {
           allowOnly: false,
-          detectAsyncLeaks: true,
           include: ["test/worker-integration/**/*.test.ts"],
           name: "worker-integration",
           testTimeout: 10_000,

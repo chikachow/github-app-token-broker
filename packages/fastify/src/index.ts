@@ -4,18 +4,20 @@ import { Buffer } from "node:buffer";
 import {
   maxTokenExchangeBodyBytes,
   tokenExchangeInvalidRequestResponse,
-  type TokenExchangeHandler,
+  type GitHubAppTokenExchangeHandler,
+  type TokenExchangeRequestContext,
   type TokenExchangeObservation,
 } from "@github-app-token-broker/token-exchange";
 import type { FastifyError, FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 
 export interface GitHubAppTokenExchangePluginOptions {
-  readonly tokenExchange: TokenExchangeHandler;
+  readonly tokenExchange: GitHubAppTokenExchangeHandler;
 }
 
 export const githubAppTokenExchangePlugin: FastifyPluginAsync<
   GitHubAppTokenExchangePluginOptions
 > = async (fastify, options) => {
+  const tokenEndpointPaths = new Set(options.tokenExchange.tokenEndpointPaths);
   fastify.removeAllContentTypeParsers();
   fastify.addContentTypeParser(
     "application/x-www-form-urlencoded",
@@ -40,37 +42,52 @@ export const githubAppTokenExchangePlugin: FastifyPluginAsync<
     }
   });
 
-  fastify.all("/token", { bodyLimit: maxTokenExchangeBodyBytes }, async (request, reply) => {
-    if (request.method !== "POST") {
-      await sendWebResponse(reply, tokenExchangeInvalidRequestResponse(400));
-      return;
-    }
-
-    const webRequest = fastifyRequestToWebRequest(request);
-
-    if (webRequest === null) {
-      await sendWebResponse(reply, tokenExchangeInvalidRequestResponse(400));
-      return;
-    }
-
-    const response = await options.tokenExchange(webRequest, {
-      async observe(observation) {
-        logObservation(request, observation);
-      },
-      observeOidcDiagnostic(observation) {
-        try {
-          logObservation(request, observation);
-        } catch {
-          // Optional OIDC diagnostics never control Token Exchange outcomes.
+  fastify.all(
+    "/github/apps/:app_slug/token",
+    {
+      bodyLimit: maxTokenExchangeBodyBytes,
+      async onRequest(request, reply) {
+        const webRequest = fastifyRequestToWebRequest(request, fastify.prefix);
+        if (webRequest === null) {
+          await sendWebResponse(reply, tokenExchangeInvalidRequestResponse(400));
+          return;
         }
-
-        return undefined;
+        if (tokenEndpointPaths.has(new URL(webRequest.url).pathname)) return;
+        // Unknown Apps must be rejected before Fastify consumes or classifies a body.
+        const response = await options.tokenExchange(webRequest, tokenExchangeContext(request));
+        await sendWebResponse(reply, response);
       },
-    });
+    },
+    async (request, reply) => {
+      const webRequest = fastifyRequestToWebRequest(request, fastify.prefix);
 
-    await sendWebResponse(reply, response);
-  });
+      if (webRequest === null) {
+        await sendWebResponse(reply, tokenExchangeInvalidRequestResponse(400));
+        return;
+      }
+
+      const response = await options.tokenExchange(webRequest, tokenExchangeContext(request));
+
+      await sendWebResponse(reply, response);
+    },
+  );
 };
+
+function tokenExchangeContext(request: FastifyRequest): TokenExchangeRequestContext {
+  return {
+    async observe(observation) {
+      logObservation(request, observation);
+    },
+    observeOidcDiagnostic(observation) {
+      try {
+        logObservation(request, observation);
+      } catch {
+        // Optional OIDC diagnostics never control Token Exchange outcomes.
+      }
+      return undefined;
+    },
+  };
+}
 
 function logObservation(request: FastifyRequest, observation: TokenExchangeObservation): void {
   const event = observation.fields["event"];
@@ -85,7 +102,7 @@ function logObservation(request: FastifyRequest, observation: TokenExchangeObser
   request.log[observation.level](observation.fields, message);
 }
 
-function fastifyRequestToWebRequest(request: FastifyRequest): Request | null {
+function fastifyRequestToWebRequest(request: FastifyRequest, prefix: string): Request | null {
   try {
     const headers = new Headers();
 
@@ -103,6 +120,8 @@ function fastifyRequestToWebRequest(request: FastifyRequest): Request | null {
     const body =
       mayHaveBody && requestBody !== undefined ? Uint8Array.from(requestBody) : undefined;
     const url = new URL(request.raw.url ?? request.url, `${request.protocol}://${request.host}`);
+
+    url.pathname = url.pathname.slice(prefix.length);
 
     return new Request(url, {
       ...(body === undefined ? {} : { body }),

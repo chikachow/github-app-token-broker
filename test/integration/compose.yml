@@ -29,7 +29,7 @@ x-broker-health: &broker-health
       "CMD",
       "node",
       "-e",
-      "fetch('http://127.0.0.1:8080/token').then(r => process.exit(r.status === 400 ? 0 : 1)).catch(() => process.exit(1))",
+      "fetch('http://127.0.0.1:8080/github/apps/fixture-app/token').then(r => process.exit(r.status === 400 ? 0 : 1)).catch(() => process.exit(1))",
     ]
   interval: 1s
   timeout: 2s
@@ -75,9 +75,8 @@ services:
     working_dir: /fastify
     environment:
       NODE_EXTRA_CA_CERTS: ${INTEGRATION_CA_FILE-/app/test/integration/.generated/ca.pem}
-      GITHUB_APP_ID: "123456"
       GITHUB_APP_PRIVATE_KEY_FILE: /app/test/integration/.generated/app.pem
-      TOKEN_BROKER_AUDIENCE: urn:integration:broker
+      OTHER_GITHUB_APP_PRIVATE_KEY_FILE: ${INTEGRATION_OTHER_APP_KEY_FILE-/app/test/integration/.generated/other-app.pem}
     command: ["node", "dist/${INTEGRATION_PROFILE:-normal}.js"]
     ports: ["127.0.0.1::8080"]
     healthcheck: *broker-health
@@ -99,11 +98,8 @@ services:
       - --no-bundle
       - --name
       - integration-worker-${INTEGRATION_PROFILE:-normal}
-      - --var
-      - GITHUB_APP_ID:123456
-      - TOKEN_BROKER_AUDIENCE:urn:integration:broker
       - --env-file
-      - /app/test/integration/.generated/.env
+      - ${INTEGRATION_APP_ENV_FILE-/app/test/integration/.generated/.env}
       - --local
       - --ip
       - 0.0.0.0

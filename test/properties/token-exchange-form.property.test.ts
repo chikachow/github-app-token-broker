@@ -14,7 +14,7 @@ import { fetchGitHubTestDouble } from "../support/github-api.ts";
 import { testPrivateKeyPem } from "../support/rsa-test-key-pair.ts";
 import { testGitHubActionsTokenIssuancePolicy } from "../support/github-actions-token-issuance-policy.ts";
 
-const tokenEndpoint = "https://broker.example/token";
+const tokenEndpoint = "https://broker.example/github/apps/fixture-app/token";
 const fixtureForm = new URLSearchParams(await githubActionsTokenExchangeRequestBody());
 const resource = requiredFormValue(fixtureForm, "resource");
 const scope = requiredFormValue(fixtureForm, "scope");
@@ -79,8 +79,14 @@ const tokenExchange = createGitHubAppTokenExchange(
       oidcProviderRegistrations: [githubActionsOidcProviderRegistration],
       tokenIssuancePolicy: testGitHubActionsTokenIssuancePolicy,
     },
-    githubApp: { appId: "2419473", privateKey: testPrivateKeyPem },
-    subjectTokenAudience: "https://broker.example",
+    githubApps: [
+      {
+        slug: "fixture-app",
+        subjectTokenAudiences: ["https://broker.example"],
+        clientId: "Iv1.fixtureApp",
+        privateKey: testPrivateKeyPem,
+      },
+    ],
   },
   {
     fetch: (input, init) => {
