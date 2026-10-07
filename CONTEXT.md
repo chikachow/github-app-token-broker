@@ -1,6 +1,6 @@
 # github-app-token-broker
 
-github-app-token-broker is the maintainer's hosted automation application. It lets trusted automation workloads obtain GitHub App installation access tokens narrowed to one selected repository and the Requested Permissions without exposing the deployment-owned GitHub App private key to Token Exchange Clients. Requested permission keys may include GitHub organization- or account-level permissions; repository selection and permission narrowing are independent controls.
+github-app-token-broker is the maintainer's hosted automation application. It lets trusted automation workloads obtain GitHub App installation access tokens narrowed to one selected repository and the Requested Permissions without exposing deployment-owned GitHub App private keys to Token Exchange Clients. Requested permission keys may include GitHub organization- or account-level permissions; repository selection and permission narrowing are independent controls.
 
 ## Language
 
@@ -58,6 +58,14 @@ _Avoid_: Repository Resource, arbitrary URI matcher, subject-token repository Cl
 The owner segment of the normalized **Repository Resource** authorized by **Token Issuance Policy**; GitHub installation resolution must return an installation account with the same owner login, case-insensitively, before minting.
 _Avoid_: redirected owner, installation ID as owner identity, repository basename as owner identity
 
+**GitHub App Client ID**:
+The GitHub-issued client identifier that binds a configured GitHub App to its credentials and Permit Statements. It is distinct from GitHub's numeric App ID in metadata responses.
+_Avoid_: App slug, numeric App ID, broker alias
+
+**GitHub App Slug**:
+The GitHub App's reviewed slug, explicitly configured to select that app for Token Exchange. The operator maintains its correspondence with the GitHub App. It is distinct from the app's stable GitHub App Client ID and confers no authority by itself.
+_Avoid_: App ID, client ID, repository owner
+
 **GitHub App Installation**:
 An installation of a GitHub App on a user, organization, or enterprise account, with repository selection configured independently where applicable.
 _Avoid_: App session, app login
@@ -67,19 +75,19 @@ Read-only metadata about the configured GitHub App and its GitHub App Installati
 _Avoid_: Installation Access Token, repository catalog, App selector
 
 **GitHub App Information RPC**:
-The trusted internal read-only capability through which a Worker exposes selected GitHub App Information to another Worker using the configured App's JWT.
-_Avoid_: public GitHub proxy, installation-token broker, caller-selected App
+The trusted internal read-only capability through which a Worker exposes selected GitHub App Information to another Worker using the JWT of the GitHub App explicitly selected by the trusted binding.
+_Avoid_: public GitHub proxy, installation-token broker, per-call App selector
 
 **Installation Access Token**:
 A short-lived GitHub App token issued through one **GitHub App Installation**, narrowed by this service to one selected **Repository Resource** and the **Requested Permissions**.
 _Avoid_: PAT, app JWT, repository secret
 
 **Token Issuance Policy**:
-The closed set of **Permit Statements** that determines whether **Installation Access Token Issuance** is permitted for a **Verified Subject Token** and an **Installation Access Token Request**.
+The closed set of **Permit Statements** that determines whether **Installation Access Token Issuance** is permitted for a selected **GitHub App Client ID**, a **Verified Subject Token**, and an **Installation Access Token Request**.
 _Avoid_: Ordered rules, first-match policy, caller-defined policy, generic expression language
 
 **Permit Statement**:
-One complete positive authorization declaration containing an **OIDC Subject Token Constraint**, a **Repository Resource Constraint**, and a non-empty permission map. It has no denial effect and shares no implicit fields with another statement.
+One complete positive authorization declaration containing a **GitHub App Client ID**, an **OIDC Subject Token Constraint**, a **Repository Resource Constraint**, and a non-empty permission map. It has no denial effect and shares no implicit fields with another statement.
 _Avoid_: Partial rule, inherited default, deny statement
 
 **OIDC Subject Token Constraint**:
@@ -111,7 +119,7 @@ Best-effort operational information about OIDC remote-document refresh and cache
 _Avoid_: Mandatory Token Exchange Observation, audit acknowledgement, authorization decision
 
 **Subject-Token Audience**:
-The deployment-owned exact non-empty single-line scalar that identifies the logical recipient of incoming ID Tokens. A deployment may choose a URL-shaped or opaque value. It is distinct from the hosted **Token Exchange Endpoint** location and is never derived from request-controlled data or from that endpoint.
+An exact non-empty single-line scalar identifying the logical recipient of an incoming ID Token; each configured GitHub App has an explicit set of accepted values. A value may be URL-shaped or opaque and is distinct from the hosted **Token Exchange Endpoint** location.
 _Avoid_: request host, inferred endpoint identity, client-selected audience
 
 **OpenID Provider**:

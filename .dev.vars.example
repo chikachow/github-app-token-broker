@@ -1,2 +1,4 @@
-GITHUB_APP_ID=REPLACE_WITH_GITHUB_APP_ID
-GITHUB_APP_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nREPLACE_WITH_LOCAL_DEVELOPMENT_KEY\n-----END PRIVATE KEY-----\n"
+# The generic Worker has an empty app catalogue and needs no App secret.
+# For a custom local composition, uncomment this example and use the binding
+# name selected by that composition. Supply only a local development key.
+# GITHUB_APP_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nREPLACE_WITH_LOCAL_DEVELOPMENT_KEY\n-----END PRIVATE KEY-----\n"

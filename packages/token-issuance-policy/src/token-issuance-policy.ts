@@ -1,3 +1,4 @@
+import { isGitHubAppClientId } from "@github-app-token-broker/github/app";
 import {
   parseOidcIssuerIdentifier,
   type OidcIssuerIdentifier,
@@ -48,6 +49,7 @@ type GitHubRepositoryResourceConstraint =
   | GitHubRepositoryOwnerResourceConstraintDefinition;
 
 export interface PermitStatementDefinition {
+  readonly githubAppClientId: string;
   readonly permissions: GitHubInstallationPermissions;
   readonly resource: GitHubRepositoryResourceConstraint;
   readonly subjectToken: OidcSubjectTokenConstraintDefinition;
@@ -172,6 +174,7 @@ export function evaluateTokenIssuancePolicy(
   policy: TokenIssuancePolicy,
   verifiedSubjectToken: VerifiedSubjectToken,
   request: InstallationAccessTokenRequest,
+  githubAppClientId: string,
 ): TokenIssuancePolicyEvaluation {
   const permissionsNotCoveredForResource = new Set(
     Object.keys(request.permissions) as (keyof GitHubInstallationPermissions)[],
@@ -180,7 +183,10 @@ export function evaluateTokenIssuancePolicy(
   let targetSupported = false;
 
   for (const statement of policy.permitStatements) {
-    if (!resourceConstraintMatches(statement.resource, request.resource)) {
+    if (
+      statement.githubAppClientId !== githubAppClientId ||
+      !resourceConstraintMatches(statement.resource, request.resource)
+    ) {
       continue;
     }
 
@@ -269,7 +275,16 @@ export function assertTokenIssuancePolicyIssuersAreRegistered(
 }
 
 function compilePermitStatement(value: unknown, path: string): PermitStatementDefinition {
-  const statement = readExactObject(value, path, ["permissions", "resource", "subjectToken"]);
+  const statement = readExactObject(value, path, [
+    "githubAppClientId",
+    "permissions",
+    "resource",
+    "subjectToken",
+  ]);
+  const githubAppClientId = statement["githubAppClientId"];
+  if (!isGitHubAppClientId(githubAppClientId)) {
+    fail(`${path}.githubAppClientId`, "must be a GitHub App client ID");
+  }
   const subjectToken = readExactObject(statement["subjectToken"], `${path}.subjectToken`, [
     "claimPredicates",
     "issuer",
@@ -320,6 +335,7 @@ function compilePermitStatement(value: unknown, path: string): PermitStatementDe
   const permissions = compilePermissions(statement["permissions"], `${path}.permissions`);
 
   return Object.freeze({
+    githubAppClientId,
     permissions,
     resource,
     subjectToken: Object.freeze({ claimPredicates, issuer }),

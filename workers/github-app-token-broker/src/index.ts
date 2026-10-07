@@ -1,7 +1,7 @@
 export {
   createTokenExchangeWorker,
-  type TokenExchangeComposition,
+  type TokenExchangeWorkerComposition,
   type TokenExchangeWorkerEnv,
   type TokenExchangeWorkerRuntimeDependencies,
 } from "./worker.ts";
-export { GitHubAppInformationEntrypoint } from "./app-information-entrypoint.ts";
+export { createGitHubAppInformationEntrypoint } from "./app-information-entrypoint.ts";

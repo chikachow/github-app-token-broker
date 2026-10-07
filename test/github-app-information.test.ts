@@ -15,7 +15,7 @@ import {
   GitHubAppConfigurationError,
   type GitHubAppConfiguration,
 } from "../packages/github/src/app.ts";
-import { GitHubAppInformationEntrypoint } from "../workers/github-app-token-broker/src/app-information-entrypoint.ts";
+import { createGitHubAppInformationEntrypoint } from "../workers/github-app-token-broker/src/app-information-entrypoint.ts";
 import {
   testGitHubAppResponse,
   testGitHubEnterpriseAccount,
@@ -25,12 +25,19 @@ import {
 import { testPrivateKeyPem } from "./support/rsa-test-key-pair.ts";
 
 const githubAppConfiguration = {
-  appId: "2419473",
+  clientId: "Iv1.fixtureApp",
   privateKey: testPrivateKeyPem,
 } satisfies GitHubAppConfiguration;
 
+const GitHubAppInformationEntrypoint = createGitHubAppInformationEntrypoint([
+  {
+    clientId: "Iv1.fixtureApp",
+    slug: "fixture-app",
+    privateKeyBinding: "GITHUB_APP_PRIVATE_KEY",
+    subjectTokenAudiences: ["https://broker.example"],
+  },
+]);
 const githubAppWorkerBindings = {
-  GITHUB_APP_ID: "2419473",
   GITHUB_APP_PRIVATE_KEY: testPrivateKeyPem,
 };
 
@@ -75,7 +82,7 @@ describe("GitHub App Information", () => {
 
     try {
       const entrypoint = new GitHubAppInformationEntrypoint(
-        {} as ExecutionContext,
+        { props: { githubAppClientId: "Iv1.fixtureApp" } } as ExecutionContext,
         githubAppWorkerBindings,
       );
 
@@ -90,6 +97,41 @@ describe("GitHub App Information", () => {
           repo: "fixture-repository",
         }),
       ).resolves.toMatchObject({ id: 12345 });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each([
+    undefined,
+    null,
+    {},
+    [],
+    { githubAppClientId: 123 },
+    { githubAppClientId: "Iv1.unknownApp" },
+    { githubAppClientId: "Iv1.fixtureApp", unexpected: true },
+    Object.create({ githubAppClientId: "Iv1.fixtureApp" }),
+  ])("rejects invalid binding properties %j before secret or network I/O", async (props) => {
+    const get = vi.fn(async () => testPrivateKeyPem);
+    const fetchGitHub = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchGitHub);
+    try {
+      const entrypoint = new GitHubAppInformationEntrypoint({ props } as ExecutionContext, {
+        GITHUB_APP_PRIVATE_KEY: { get },
+      });
+      await expect(entrypoint.getApp()).rejects.toThrow(GitHubAppConfigurationError);
+      await expect(entrypoint.listInstallations()).rejects.toThrow(GitHubAppConfigurationError);
+      await expect(entrypoint.getInstallation({ installation_id: 12345 })).rejects.toThrow(
+        GitHubAppConfigurationError,
+      );
+      await expect(
+        entrypoint.getRepositoryInstallation({
+          owner: "fixture-owner",
+          repo: "fixture-repository",
+        }),
+      ).rejects.toThrow(GitHubAppConfigurationError);
+      expect(get).not.toHaveBeenCalled();
+      expect(fetchGitHub).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();
     }
@@ -148,7 +190,7 @@ describe("GitHub App Information", () => {
         throw new Error("expected GitHub App authorization");
       }
 
-      expect(decodeJwt(authorization.slice("Bearer ".length)).iss).toBe("2419473");
+      expect(decodeJwt(authorization.slice("Bearer ".length)).iss).toBe("Iv1.fixtureApp");
 
       const body = responses.get(url.pathname);
 
@@ -392,16 +434,16 @@ describe("GitHub App Information", () => {
 
   it.each([
     {
-      configuration: { ...githubAppConfiguration, appId: "not-an-app-id" },
-      description: "malformed App ID",
+      configuration: { ...githubAppConfiguration, clientId: "not an app client ID" },
+      description: "malformed App client ID",
     },
     {
-      configuration: { ...githubAppConfiguration, appId: "0" },
-      description: "zero App ID",
+      configuration: { ...githubAppConfiguration, clientId: "0" },
+      description: "numeric App ID instead of client ID",
     },
     {
-      configuration: { ...githubAppConfiguration, appId: "02419473" },
-      description: "App ID with a leading zero",
+      configuration: { ...githubAppConfiguration, clientId: "02419473" },
+      description: "numeric App ID with a leading zero",
     },
   ])("classifies $description as invalid configuration", async ({ configuration }) => {
     const fetchGitHub = vi.fn<typeof fetch>();

@@ -59,7 +59,7 @@ and runner errors abort the matrix.
 ### Oracle boundary
 
 The Token Issuance Policy property independently evaluates compiled policy
-semantics: resource applicability, own-property Claim matching, pointwise
+semantics: app isolation, resource applicability, own-property Claim matching, pointwise
 permission ranks, composition, and denial precedence. Its scenario construction
 uses the public production factories, so it is not an independent oracle for
 factory validation or policy compilation. Focused ordinary tests own those

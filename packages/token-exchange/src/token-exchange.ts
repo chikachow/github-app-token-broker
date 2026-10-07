@@ -60,7 +60,7 @@ export function createTokenExchangeEndpoint(
   };
 }
 
-function unexpectedTokenExchangeFailureResponse(error: unknown): Response {
+export function unexpectedTokenExchangeFailureResponse(error: unknown): Response {
   try {
     console.error({
       error: { name: error instanceof Error ? "Error" : typeof error },

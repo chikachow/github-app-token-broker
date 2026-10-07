@@ -64,7 +64,7 @@ Object.defineProperty(GitHubAppConfigurationError.prototype, "name", {
 });
 
 export interface GitHubAppConfiguration {
-  readonly appId: string;
+  readonly clientId: string;
   readonly privateKey: SecretTextBinding;
 }
 
@@ -210,7 +210,9 @@ export async function githubAppAuthenticationHeaders(
   configuration: GitHubAppConfiguration,
   dependencies: GitHubAppDependencies,
 ): Promise<HeadersInit> {
-  assertValidGitHubAppIdFormat(configuration);
+  if (!isGitHubAppClientId(configuration.clientId)) {
+    throw new GitHubAppConfigurationError();
+  }
   const jwt = await createGitHubAppJwt(configuration, () => dependencies.now());
 
   return {
@@ -221,10 +223,8 @@ export async function githubAppAuthenticationHeaders(
   };
 }
 
-function assertValidGitHubAppIdFormat(configuration: GitHubAppConfiguration): void {
-  if (!/^[1-9][0-9]*$/u.test(configuration.appId)) {
-    throw new GitHubAppConfigurationError();
-  }
+export function isGitHubAppClientId(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z][A-Za-z0-9_.-]{0,127}$/u.test(value);
 }
 
 async function createGitHubAppJwt(
@@ -238,7 +238,7 @@ async function createGitHubAppJwt(
     .setProtectedHeader({ alg: "RS256" })
     .setIssuedAt(nowSeconds - 60)
     .setExpirationTime(nowSeconds + githubAppJwtExpirationOffsetSeconds)
-    .setIssuer(configuration.appId)
+    .setIssuer(configuration.clientId)
     .sign(privateKey);
 }
 

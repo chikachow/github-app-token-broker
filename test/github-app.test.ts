@@ -15,7 +15,7 @@ describe("GitHub App authentication", () => {
     const now = new Date("2026-06-29T12:34:00.000Z");
     const nowSeconds = Math.floor(now.getTime() / 1000);
     const githubApp = {
-      appId: "2419473",
+      clientId: "Iv1.fixtureApp",
       privateKey: testPrivateKeyPem,
     } satisfies GitHubAppConfiguration;
     const authorizationHeaders: string[] = [];
@@ -32,7 +32,7 @@ describe("GitHub App authentication", () => {
       expect(decodeJwt(authorization.slice("Bearer ".length))).toMatchObject({
         exp: nowSeconds + 9 * 60,
         iat: nowSeconds - 60,
-        iss: "2419473",
+        iss: "Iv1.fixtureApp",
       });
 
       if (request.method === "POST") {
@@ -89,7 +89,7 @@ describe("GitHub App authentication", () => {
 
     const issuance = await issueInstallationAccessToken(
       {
-        appId: "2419473",
+        clientId: "Iv1.fixtureApp",
         privateKey: secretStoreBinding,
       },
       createInstallationAccessTokenRequest({
@@ -126,7 +126,7 @@ describe("GitHub App authentication", () => {
           expect(decodeJwt(authorization.slice("Bearer ".length))).toMatchObject({
             exp: 1_782_736_980,
             iat: 1_782_736_380,
-            iss: "2419473",
+            iss: "Iv1.fixtureApp",
           });
 
           return request.method === "GET"
@@ -271,7 +271,7 @@ function issueTestInstallationAccessToken(
 ) {
   return issueInstallationAccessToken(
     {
-      appId: "2419473",
+      clientId: "Iv1.fixtureApp",
       privateKey: testPrivateKeyPem,
     },
     createInstallationAccessTokenRequest({

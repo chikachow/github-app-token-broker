@@ -1,0 +1,38 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "github-app-information-test",
+  "main": "worker.ts",
+  "compatibility_date": "2026-07-24",
+  "compatibility_flags": [
+    "no_nodejs_compat",
+    "no_nodejs_compat_v2",
+    "no_nodejs_als",
+    "disallow_eval_during_startup",
+    "global_fetch_strictly_public",
+  ],
+  "services": [
+    {
+      "binding": "APP_A",
+      "service": "github-app-information-test",
+      "entrypoint": "GitHubAppInformationEntrypoint",
+      "props": { "githubAppClientId": "Iv1.fixtureApp" },
+    },
+    {
+      "binding": "APP_B",
+      "service": "github-app-information-test",
+      "entrypoint": "GitHubAppInformationEntrypoint",
+      "props": { "githubAppClientId": "Iv1.otherApp" },
+    },
+    {
+      "binding": "APP_MISSING_SELECTOR",
+      "service": "github-app-information-test",
+      "entrypoint": "GitHubAppInformationEntrypoint",
+    },
+    {
+      "binding": "APP_UNKNOWN_SELECTOR",
+      "service": "github-app-information-test",
+      "entrypoint": "GitHubAppInformationEntrypoint",
+      "props": { "githubAppClientId": "Iv1.unknownApp" },
+    },
+  ],
+}

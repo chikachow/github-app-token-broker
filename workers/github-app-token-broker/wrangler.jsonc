@@ -23,11 +23,4 @@
       },
     },
   ],
-  "secrets": {
-    "required": ["GITHUB_APP_PRIVATE_KEY"],
-  },
-  "vars": {
-    "GITHUB_APP_ID": "000000",
-    "TOKEN_BROKER_AUDIENCE": "https://broker.example",
-  },
 }

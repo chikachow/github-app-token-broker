@@ -37,7 +37,7 @@ Before opening or updating a pull request:
 2. Run `node --run check` and the [container integration suite](test/integration/README.md) for both Fastify and Worker. Follow its explicit Compose startup, test, and cleanup steps; both hosts are separate required CI lanes.
 3. Update `docs/service-contract.md` when externally observable behaviour changes.
 4. Update `docs/implementation.md` when package layout, Worker entrypoints, request flow, or bindings change.
-5. Update `docs/deployment.md` and `docs/release.md` when source/deployment ownership or publish-readiness checks change.
+5. Update `docs/deployment.md` when source/deployment ownership changes and the relevant decision record when consumers must migrate.
 6. Update `CONTEXT.md` when a project-defined term or its meaning changes.
 
 Do not commit local deployment state or secrets. In particular, keep `.dev.vars`, `.env`, `.wrangler/`, `.local-secrets/`, GitHub App private keys, and Cloudflare tokens out of commits.
@@ -51,6 +51,25 @@ public behavior and security semantics. Each external deployment's reviewed
 TypeScript composition is authoritative for that artifact's exact OIDC Provider
 Registration and Permit Statement inventories. Do not document a concrete
 deployment inventory in this public repository.
+
+## Publishing source artifacts
+
+Build releases from tracked files, such as a `git archive`, and run the PR gates
+above plus `node --run test:coverage` in that source tree. Inspect
+`git status --short --ignored` before packaging: ignored local files are not
+release inputs. Exclude credentials, private deployment inventory, dependency
+directories, and generated local state from the source archive.
+
+The built-artifact and production-consumer checks are included in `check`;
+they validate the current build, not its provenance or checkout cleanliness.
+The [deployment guide](docs/deployment.md) owns external host and composition
+requirements. Repository security settings and required checks belong to the
+repository's infrastructure owner, not this publication procedure.
+
+Rotate any credential that was committed or included in a published artifact;
+ignoring the file does not undo exposure. Keep consumer migration instructions
+with the decision that changes their contract, including
+[multiple GitHub Apps](docs/decisions/multiple-github-apps.md#consumer-migration).
 
 ## Maintaining agent instructions
 

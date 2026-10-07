@@ -45,8 +45,10 @@ export async function issueInstallationAccessTokenForContext(
     tokenIssuancePolicy,
     verifiedSubjectToken,
     installationAccessTokenRequest,
+    githubApp.clientId,
   );
   const issuanceObservationFields = () => ({
+    github_app: { client_id: githubApp.clientId },
     installation_access_token_request: installationAccessTokenRequestLogFields(
       installationAccessTokenRequest,
     ),

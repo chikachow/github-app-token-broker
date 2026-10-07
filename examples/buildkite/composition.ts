@@ -16,6 +16,7 @@ export const buildkiteExampleComposition = {
     {
       permissions: { contents: "write" },
       resource: githubRepositoryResourceConstraint("example-owner", "target"),
+      githubAppClientId: "Iv1.fixtureApp",
       subjectToken: oidcSubjectTokenConstraint(
         buildkiteOidcProviderRegistration.issuer,
         claimEquals("organization_id", "11111111-1111-4111-8111-111111111111"),
