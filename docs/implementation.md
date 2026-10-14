@@ -210,9 +210,9 @@ thresholds.
 The `node` Vitest project exclusively owns `test/node/**/*.test.ts`; the Workerd `unit` project excludes that directory, making the selected runtime explicit for those behavioral tests.
 
 The Workerd unit project uses the `cloudflareTest()` plugin from
-`@cloudflare/vitest-plugin` with Vitest 4. Cloudflare’s plugin and
-`@fast-check/vitest` require Vitest 4; upgrade them together when moving to a
-new Vitest major.
+`@cloudflare/vitest-plugin` with the pinned Vitest 4 release. Cloudflare’s plugin
+and `@fast-check/vitest` accept Vitest 4.1 or 5; a major-version migration still
+requires validation of the complete test and coverage toolchain.
 
 The `worker-integration` project runs in Node and uses Wrangler's `createTestHarness()`
 to build the RPC fixture and run real Workerd service bindings. Distinct App keys
