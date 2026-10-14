@@ -14,6 +14,9 @@ permissions:
   contents: read
 
 jobs:
+  dependencies:
+    uses: ./.github/workflows/ci-dependencies.yml
+
   format:
     uses: ./.github/workflows/ci-format.yml
 
@@ -54,6 +57,7 @@ jobs:
     name: ci
     runs-on: ubuntu-latest
     needs:
+      - dependencies
       - format
       - lint
       - env-types

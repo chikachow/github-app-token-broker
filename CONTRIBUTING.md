@@ -23,8 +23,21 @@ Shared exact dependency versions live in the default catalog in
 `pnpm-workspace.yaml`. Update the catalog entry to keep package and deployment
 fixture dependencies aligned. Public peer dependency ranges remain separate.
 
-Dependency resolution rejects missing or incompatible peer dependencies through
-`strictPeerDependencies`; `autoInstallPeers: false` keeps peer dependencies explicit.
+Dependency updates use `strictPeerDependencies: false` to allow intermediate
+peer conflicts while Dependabot assembles grouped updates. `autoInstallPeers: false`
+keeps peer dependencies explicit. `node --run peer-dependencies:check`, included
+in `check`, re-runs resolution with strict peer validation and lifecycle scripts
+disabled. It rejects missing required peers and peers outside their declared
+version ranges, including in a lockfile generated with permissive settings.
+Resolution can update the lockfile; review any local changes. The `dependencies`
+CI job also rejects lockfile changes, so validation must pass with the committed
+lockfile.
+
+`node --run dedupe:check` runs `pnpm dedupe --check --ignore-scripts` in the same
+CI job and local `check`. It fails when pnpm would change the lockfile through
+deduplication, without editing it. Incompatible version ranges and distinct peer
+contexts may still require multiple copies. Run `pnpm dedupe --ignore-scripts`
+to apply deduplication, then review the lockfile and run the checks.
 
 Dependency build scripts require an explicit decision in `allowBuilds` in
 `pnpm-workspace.yaml`; `strictDepBuilds` rejects unreviewed scripts. The `esbuild`
