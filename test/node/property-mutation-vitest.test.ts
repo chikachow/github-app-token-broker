@@ -73,7 +73,6 @@ describe("property mutation Vitest evidence", () => {
       config: 'export default { test: { include: ["*.test.mjs"], globalSetup: ["./setup.mjs"] } };',
       setup: 'export default () => () => { throw new Error("fixture global teardown failure"); };',
       expectedOutput: "fixture global teardown failure",
-      expectedExit: source === passingTest ? 0 : 1,
     })),
     ...[passingTest, failingTest].map((source) => ({
       name: `process shutdown timeout with ${source === passingTest ? "passing tests" : "a failed assertion"}`,

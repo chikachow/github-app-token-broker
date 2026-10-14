@@ -203,16 +203,18 @@ The `pnpm-up` workflow serializes updates to its shared `deps/pnpm-up` branch
 without cancelling a running update.
 
 Coverage explicitly includes package and Worker source files, including files
-not imported by tests, and excludes declarations. Vitest 4 otherwise reports
+not imported by tests, and excludes declarations. Vitest otherwise reports
 only loaded files, which can hide untested source files from the coverage
 thresholds.
 
 The `node` Vitest project exclusively owns `test/node/**/*.test.ts`; the Workerd `unit` project excludes that directory, making the selected runtime explicit for those behavioral tests.
 
 The Workerd unit project uses the `cloudflareTest()` plugin from
-`@cloudflare/vitest-plugin` with the pinned Vitest 4 release. Cloudflare’s plugin
-and `@fast-check/vitest` accept Vitest 4.1 or 5; a major-version migration still
-requires validation of the complete test and coverage toolchain.
+`@cloudflare/vitest-plugin` with the pinned Vitest 5 release. Vite is an explicit
+development dependency because Vitest 5 requires it as a peer and this repository
+disables automatic peer installation. Keep Vitest and its coverage provider at
+the same version, and validate the complete test and coverage toolchain when
+updating them.
 
 The `worker-integration` project runs in Node and uses Wrangler's `createTestHarness()`
 to build the RPC fixture and run real Workerd service bindings. Distinct App keys
