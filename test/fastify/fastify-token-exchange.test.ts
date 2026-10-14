@@ -550,43 +550,49 @@ describe("githubAppTokenExchangePlugin", () => {
     }
   });
 
-  it("bridges request URL, multi-value headers, and exact bounded bytes", async () => {
-    const body = "x".repeat(maxTokenExchangeBodyBytes);
-    let bridgedRequest: Record<string, unknown> | undefined;
-    const tokenExchange = tokenExchangeDouble(async (request) => {
-      bridgedRequest = {
-        bodyMatches: (await request.text()) === body,
-        clientHint: request.headers.get("x-client-hint"),
-        url: request.url,
-      };
-      return new Response(null, { status: 204 });
-    });
-    const app = Fastify();
-    await app.register(githubAppTokenExchangePlugin, { tokenExchange });
+  it.each(["injected", "HTTP"])(
+    "bridges request URL, multi-value headers, and exact bounded bytes over %s",
+    async (transport) => {
+      const body = "x".repeat(maxTokenExchangeBodyBytes);
+      let bridgedRequest: Record<string, unknown> | undefined;
+      const tokenExchange = tokenExchangeDouble(async (request) => {
+        bridgedRequest = {
+          bodyMatches: (await request.text()) === body,
+          clientHint: request.headers.get("x-client-hint"),
+          url: request.url,
+        };
+        return new Response(null, { status: 204 });
+      });
+      const app = Fastify();
+      await app.register(githubAppTokenExchangePlugin, { tokenExchange });
 
-    try {
-      const response = await app.inject({
-        body,
-        headers: {
+      try {
+        const headers = {
           "content-type": "application/x-www-form-urlencoded",
           host: "broker.example:8443",
           "x-client-hint": ["one", "two"],
-        },
-        method: "POST",
-        url: "/github/apps/fixture-app/token?trace=one",
-      });
+        };
+        const path = "/github/apps/fixture-app/token?trace=one";
+        const response =
+          transport === "injected"
+            ? await app.inject({ body, headers, method: "POST", url: path })
+            : await makeNodeRequest(`${await app.listen({ host: "127.0.0.1", port: 0 })}${path}`, {
+                body,
+                headers,
+              });
 
-      expect(response.statusCode).toBe(204);
-      expect(tokenExchange).toHaveBeenCalledOnce();
-      expect(bridgedRequest).toEqual({
-        bodyMatches: true,
-        clientHint: "one,two",
-        url: "http://broker.example:8443/github/apps/fixture-app/token?trace=one",
-      });
-    } finally {
-      await app.close();
-    }
-  });
+        expect(response.statusCode).toBe(204);
+        expect(tokenExchange).toHaveBeenCalledOnce();
+        expect(bridgedRequest).toEqual({
+          bodyMatches: true,
+          clientHint: "one, two",
+          url: "http://broker.example:8443/github/apps/fixture-app/token?trace=one",
+        });
+      } finally {
+        await app.close();
+      }
+    },
+  );
 
   it.each([
     {
