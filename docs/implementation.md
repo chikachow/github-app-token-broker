@@ -176,7 +176,7 @@ fnm exec --using=24 corepack pnpm run test:coverage
 fnm exec --using=24 corepack pnpm run test:mutations:property
 ```
 
-Continuous integration runs reusable validation workflows in parallel: formatting, lint,
+Continuous integration runs reusable validation workflows in parallel: dependency validation, formatting, lint,
 generated environment types, typechecking, Knip, test coverage, the built Token Exchange artifact
 contract, the production-pruned Node deployment contract, the Worker deployment dry run, and
 container integration. Separate Fastify and Worker workflows invoke Compose in
@@ -186,6 +186,13 @@ and builds frozen dependencies inside its image. Other lanes install the frozen
 dependency tree and invoke their standalone commands to build prerequisites. The test lane alone receives `id-token: write` for its Codecov OIDC
 upload. The required `ci` result aggregates all validation jobs and fails when any lane fails, is
 cancelled, or is skipped.
+
+The `dependencies` CI job checks manifest and lockfile consistency with
+`lockfile:check`, declared peer requirements with `peer-dependencies:check`, and
+lockfile deduplication with `dedupe:check`. It then rejects any lockfile diff.
+Peer validation explicitly re-runs resolution with strict checking; it does not
+rely on a frozen install to revisit peer requirements. The
+[contributing guide](../CONTRIBUTING.md) owns the dependency-update policy.
 
 The built Token Exchange artifact and Node production-consumer checks both validate
 imported declaration files with `skipLibCheck: false`.
