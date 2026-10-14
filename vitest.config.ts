@@ -18,7 +18,7 @@ export default defineConfig({
     coverage: {
       exclude: ["**/*.d.ts"],
       include: ["packages/*/src/**/*.ts", "workers/*/src/**/*.ts"],
-      provider: "istanbul",
+      provider: "v8",
       reporter: ["text", "lcov"],
       thresholds: {
         branches: 94,
