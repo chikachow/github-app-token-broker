@@ -53,7 +53,7 @@
     "@github-app-token-broker/worker": "workspace:*",
     "@tsconfig/strictest": "2.0.8",
     "@types/node": "catalog:",
-    "@vitest/coverage-istanbul": "5.0.3",
+    "@vitest/coverage-v8": "5.0.3",
     "fast-check": "4.10.2",
     "fastify": "catalog:",
     "knip": "6.41.0",

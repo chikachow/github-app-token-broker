@@ -202,6 +202,11 @@ concurrency groups, preserving each successful run for the deployment handoff.
 The `pnpm-up` workflow serializes updates to its shared `deps/pnpm-up` branch
 without cancelling a running update.
 
+Coverage uses `@vitest/coverage-v8` in Node and plugin-managed Workerd. V8 data
+is remapped into Istanbul's coverage model to produce reports, including LCOV. The
+[coverage decision](decisions/v8-coverage.md) records the accepted measurement
+limitations.
+
 Coverage explicitly includes package and Worker source files, including files
 not imported by tests, and excludes declarations. Vitest otherwise reports
 only loaded files, which can hide untested source files from the coverage
@@ -214,16 +219,17 @@ The Workerd unit project uses the `cloudflareTest()` plugin from
 development dependency because Vitest 5 requires it as a peer and this repository
 disables automatic peer installation. Keep Vitest and its coverage provider at
 the same version, and validate the complete test and coverage toolchain when
-updating them.
+updating them. The Cloudflare plugin configures the inspector compatibility
+settings for its test runtime.
 
 The `worker-integration` project runs in Node and uses Wrangler's `createTestHarness()`
 to build the RPC fixture and run real Workerd service bindings. Distinct App keys
 and independent signature verification check issuer/key pairing. Missing and
 unknown selectors must preserve the configuration error without GitHub I/O.
-The fixture consumes RPC inside a Worker; built code runs outside Vitest coverage
-instrumentation.
+The fixture consumes RPC inside a Worker; that separately launched process is
+outside Vitest coverage collection, as are the separate Compose deployments.
 
-The aggregate check builds once, then reuses that artifact for the artifact, typecheck, test, Node production-consumer, and deployment lanes. Standalone `artifact:check`, `typecheck`, `test`, `node-deploy:check`, and `deploy:dry-run` commands build their prerequisites first. Workspace builds synchronize injected package copies, so those standalone commands also work after a frozen clean install with no pre-existing `dist`. The artifact check imports the built Token Exchange ESM directly under Node and typechecks a self-importing consumer through the package's exports and bundled declarations; no source alias participates. The Node deployment check production-deploys a Fastify host fixture, imports the deployed package roots, typechecks the public adapter options, and exercises a real loopback listener with GET and form POST requests. The POST reaches the built Token Exchange handler and checks its `unsupported_grant_type` response. The Fastify host fixture permits `@github-app-token-broker/fastify`, `@github-app-token-broker/token-exchange`, `jose`, and `zod` when tsdown bundles dependencies during that fixture build. Other dependencies encountered at that stage fail the build. This guard cannot identify dependencies already embedded in consumed package artifacts. The root Wrangler file is a unit-test harness. It intentionally repeats the package Worker's compatibility flags and binding shapes so Workerd unit tests execute under the production runtime constraints; `env-types:check`, the GitHub App Information Workerd integration project, and the package dry-run validate the deployable config. The package Wrangler file is a public-safe dry-run template; deployment-owned identifiers and routes are supplied by the external deployment system.
+The aggregate check builds once, then reuses that artifact for the artifact, typecheck, test, Node production-consumer, and deployment lanes. Standalone `artifact:check`, `typecheck`, `test`, `node-deploy:check`, and `deploy:dry-run` commands build their prerequisites first. Workspace builds synchronize injected package copies, so those standalone commands also work after a frozen clean install with no pre-existing `dist`. The artifact check imports the built Token Exchange ESM directly under Node and typechecks a self-importing consumer through the package's exports and bundled declarations; no source alias participates. The Node deployment check production-deploys a Fastify host fixture, imports the deployed package roots, typechecks the public adapter options, and exercises a real loopback listener with GET and form POST requests. The POST reaches the built Token Exchange handler and checks its `unsupported_grant_type` response. The Fastify host fixture permits `@github-app-token-broker/fastify`, `@github-app-token-broker/token-exchange`, `jose`, and `zod` when tsdown bundles dependencies during that fixture build. Other dependencies encountered at that stage fail the build. This guard cannot identify dependencies already embedded in consumed package artifacts. The root Wrangler file is a unit-test harness. It intentionally repeats the package Worker's compatibility flags and binding shapes; `env-types:check`, the GitHub App Information Workerd integration project, and the package dry-run validate the deployable config. The package Wrangler file is a public-safe dry-run template; deployment-owned identifiers and routes are supplied by the external deployment system.
 
 OIDC verification evidence exposes the verified token header's optional `kid` as
 `idTokenHeaderKeyId`; Token Exchange observations serialize it as
