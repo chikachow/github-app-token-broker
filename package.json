@@ -7,7 +7,7 @@
     "artifact:check": "node --run build && node --run artifact:check:built",
     "artifact:check:built": "pnpm --filter @github-app-token-broker/token-exchange run artifact:check",
     "build": "pnpm --recursive --if-present run build",
-    "check": "node --run lockfile:check && node --run peer-dependencies:check && node --run dedupe:check && node --run format:check && node --run env-types:check && node --run lint && node --run build && node --run artifact:check:built && node --run typecheck:built && node --run knip && node --run test:built && node --run node-deploy:check:built && node --run deploy:dry-run:built",
+    "check": "node --run pnpm:check && node --run lockfile:check && node --run peer-dependencies:check && node --run dedupe:check && node --run format:check && node --run env-types:check && node --run lint && node --run build && node --run artifact:check:built && node --run typecheck:built && node --run knip && node --run test:built && node --run node-deploy:check:built && node --run deploy:dry-run:built",
     "dedupe:check": "pnpm dedupe --check --ignore-scripts",
     "deploy:dry-run": "node --run build && node --run deploy:dry-run:built",
     "deploy:dry-run:built": "pnpm --recursive --filter './workers/*' run deploy:dry-run",
@@ -16,13 +16,14 @@
     "env-types:generate": "pnpm --recursive --filter './workers/*' run env-types:generate",
     "format": "oxfmt . '!workers/**/src/*.generated.d.ts'",
     "format:check": "oxfmt --check . '!workers/**/src/*.generated.d.ts'",
+    "knip": "knip --no-progress",
     "lint": "node --run runtime-types:generate && oxlint --report-unused-disable-directives --deny-warnings .",
     "lint:fix": "node --run runtime-types:generate && oxlint --fix .",
     "lockfile:check": "pnpm install --lockfile-only --frozen-lockfile",
     "node-deploy:check": "node --run build && node --run node-deploy:check:built",
     "node-deploy:check:built": "node scripts/verify-node-deploy.mjs",
-    "knip": "knip --no-progress",
-    "peer-dependencies:check": "pnpm install --resolution-only --strict-peer-dependencies --no-frozen-lockfile --ignore-scripts",
+    "peer-dependencies:check": "pnpm peers check",
+    "pnpm:check": "node scripts/check-pnpm.mjs",
     "runtime-types:generate": "pnpm --recursive --filter './workers/*' run runtime-types:generate",
     "test": "pnpm --filter @github-app-token-broker/token-exchange run build && node --run test:built",
     "test:built": "WRANGLER_LOG=none WRANGLER_LOG_PATH=.wrangler/logs WRANGLER_REGISTRY_PATH=.wrangler/registry vitest run",
@@ -69,5 +70,5 @@
   "engines": {
     "node": "24"
   },
-  "packageManager": "pnpm@10.34.5"
+  "packageManager": "pnpm@12.11.2"
 }

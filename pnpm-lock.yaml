@@ -1,9 +1,12 @@
 lockfileVersion: '9.0'
 
 settings:
+  autoDedupe: true
   autoInstallPeers: false
+  dedupeInjectedDeps: true
+  dedupePeerDependents: true
   excludeLinksFromLockfile: false
-  injectWorkspacePackages: true
+  linkWorkspacePackages: false
 
 catalogs:
   default:
@@ -45,7 +48,7 @@ importers:
         version: 0.5.0(vitest@5.0.3)
       '@github-app-token-broker/fastify':
         specifier: workspace:*
-        version: file:packages/fastify(fastify@5.12.5)
+        version: link:packages/fastify
       '@github-app-token-broker/github':
         specifier: workspace:*
         version: link:packages/github
@@ -203,7 +206,7 @@ importers:
     dependencies:
       '@github-app-token-broker/fastify':
         specifier: workspace:*
-        version: file:packages/fastify(fastify@5.12.5)
+        version: link:../../../packages/fastify
       '@github-app-token-broker/token-exchange':
         specifier: workspace:*
         version: link:../../../packages/token-exchange
@@ -229,7 +232,7 @@ importers:
     devDependencies:
       '@github-app-token-broker/fastify':
         specifier: workspace:*
-        version: file:packages/fastify(fastify@5.12.5)
+        version: link:../../../packages/fastify
       '@github-app-token-broker/token-exchange':
         specifier: workspace:*
         version: link:../../../packages/token-exchange
@@ -529,26 +532,6 @@ packages:
 
   '@fastify/proxy-addr@5.1.2':
     resolution: {integrity: sha512-uqB4QsgVoro0XDC+DIftIMGXHdBPn+lK6Ek3xXAIxPMCJfqxnbtyEoMCm2KPUVOuIosd7Cyw9HawEqMFM/UA+g==}
-
-  '@github-app-token-broker/fastify@file:packages/fastify':
-    resolution: {directory: packages/fastify, type: directory}
-    peerDependencies:
-      fastify: ^5.0.0
-
-  '@github-app-token-broker/github@file:packages/github':
-    resolution: {directory: packages/github, type: directory}
-
-  '@github-app-token-broker/http@file:packages/http':
-    resolution: {directory: packages/http, type: directory}
-
-  '@github-app-token-broker/oidc@file:packages/oidc':
-    resolution: {directory: packages/oidc, type: directory}
-
-  '@github-app-token-broker/token-exchange@file:packages/token-exchange':
-    resolution: {directory: packages/token-exchange, type: directory}
-
-  '@github-app-token-broker/token-issuance-policy@file:packages/token-issuance-policy':
-    resolution: {directory: packages/token-issuance-policy, type: directory}
 
   '@img/colour@1.1.0':
     resolution: {integrity: sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ==}
@@ -2498,39 +2481,6 @@ snapshots:
     dependencies:
       '@fastify/forwarded': 3.1.1
       ipaddr.js: 2.5.0
-
-  '@github-app-token-broker/fastify@file:packages/fastify(fastify@5.12.5)':
-    dependencies:
-      '@github-app-token-broker/token-exchange': file:packages/token-exchange
-      fastify: 5.12.5
-
-  '@github-app-token-broker/github@file:packages/github':
-    dependencies:
-      '@github-app-token-broker/http': file:packages/http
-      jose: 6.2.12
-      zod: 4.6.6
-
-  '@github-app-token-broker/http@file:packages/http': {}
-
-  '@github-app-token-broker/oidc@file:packages/oidc':
-    dependencies:
-      '@github-app-token-broker/http': file:packages/http
-      jose: 6.2.12
-      zod: 4.6.6
-
-  '@github-app-token-broker/token-exchange@file:packages/token-exchange':
-    dependencies:
-      '@github-app-token-broker/github': file:packages/github
-      '@github-app-token-broker/http': file:packages/http
-      '@github-app-token-broker/oidc': file:packages/oidc
-      '@github-app-token-broker/token-issuance-policy': file:packages/token-issuance-policy
-      jose: 6.2.12
-      zod: 4.6.6
-
-  '@github-app-token-broker/token-issuance-policy@file:packages/token-issuance-policy':
-    dependencies:
-      '@github-app-token-broker/github': file:packages/github
-      '@github-app-token-broker/oidc': file:packages/oidc
 
   '@img/colour@1.1.0': {}
 
