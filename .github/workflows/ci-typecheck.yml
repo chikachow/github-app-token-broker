@@ -23,6 +23,15 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
+      - name: Enable Corepack shims
+        run: |
+          mkdir -p "$RUNNER_TEMP/corepack"
+          corepack enable --install-directory "$RUNNER_TEMP/corepack"
+          echo "$RUNNER_TEMP/corepack" >> "$GITHUB_PATH"
+
+      - name: Verify pinned pnpm version
+        run: node --run pnpm:check
+
       - run: pnpm install --frozen-lockfile
 
       - run: node --run typecheck

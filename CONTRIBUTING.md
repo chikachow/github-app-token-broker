@@ -12,8 +12,7 @@ artifact checks. Documentation-only pull requests still require the gates below.
 Routine dependency updates use a three-day release age: `minimumReleaseAge: 4320` in
 `pnpm-workspace.yaml` applies to pnpm resolution, including the scheduled
 `pnpm-up` workflow, and the npm Dependabot configuration uses a matching
-three-day cooldown. Keep these values aligned. This controls newly resolved
-versions; a frozen install of the reviewed lockfile is not a release-age audit.
+three-day cooldown. Keep these values aligned. Frozen installs also verify the lockfile against the release-age policy.
 
 When updating the Codecov action, review its separate CLI `version` input in
 `.github/workflows/ci-test.yml` too; Dependabot does not maintain that input.
@@ -26,12 +25,10 @@ fixture dependencies aligned. Public peer dependency ranges remain separate.
 Dependency updates use `strictPeerDependencies: false` to allow intermediate
 peer conflicts while Dependabot assembles grouped updates. `autoInstallPeers: false`
 keeps peer dependencies explicit. `node --run peer-dependencies:check`, included
-in `check`, re-runs resolution with strict peer validation and lifecycle scripts
-disabled. It rejects missing required peers and peers outside their declared
-version ranges, including in a lockfile generated with permissive settings.
-Resolution can update the lockfile; review any local changes. The `dependencies`
-CI job also rejects lockfile changes, so validation must pass with the committed
-lockfile.
+in `check`, runs `pnpm peers check`. It rejects missing required peers and peers
+outside their declared version ranges without changing the lockfile, including
+when the lockfile was generated with permissive settings. The `dependencies` CI
+job also rejects lockfile changes.
 
 `node --run dedupe:check` runs `pnpm dedupe --check --ignore-scripts` in the same
 CI job and local `check`. It fails when pnpm would change the lockfile through
@@ -46,7 +43,7 @@ binaries used by the validated builds and tests.
 
 Before opening or updating a pull request:
 
-1. Run `pnpm install --frozen-lockfile`.
+1. Run `corepack pnpm install --frozen-lockfile`.
 2. Run `node --run check` and the [container integration suite](test/integration/README.md) for both Fastify and Worker. Follow its explicit Compose startup, test, and cleanup steps; both hosts are separate required CI lanes.
 3. Update `docs/service-contract.md` when externally observable behaviour changes.
 4. Update `docs/implementation.md` when package layout, Worker entrypoints, request flow, or bindings change.
@@ -99,3 +96,29 @@ and [GPT-5.6 Sol prompting guidance](https://developers.openai.com/api/docs/guid
 preserve outcomes, evidence, constraints, and completion criteria while removing
 redundant process advice. Retain the broker's explicit security and PR gates when
 pruning.
+
+## Dependency tooling
+
+Use Node 24 with Corepack shims first on `PATH` (`corepack enable`), then run
+`corepack pnpm` from this repository's directory. `packageManager`
+is the single pnpm version pin. CI installs that version with `pnpm/action-setup`,
+prepends Corepack shims to `PATH`, and runs `node --run pnpm:check` before dependency
+commands. Shims also select the correct version for nested script invocations. Direct global pnpm
+invocations do not enforce the pin: `pmOnFail: ignore` keeps the lockfile as one
+YAML document for GitHub's dependency graph. Adding config dependencies requires
+reviewing that compatibility assumption.
+
+`autoDedupe` consolidates compatible resolutions during updates, including across
+workspace projects outside a command's filter. Frozen installs leave the graph
+unchanged; `lockfile.includeResolutionSettings` records the selected deduplication
+and linking settings. Keep the frozen-lockfile, peer and dedupe validation gates.
+`verifyDepsBeforeRun: error` stops pnpm scripts when dependencies are stale; it
+does not guard `node --run`, so install explicitly before validation.
+
+Dependency resolution uses a three-day release age, aligned with npm Dependabot
+cooldown where configured. Frozen installs also verify lockfile supply-chain
+policy. Dependency build scripts require explicit `allowBuilds` decisions;
+`strictDepBuilds` rejects unreviewed builds.
+
+Workspace packages use links. pnpm 12 builds deployment copies from those links,
+so builds no longer need injected-package synchronization.
