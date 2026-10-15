@@ -41,3 +41,10 @@ updates:
           - oxfmt
           - oxlint
           - oxlint-tsgolint
+      vite:
+        patterns:
+          - "vite"
+      fast-check:
+        patterns:
+          - "fast-check"
+          - "@fast-check/*"
