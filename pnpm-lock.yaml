@@ -23,8 +23,8 @@ catalogs:
       specifier: 7.0.2
       version: 7.0.2
     zod:
-      specifier: 4.6.5
-      version: 4.6.5
+      specifier: 4.6.6
+      version: 4.6.6
 
 importers:
 
@@ -129,7 +129,7 @@ importers:
         version: 6.2.12
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.6
 
   packages/http: {}
 
@@ -143,7 +143,7 @@ importers:
         version: 6.2.12
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.6
 
   packages/oidc-provider-buildkite:
     dependencies:
@@ -188,7 +188,7 @@ importers:
         version: 6.2.12
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.6
 
   packages/token-issuance-policy:
     dependencies:
@@ -2307,6 +2307,9 @@ packages:
   zod@4.6.5:
     resolution: {integrity: sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==}
 
+  zod@4.6.6:
+    resolution: {integrity: sha512-4UmzQUF5fxvfcYHlbjBmejU+w+hbDnWFx4aS8kBx7nPBHcO2SqPbpAG8snbdg+Xse4pRefR98hgjFgIMCI/UhA==}
+
 snapshots:
 
   '@babel/helper-string-parser@7.29.7': {}
@@ -2505,7 +2508,7 @@ snapshots:
     dependencies:
       '@github-app-token-broker/http': file:packages/http
       jose: 6.2.12
-      zod: 4.6.5
+      zod: 4.6.6
 
   '@github-app-token-broker/http@file:packages/http': {}
 
@@ -2513,7 +2516,7 @@ snapshots:
     dependencies:
       '@github-app-token-broker/http': file:packages/http
       jose: 6.2.12
-      zod: 4.6.5
+      zod: 4.6.6
 
   '@github-app-token-broker/token-exchange@file:packages/token-exchange':
     dependencies:
@@ -2522,7 +2525,7 @@ snapshots:
       '@github-app-token-broker/oidc': file:packages/oidc
       '@github-app-token-broker/token-issuance-policy': file:packages/token-issuance-policy
       jose: 6.2.12
-      zod: 4.6.5
+      zod: 4.6.6
 
   '@github-app-token-broker/token-issuance-policy@file:packages/token-issuance-policy':
     dependencies:
@@ -3871,3 +3874,5 @@ snapshots:
       yuku-core: 0.18.1
 
   zod@4.6.5: {}
+
+  zod@4.6.6: {}
