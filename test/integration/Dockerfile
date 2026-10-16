@@ -5,7 +5,7 @@ COPY . .
 RUN npm install --global "$(node -p 'require("./package.json").packageManager')"
 ENV CI=true CLOUDFLARE_CF_FETCH_ENABLED=false WRANGLER_SEND_METRICS=false WRANGLER_LOG_PATH=/tmp/wrangler-logs WRANGLER_REGISTRY_PATH=/tmp/wrangler-registry
 
-RUN --mount=type=cache,target=/root/.local/share/pnpm/store node --run pnpm:check && pnpm install --frozen-lockfile && node --run build
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile && node --run build
 RUN pnpm --filter @github-app-token-broker/integration-fastify deploy --prod /fastify
 RUN node node_modules/wrangler/bin/wrangler.js deploy test/integration/worker.ts \
     --config workers/github-app-token-broker/wrangler.jsonc \
