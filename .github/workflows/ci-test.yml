@@ -24,8 +24,7 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
-      - name: Verify pinned pnpm version
-        run: node --run pnpm:check
+      - run: node --run pnpm:check
 
       - run: pnpm install --frozen-lockfile
 

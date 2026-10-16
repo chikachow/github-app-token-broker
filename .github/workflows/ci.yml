@@ -54,7 +54,6 @@ jobs:
     uses: ./.github/workflows/ci-deploy-dry-run.yml
 
   ci:
-    name: ci
     runs-on: ubuntu-latest
     needs:
       - dependencies
