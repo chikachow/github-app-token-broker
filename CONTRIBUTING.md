@@ -81,9 +81,9 @@ node --run pnpm:check
 pnpm install --frozen-lockfile
 ```
 
-CI installs the manifest pin with `pnpm/action-setup` and runs the same version
-check. `pmOnFail: ignore` keeps the lockfile as one YAML document for GitHub's
-dependency graph; direct pnpm commands do not automatically select or enforce the
+CI installs the manifest pin with `pnpm/action-setup`. The local `check` command
+retains the version guard for developer environments. `pmOnFail: ignore` keeps
+the lockfile as one YAML document for GitHub's dependency graph; direct pnpm commands do not automatically select or enforce the
 pin. Adding config dependencies requires reviewing that compatibility assumption.
 
 Routine dependency updates use a three-day release age: `minimumReleaseAge: 4320` in
