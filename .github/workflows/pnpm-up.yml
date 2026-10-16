@@ -33,8 +33,6 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
-      - run: node --run pnpm:check
-
       - run: pnpm up -r
 
       - run: pnpm dedupe

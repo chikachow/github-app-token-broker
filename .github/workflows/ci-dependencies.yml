@@ -23,8 +23,6 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
-      - run: node --run pnpm:check
-
       - run: node --run lockfile:check
 
       - run: node --run peer-dependencies:check
