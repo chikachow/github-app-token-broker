@@ -106,7 +106,7 @@ contract above.
 The deployment system is maintained outside this repository. It must:
 
 1. select and pin a reviewed source revision
-2. install with Node 24 and the source repository's pinned Corepack/pnpm version
+2. install with Node 24 and the source repository's pinned pnpm version
 3. run the public source checks independently
 4. compile a deployment-owned TypeScript entrypoint with its app catalogue, OIDC Provider Registrations, and app-qualified Token Issuance Policy; construct the named RPC export from the same catalogue
 5. test the exact composition, including accepted and rejected requests, without deriving expectations from the policy under test

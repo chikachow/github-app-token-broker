@@ -43,18 +43,18 @@ when upgrading a singleton deployment.
 
 ## Local development
 
-Use Node 24 and the pinned pnpm version:
+Use Node 24 and install the [pinned pnpm version](CONTRIBUTING.md#dependency-tooling):
 
 ```bash
-fnm exec --using=24 corepack pnpm install --frozen-lockfile
-fnm exec --using=24 corepack pnpm run check
+fnm exec --using=24 pnpm install --frozen-lockfile
+fnm exec --using=24 pnpm run check
 ```
 
 The source Worker has an empty app catalogue and returns `404` for every HTTP route. It needs no App credentials. The development command expects a `.dev.vars` file; create an empty one if needed and run the generic template:
 
 ```bash
 touch .dev.vars
-fnm exec --using=24 corepack pnpm run dev
+fnm exec --using=24 pnpm run dev
 ```
 
 Use an external deployment-owned entrypoint to configure app identities, audiences, policy, and matching private-key binding names for real exchanges. The [container suite](test/integration/README.md) provides a complete synthetic deployment. `.dev.vars.example` illustrates an optional key binding for a custom local composition.

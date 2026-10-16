@@ -43,7 +43,7 @@ binaries used by the validated builds and tests.
 
 Before opening or updating a pull request:
 
-1. Run `corepack pnpm install --frozen-lockfile`.
+1. Run `pnpm install --frozen-lockfile`.
 2. Run `node --run check` and the [container integration suite](test/integration/README.md) for both Fastify and Worker. Follow its explicit Compose startup, test, and cleanup steps; both hosts are separate required CI lanes.
 3. Update `docs/service-contract.md` when externally observable behaviour changes.
 4. Update `docs/implementation.md` when package layout, Worker entrypoints, request flow, or bindings change.
@@ -99,14 +99,21 @@ pruning.
 
 ## Dependency tooling
 
-Use Node 24 with Corepack shims first on `PATH` (`corepack enable`), then run
-`corepack pnpm` from this repository's directory. `packageManager`
-is the single pnpm version pin. CI installs that version with `pnpm/action-setup`,
-prepends Corepack shims to `PATH`, and runs `node --run pnpm:check` before dependency
-commands. Shims also select the correct version for nested script invocations. Direct global pnpm
-invocations do not enforce the pin: `pmOnFail: ignore` keeps the lockfile as one
-YAML document for GitHub's dependency graph. Adding config dependencies requires
-reviewing that compatibility assumption.
+Use Node 24 and the exact pnpm version in `packageManager`. Install it from the
+repository root, then verify it before installing dependencies. When migrating
+an existing Corepack installation, run `corepack disable pnpm` once first to
+remove its pnpm shims.
+
+```bash
+npm install --global "$(node -p 'require("./package.json").packageManager')"
+node --run pnpm:check
+pnpm install --frozen-lockfile
+```
+
+CI installs the manifest pin with `pnpm/action-setup` and runs the same version
+check. `pmOnFail: ignore` keeps the lockfile as one YAML document for GitHub's
+dependency graph; direct pnpm commands do not automatically select or enforce the
+pin. Adding config dependencies requires reviewing that compatibility assumption.
 
 `autoDedupe` consolidates compatible resolutions during updates, including across
 workspace projects outside a command's filter. Frozen installs leave the graph

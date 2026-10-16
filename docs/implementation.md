@@ -171,9 +171,9 @@ Use Node 24 and pinned pnpm. Node declarations match this runtime; Dependabot
 leaves their major upgrades to the corresponding runtime upgrade.
 
 ```bash
-fnm exec --using=24 corepack pnpm run check
-fnm exec --using=24 corepack pnpm run test:coverage
-fnm exec --using=24 corepack pnpm run test:mutations:property
+fnm exec --using=24 pnpm run check
+fnm exec --using=24 pnpm run test:coverage
+fnm exec --using=24 pnpm run test:mutations:property
 ```
 
 Continuous integration runs reusable validation workflows in parallel: dependency validation, formatting, lint,
