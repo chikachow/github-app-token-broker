@@ -20,7 +20,7 @@ strictPeerDependencies: false
 engineStrict: true
 minimumReleaseAge: 4320
 
-# Corepack and CI select the manifest pin; keep GitHub-compatible lockfiles.
+# Explicit version selection and CI enforce the manifest pin; keep GitHub-compatible lockfiles.
 pmOnFail: ignore
 autoDedupe: true
 lockfile:
