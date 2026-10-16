@@ -23,17 +23,12 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
-      - name: Verify pinned pnpm version
-        run: node --run pnpm:check
+      - run: node --run pnpm:check
 
-      - name: Check manifest and lockfile consistency
-        run: node --run lockfile:check
+      - run: node --run lockfile:check
 
-      - name: Check peer dependency requirements
-        run: node --run peer-dependencies:check
+      - run: node --run peer-dependencies:check
 
-      - name: Check lockfile deduplication
-        run: node --run dedupe:check
+      - run: node --run dedupe:check
 
-      - name: Verify lockfile is unchanged
-        run: git diff --exit-code -- pnpm-lock.yaml
+      - run: git diff --exit-code -- pnpm-lock.yaml
