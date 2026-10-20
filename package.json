@@ -54,7 +54,7 @@
     "@github-app-token-broker/worker": "workspace:*",
     "@tsconfig/strictest": "2.0.8",
     "@types/node": "catalog:",
-    "@vitest/coverage-v8": "5.0.3",
+    "@vitest/coverage-v8": "5.0.5",
     "fast-check": "4.10.2",
     "fastify": "catalog:",
     "knip": "6.41.0",
@@ -64,7 +64,7 @@
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "vite": "8.3.4",
-    "vitest": "5.0.3",
+    "vitest": "5.0.5",
     "wrangler": "4.151.0"
   },
   "engines": {
