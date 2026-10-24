@@ -1,25 +1,52 @@
 # Contributing
 
-Keep changes small, explicit, and grounded in the service contract.
-
-For a local documentation-only handoff, check formatting with the pinned tooling,
-resolve changed links and fragment targets, verify documented commands against
-their owning scripts, and inspect `git diff --check`, `git diff`, and
-`git status --short` (including new files). See
-[Implementation: Validation](docs/implementation.md#validation) for runtime and
-artifact checks. Documentation-only pull requests still require the gates below.
+Keep changes cohesive, explicit, and grounded in the service contract.
+[AGENTS.md](AGENTS.md) owns repository agent guidance; this document owns
+validation scope and contribution requirements. Keep repository guidance
+self-contained for contributors; personal agent configuration is not a
+prerequisite. Command definitions and tool versions remain authoritative in `package.json` and the lockfile.
 
 See [dependency tooling](#dependency-tooling) for the dependency update policy
 and validation gates.
 
-Before opening or updating a pull request:
+## Validation scope
 
-1. Run `pnpm install --frozen-lockfile`.
-2. Run `node --run check` and the [container integration suite](test/integration/README.md) for both Fastify and Worker. Follow its explicit Compose startup, test, and cleanup steps; both hosts are separate required CI lanes.
-3. Update `docs/service-contract.md` when externally observable behaviour changes.
-4. Update `docs/implementation.md` when package layout, Worker entrypoints, request flow, or bindings change.
-5. Update `docs/deployment.md` when source/deployment ownership changes and the relevant decision record when consumers must migrate.
-6. Update `CONTEXT.md` when a project-defined term or its meaning changes.
+Choose checks by the affected behavior. During implementation, use focused
+checks; before opening or updating a pull request, apply the matching gate:
+
+| Change                                                                         | Required verification                                                                                                                                                                                                                                                                                                                                             |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Agent instructions or prose only                                               | Review instruction consistency, local links and fragments, documented commands against their scripts, and the final diff and status (including new files). Check changed Markdown files with the pinned formatter (`pnpm exec oxfmt --check <files>`) and run `git diff --check`. A full install and application check are not required solely for prose changes. |
+| Code, configuration, dependencies, generated artifacts, or executable examples | Run `pnpm install --frozen-lockfile`, `node --run check`, and the [container integration suite](test/integration/README.md) for both Fastify and Worker. Follow its explicit Compose startup, test, and cleanup steps; both hosts remain required CI lanes. Add focused checks needed to establish the changed behavior.                                          |
+
+For runtime, artifact, consumer, or deployment validation, read
+[Implementation: Validation](docs/implementation.md#validation) and cover every
+affected lane.
+Once appropriate checks pass, broaden or repeat them only for new changes,
+failures, or unresolved concerns. Report the exact command and blocker for any
+check that cannot run; distinguish passed, skipped, and failed checks. Local
+verification does not establish remote CI success or waive required CI checks.
+
+If a required check remains unavailable after plausible scoped recovery attempts,
+finish all independent work. A pull request already requested by the user may be
+opened or updated as a draft, recording the exact command, blocker, and consequence
+for confidence. Fixable implementation defects remain the author's work; a draft
+is not a merge-ready handoff and does not waive the missing gate. This exception
+does not authorize publishing an unrequested pull request.
+
+## Documentation ownership
+
+Before handoff, update the authoritative document for each affected concern:
+
+- [Service contract](docs/service-contract.md) for externally observable behaviour.
+- [Implementation](docs/implementation.md) for package layout, entrypoints, request flow, bindings, or validation lanes.
+- [Deployment](docs/deployment.md) for source/deployment ownership and the relevant decision record for consumer migrations.
+- [Publishing source artifacts](#publishing-source-artifacts) for publish-readiness requirements.
+- [CONTEXT.md](CONTEXT.md) for a project-defined term or its meaning.
+
+Publishing and tagging releases still require [Publishing source artifacts](#publishing-source-artifacts).
+
+## Public source boundary
 
 Do not commit local deployment state or secrets. In particular, keep `.dev.vars`, `.env`, `.wrangler/`, `.local-secrets/`, GitHub App private keys, and Cloudflare tokens out of commits.
 
@@ -35,7 +62,7 @@ deployment inventory in this public repository.
 
 ## Publishing source artifacts
 
-Build releases from tracked files, such as a `git archive`, and run the PR gates
+Build releases from tracked files, such as a `git archive`, and run the code-change PR gates
 above plus `node --run test:coverage` in that source tree. Inspect
 `git status --short --ignored` before packaging: ignored local files are not
 release inputs. Exclude credentials, private deployment inventory, dependency
