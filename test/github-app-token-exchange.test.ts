@@ -1,3 +1,4 @@
+import { createOidcProviderRegistration } from "@github-app-token-broker/oidc/provider-registration";
 import { tokenExchangeRequestContext as requestContext } from "./support/token-exchange-request.ts";
 import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-github-actions";
 import {
@@ -34,6 +35,48 @@ const defaultInstallationAccessTokenRequestLogFields = {
 } as const;
 
 describe("GitHub App Token Exchange public interface", () => {
+  it("sanitizes profile exception metadata before mandatory observation", async () => {
+    const privateDetail = "private-token-in-exception-code";
+    const observations: TokenExchangeObservation[] = [];
+    const external = vi.fn(fetchGitHubActionsTokenExchangeExternalTestDouble);
+    const tokenExchange = createGitHubAppTokenExchange(
+      {
+        ...testGitHubActionsTokenExchangeConfiguration,
+        composition: {
+          ...testGitHubActionsTokenExchangeConfiguration.composition,
+          oidcProviderRegistrations: [
+            createOidcProviderRegistration({
+              ...githubActionsOidcProviderRegistration,
+              idTokenProfile: {
+                validate() {
+                  throw { code: privateDetail };
+                },
+              },
+            }),
+          ],
+        },
+      },
+      { fetch: external, now: () => testNow },
+    );
+    const response = await tokenExchange(await githubActionsTokenExchangeRequest(), {
+      ...requestContext(),
+      observe: async (observation) => {
+        observations.push(observation);
+      },
+    });
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: "server_error" });
+    expect(observations).toHaveLength(1);
+    expect(observations[0]?.fields).toMatchObject({ reason: "oidc_internal_failure" });
+    expect(observations[0]?.fields).not.toHaveProperty("diagnosticCode");
+    expect(JSON.stringify(observations)).not.toContain(privateDetail);
+    expect(
+      external.mock.calls.every(([input]) =>
+        new Request(input).url.startsWith("https://token.actions.githubusercontent.com/"),
+      ),
+    ).toBe(true);
+  });
+
   it("uses the platform fetch and clock when runtime dependencies are omitted", async () => {
     const externalRequests: Request[] = [];
     const platformFetch = vi.fn<typeof fetch>((input, init) => {

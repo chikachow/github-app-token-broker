@@ -888,8 +888,6 @@ function hasCacheControlDirective(
 }
 
 function classifyAuthenticationError(error: unknown): OidcIdTokenAuthenticationFailureResult {
-  const diagnosticCode = diagnosticCodeOf(error);
-
   if (error instanceof OidcRemoteDocumentError) {
     return providerUnavailable(error.code, error.providerHttpStatus);
   }
@@ -906,7 +904,7 @@ function classifyAuthenticationError(error: unknown): OidcIdTokenAuthenticationF
     return subjectTokenRejected(error.code);
   }
 
-  return internalFailure(diagnosticCode);
+  return internalFailure();
 }
 
 const subjectTokenJoseErrorCodes = new Set([
@@ -946,10 +944,10 @@ function providerUnavailable(
   };
 }
 
-function internalFailure(diagnosticCode?: string): OidcIdTokenAuthenticationFailureResult {
+function internalFailure(): OidcIdTokenAuthenticationFailureResult {
   return {
     failure: {
-      diagnostics: diagnosticCode === undefined ? {} : { diagnosticCode },
+      diagnostics: {},
       kind: "internal_failure",
     },
     ok: false,
@@ -1111,29 +1109,14 @@ function hasJoseErrorCode(error: unknown, code: string): boolean {
 }
 
 function diagnosticCodeOf(error: unknown): string | undefined {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    typeof error.code === "string"
-  ) {
-    return error.code;
-  }
-
-  return undefined;
+  return error instanceof OidcRemoteDocumentError ||
+    error instanceof OidcProviderMetadataValidationError
+    ? error.code
+    : undefined;
 }
 
 function providerHttpStatusOf(error: unknown): number | undefined {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "providerHttpStatus" in error &&
-    typeof error.providerHttpStatus === "number"
-  ) {
-    return error.providerHttpStatus;
-  }
-
-  return undefined;
+  return error instanceof OidcRemoteDocumentError ? error.providerHttpStatus : undefined;
 }
 
 function hasErrorName(error: unknown, name: string): boolean {
