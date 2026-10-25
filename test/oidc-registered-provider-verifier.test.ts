@@ -1962,22 +1962,25 @@ describe("Registered OIDC Provider Verifier", () => {
         throw new Error("private accessor");
       },
     }),
-  ])("does not inspect or expose arbitrary profile exception diagnostics", async (failure) => {
-    const profileRegistration = createOidcProviderRegistration({
-      acceptedIdTokenSigningAlgorithms: ["RS256"],
-      idTokenProfile: {
-        validate: () => {
-          throw failure;
+  ])(
+    "omits arbitrary OIDC ID Token Profile error properties without reading them",
+    async (failure) => {
+      const profileRegistration = createOidcProviderRegistration({
+        acceptedIdTokenSigningAlgorithms: ["RS256"],
+        idTokenProfile: {
+          validate: () => {
+            throw failure;
+          },
         },
-      },
-      issuer,
-    });
-    await expect(
-      testVerifier(successfulProviderFetch, undefined, profileRegistration).verifyIdToken(
-        await signedIdToken(),
-      ),
-    ).resolves.toEqual(expectedFailure("internal_failure"));
-  });
+        issuer,
+      });
+      await expect(
+        testVerifier(successfulProviderFetch, undefined, profileRegistration).verifyIdToken(
+          await signedIdToken(),
+        ),
+      ).resolves.toEqual(expectedFailure("internal_failure"));
+    },
+  );
 
   it("classifies an unexpected OIDC ID Token Profile failure as internal", async () => {
     const profileRegistration = createOidcProviderRegistration({

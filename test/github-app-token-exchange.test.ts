@@ -35,7 +35,7 @@ const defaultInstallationAccessTokenRequestLogFields = {
 } as const;
 
 describe("GitHub App Token Exchange public interface", () => {
-  it("sanitizes profile exception metadata before mandatory observation", async () => {
+  it("omits OIDC ID Token Profile error properties from Mandatory Token Exchange Observations", async () => {
     const privateDetail = "private-token-in-exception-code";
     const observations: TokenExchangeObservation[] = [];
     const external = vi.fn(fetchGitHubActionsTokenExchangeExternalTestDouble);
