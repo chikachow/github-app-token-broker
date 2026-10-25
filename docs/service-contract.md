@@ -431,9 +431,10 @@ Missing or incorrectly typed claims selected by Permit Statements authenticate a
 
 Each GitHub authentication operation captures its configured client ID and private-key binding
 before asynchronous key loading. It retains that client ID until signing completes. Malformed
-private-key binding shapes or non-string resolved values are configuration failures; a callable
-secret-store binding that rejects remains an internal failure. Key values are still resolved per
-operation, so secret-store rotation remains effective for subsequent operations.
+private-key binding shapes or non-string resolved values are configuration failures. Unexpected
+operational failures while resolving a valid secret-store binding remain internal failures. Key
+values are still resolved per operation, so secret-store rotation remains effective for subsequent
+operations.
 
 After policy permits issuance, the broker passes the normalized Repository Resource and Requested Permissions to one broker-owned GitHub issuance capability. That capability resolves only the selected GitHub App's private key and creates an App JWT whose `iss` is its configured client ID once for the exchange, uses them to resolve the target installation with `GET /repos/{owner}/{repo}/installation`, and requires the returned installation account's `login` to match the requested owner case-insensitively before minting. The shared GitHub HTTP client rejects redirect responses before any follow-up request, so App credentials are never forwarded through a redirect; owner validation independently protects the repository selected by Token Issuance Policy. It then mints the final Installation Access Token with GitHub's `repositories` selector and the exact Requested Permissions. It sends no [temporary stateful-token override](https://github.blog/changelog/2026-05-15-github-app-installation-tokens-per-request-override-header/) and treats the returned token string as an opaque credential, accepting both GitHub's legacy opaque and JWT-shaped installation-token formats. It does not fetch source repository metadata or use live default-branch metadata as policy criteria. A successful GitHub lookup whose installation owner does not match the requested owner is treated as an upstream failure and returns `502 {"error":"server_error"}`. Other GitHub validation failure after policy approval, including HTTP `422` for a name or level GitHub does not accept, is a service/configuration failure and returns `500 {"error":"server_error"}` rather than `invalid_scope`.
 
