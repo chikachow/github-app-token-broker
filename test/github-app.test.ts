@@ -12,7 +12,7 @@ import { githubInstallationResponse } from "./support/github-api.ts";
 import { testPrivateKeyPem, testPublicJwk } from "./support/rsa-test-key-pair.ts";
 
 describe("GitHub App authentication", () => {
-  it("keeps the validated Client ID stable while its private key resolves", async () => {
+  it("keeps the GitHub App Client ID stable during private-key resolution", async () => {
     const key = Promise.withResolvers<string>();
     const configuration = { clientId: "Iv1.originalApp", privateKey: { get: () => key.promise } };
     const now = new Date("2026-06-29T12:34:00.000Z");

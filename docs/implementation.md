@@ -156,6 +156,11 @@ not import provider registrations or policy as its oracle.
 
 ## GitHub security boundary
 
+Each GitHub App authentication operation captures its GitHub App Client ID and
+private-key binding before key resolution. The App JWT uses the captured client
+ID even when resolution is asynchronous. The key value is resolved for each
+operation; capturing a binding reference does not freeze the value it supplies.
+
 Successful GitHub responses are bounded and schema-validated. The GitHub API destination is fixed to `https://api.github.com`; redirect responses are rejected before any follow-up request, and each request has a fixed 10-second deadline spanning response headers and complete bounded body consumption. Installation resolution also requires case-insensitive equality between the requested repository owner and the returned installation `account.login`. A mismatch stops before token minting. Once resolution succeeds, the deep issuance capability retains the installation ID for operational context even when the subsequent mint request fails. The broker sends no temporary stateful-token override and treats returned Installation Access Token values as opaque, accepting both legacy opaque and JWT-shaped installation-token formats. If mandatory success observation fails, the issued token's bound revocation capability uses the token itself for one fixed-origin, redirect-rejecting, deadline-bounded `DELETE /installation/token` request. The GitHub issuance boundary classifies transport, rate-limit, upstream, and configuration failures before returning sanitized evidence; Token Exchange retains only the reason-to-OAuth mapping and observation formatting.
 
 The [service contract's OIDC limits and caching section](service-contract.md#oidc-remote-document-limits-and-caching) owns the numeric cache and response limits. The [OIDC authentication decision](decisions/oidc-id-token-authentication.md#cache-identity-and-availability) owns the cache identity and availability rationale; the service contract owns public error mappings.
