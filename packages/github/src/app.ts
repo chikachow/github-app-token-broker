@@ -210,10 +210,11 @@ export async function githubAppAuthenticationHeaders(
   configuration: GitHubAppConfiguration,
   dependencies: GitHubAppDependencies,
 ): Promise<HeadersInit> {
-  if (!isGitHubAppClientId(configuration.clientId)) {
+  const { clientId, privateKey } = configuration;
+  if (!isGitHubAppClientId(clientId)) {
     throw new GitHubAppConfigurationError();
   }
-  const jwt = await createGitHubAppJwt(configuration, () => dependencies.now());
+  const jwt = await createGitHubAppJwt(clientId, privateKey, () => dependencies.now());
 
   return {
     accept: githubAcceptHeader,
@@ -228,17 +229,20 @@ export function isGitHubAppClientId(value: unknown): value is string {
 }
 
 async function createGitHubAppJwt(
-  configuration: GitHubAppConfiguration,
+  clientId: string,
+  privateKeyBinding: SecretTextBinding,
   now: () => Date,
 ): Promise<string> {
-  const privateKey = await importedGitHubAppPrivateKey(await githubAppPrivateKeyPem(configuration));
+  const privateKey = await importedGitHubAppPrivateKey(
+    await githubAppPrivateKeyPem(privateKeyBinding),
+  );
   const nowSeconds = Math.floor(now().getTime() / 1000);
 
   return new SignJWT({})
     .setProtectedHeader({ alg: "RS256" })
     .setIssuedAt(nowSeconds - 60)
     .setExpirationTime(nowSeconds + githubAppJwtExpirationOffsetSeconds)
-    .setIssuer(configuration.clientId)
+    .setIssuer(clientId)
     .sign(privateKey);
 }
 
@@ -258,10 +262,17 @@ async function importedGitHubAppPrivateKey(privateKeyPem: string): Promise<Crypt
   return imported;
 }
 
-async function githubAppPrivateKeyPem(configuration: GitHubAppConfiguration): Promise<string> {
-  const privateKeyPem = await resolveSecretText(configuration.privateKey);
+async function githubAppPrivateKeyPem(binding: SecretTextBinding): Promise<string> {
+  if (
+    typeof binding !== "string" &&
+    (typeof binding !== "object" || binding === null || typeof binding.get !== "function")
+  ) {
+    throw new GitHubAppConfigurationError();
+  }
 
-  if (privateKeyPem !== undefined && privateKeyPem.length > 0) {
+  const privateKeyPem: unknown = await resolveSecretText(binding);
+
+  if (typeof privateKeyPem === "string" && privateKeyPem.length > 0) {
     return privateKeyPem;
   }
 
