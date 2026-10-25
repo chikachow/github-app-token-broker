@@ -1,16 +1,48 @@
-import { decodeJwt } from "jose";
+import { decodeJwt, importJWK, jwtVerify } from "jose";
 import { describe, expect, it, vi } from "vitest";
 
 import {
   issueInstallationAccessToken,
+  githubAppAuthenticationHeaders,
   type GitHubAppConfiguration,
 } from "../packages/github/src/app.ts";
 import { createInstallationAccessTokenRequest } from "@github-app-token-broker/github/installation-access-token-request";
 import { testInstallationId, testRepository } from "./support/constants.ts";
 import { githubInstallationResponse } from "./support/github-api.ts";
-import { testPrivateKeyPem } from "./support/rsa-test-key-pair.ts";
+import { testPrivateKeyPem, testPublicJwk } from "./support/rsa-test-key-pair.ts";
 
 describe("GitHub App authentication", () => {
+  it("keeps the validated Client ID stable while its private key resolves", async () => {
+    const key = Promise.withResolvers<string>();
+    const configuration = { clientId: "Iv1.originalApp", privateKey: { get: () => key.promise } };
+    const now = new Date("2026-06-29T12:34:00.000Z");
+    const headers = githubAppAuthenticationHeaders(configuration, { fetch, now: () => now });
+    configuration.clientId = "Iv1.nextApp";
+    key.resolve(testPrivateKeyPem);
+    const authorization = new Headers(await headers).get("authorization");
+    expect(authorization).toMatch(/^Bearer /u);
+    if (authorization === null) {
+      throw new Error("expected App authentication");
+    }
+    const verified = await jwtVerify(
+      authorization.slice("Bearer ".length),
+      await importJWK(testPublicJwk, "RS256"),
+      { currentDate: now, issuer: "Iv1.originalApp", algorithms: ["RS256"] },
+    );
+    expect(verified.payload.iss).toBe("Iv1.originalApp");
+
+    const nextAuthorization = new Headers(
+      await githubAppAuthenticationHeaders(configuration, { fetch, now: () => now }),
+    ).get("authorization");
+    expect(nextAuthorization).toMatch(/^Bearer /u);
+    const nextVerified = await jwtVerify(
+      nextAuthorization!.slice("Bearer ".length),
+      await importJWK(testPublicJwk, "RS256"),
+      { currentDate: now, issuer: "Iv1.nextApp", algorithms: ["RS256"] },
+    );
+    expect(nextVerified.payload.iss).toBe("Iv1.nextApp");
+  });
+
   it("uses one App authentication resolution for repository-scoped issuance", async () => {
     const now = new Date("2026-06-29T12:34:00.000Z");
     const nowSeconds = Math.floor(now.getTime() / 1000);

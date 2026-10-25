@@ -423,6 +423,63 @@ describe("GitHub App Information", () => {
     expect(fetchGitHub).not.toHaveBeenCalled();
   });
 
+  it.each([null, 123, {}, { get: "not callable" }])(
+    "classifies malformed private-key bindings as configuration errors: %s",
+    async (privateKey) => {
+      const fetchGitHub = vi.fn<typeof fetch>();
+      const information = createGitHubAppInformation(
+        {
+          ...githubAppConfiguration,
+          privateKey,
+        } as unknown as GitHubAppConfiguration,
+        { fetch: fetchGitHub, now: () => now },
+      );
+      await expect(information.getApp()).rejects.toBeInstanceOf(GitHubAppConfigurationError);
+      expect(fetchGitHub).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([undefined, null, 123, { length: 1 }, ""])(
+    "classifies invalid resolved private-key values as configuration errors: %s",
+    async (privateKey) => {
+      const fetchGitHub = vi.fn<typeof fetch>();
+      const information = createGitHubAppInformation(
+        {
+          ...githubAppConfiguration,
+          privateKey: { get: async () => privateKey },
+        } as unknown as GitHubAppConfiguration,
+        { fetch: fetchGitHub, now: () => now },
+      );
+      await expect(information.getApp()).rejects.toBeInstanceOf(GitHubAppConfigurationError);
+      expect(fetchGitHub).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps a valid secret binding rejection classified as internal", async () => {
+    const fetchGitHub = vi.fn<typeof fetch>();
+    const information = createGitHubAppInformation(
+      {
+        ...githubAppConfiguration,
+        privateKey: {
+          get: async () => {
+            throw new Error("private secret-store failure");
+          },
+        },
+      },
+      { fetch: fetchGitHub, now: () => now },
+    );
+    await expectStableSanitizedError(
+      information.getApp(),
+      GitHubAppInternalError,
+      {
+        message: "GitHub App Information request failed internally",
+        name: "GitHubAppInternalError",
+      },
+      "private secret-store failure",
+    );
+    expect(fetchGitHub).not.toHaveBeenCalled();
+  });
+
   it("preserves private-key configuration errors", async () => {
     await expect(
       createGitHubAppInformation({
