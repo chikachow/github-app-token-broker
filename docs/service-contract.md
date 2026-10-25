@@ -264,9 +264,10 @@ that an observation was durably persisted. The default console adapter acknowled
 console call completes. OIDC remote-document cache events are optional synchronous diagnostics,
 not mandatory Token Exchange observations, and their delivery cannot change endpoint behavior.
 
-Unexpected local OIDC failures expose no exception-supplied diagnostic metadata.
-Only recognized broker and JOSE failure classifications contribute diagnostic codes;
-mandatory observations never forward arbitrary exception fields.
+Unexpected local OIDC failures omit diagnostic codes. Diagnostic codes and provider
+HTTP status values in Mandatory Token Exchange Observations and Optional OIDC
+Diagnostics describe recognized authentication or provider failures; arbitrary
+error properties are not included.
 
 The [GitHub API Failure Classification
 decision](decisions/github-api-failure-classification.md) records the rationale,
