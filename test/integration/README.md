@@ -85,8 +85,10 @@ edge behavior.
 The broker and mocks share a standard bridge network. DNS aliases route
 `api.github.com`, `token.actions.githubusercontent.com`, `agent.buildkite.com`,
 `accounts.google.com`, `www.googleapis.com`, and `oidc.fly.io` to the HTTPS mocks,
-preserving production origin and hostname checks. Only broker processes receive
-`NODE_EXTRA_CA_CERTS`; the suite requires TLS failure when that CA is absent.
+preserving production origin and hostname checks. The image installs the public CA
+bundle required for Workerd startup. The generated test CA is never installed in
+that system trust store. Only broker processes receive `NODE_EXTRA_CA_CERTS`;
+the suite requires TLS failure when that CA is absent.
 Wrangler telemetry and optional Cloudflare request metadata retrieval are disabled.
 
 The driver discovers dynamically assigned ports bound to `127.0.0.1`: the broker's
