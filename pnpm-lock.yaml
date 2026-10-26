@@ -64,9 +64,15 @@ importers:
       '@github-app-token-broker/oidc-provider-buildkite':
         specifier: workspace:*
         version: link:packages/oidc-provider-buildkite
+      '@github-app-token-broker/oidc-provider-fly':
+        specifier: workspace:*
+        version: link:packages/oidc-provider-fly
       '@github-app-token-broker/oidc-provider-github-actions':
         specifier: workspace:*
         version: link:packages/oidc-provider-github-actions
+      '@github-app-token-broker/oidc-provider-google-service-account':
+        specifier: workspace:*
+        version: link:packages/oidc-provider-google-service-account
       '@github-app-token-broker/token-exchange':
         specifier: workspace:*
         version: link:packages/token-exchange
