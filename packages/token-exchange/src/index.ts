@@ -38,6 +38,7 @@ import type { TokenExchangeRequestContext } from "./events.ts";
 export {
   maxTokenExchangeBodyBytes,
   tokenExchangeInvalidRequestResponse,
+  unexpectedTokenExchangeFailureResponse,
 } from "./token-exchange.ts";
 
 export interface TokenExchangeComposition {

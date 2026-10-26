@@ -5,6 +5,7 @@ import {
   type ObserveTokenExchange,
   type TokenExchangeComposition,
   tokenExchangeInvalidRequestResponse,
+  unexpectedTokenExchangeFailureResponse,
 } from "@github-app-token-broker/token-exchange";
 import {
   observeOidcDiagnosticWithConsole,
@@ -102,19 +103,6 @@ export function createTokenExchangeWorker(
 
 function tokenExchangeRateLimitKey(request: Request): string {
   return request.headers.get("cf-connecting-ip") ?? "unknown";
-}
-
-function unexpectedTokenExchangeFailureResponse(error: unknown): Response {
-  try {
-    console.error({
-      error: { name: error instanceof Error ? "Error" : typeof error },
-      event: "token_exchange_request_failed",
-    });
-  } catch {
-    // Logging must not prevent the Token Endpoint from returning a sanitized response.
-  }
-
-  return workerOAuthErrorResponse(500, "server_error");
 }
 
 function workerOAuthErrorResponse(status: number, error: string): Response {

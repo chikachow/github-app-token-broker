@@ -8,6 +8,7 @@ assert.deepEqual(Object.keys(tokenExchange).sort(), [
   "maxTokenExchangeBodyBytes",
   "snapshotGitHubAppMetadata",
   "tokenExchangeInvalidRequestResponse",
+  "unexpectedTokenExchangeFailureResponse",
 ]);
 assert.equal(tokenExchange.maxTokenExchangeBodyBytes, 64 * 1024);
 
@@ -16,6 +17,23 @@ const response = tokenExchange.tokenExchangeInvalidRequestResponse(413);
 assert.equal(response.status, 413);
 assert.equal(response.headers.get("cache-control"), "no-store");
 assert.deepEqual(await response.json(), { error: "invalid_request" });
+
+const originalConsoleError = console.error;
+let failureResponse;
+try {
+  console.error = () => {
+    throw new Error("unavailable logger");
+  };
+  failureResponse = tokenExchange.unexpectedTokenExchangeFailureResponse({
+    privateDetail: "must not be returned",
+  });
+} finally {
+  console.error = originalConsoleError;
+}
+assert.equal(failureResponse.status, 500);
+assert.equal(failureResponse.headers.get("cache-control"), "no-store");
+assert.equal(failureResponse.headers.get("pragma"), "no-cache");
+assert.deepEqual(await failureResponse.json(), { error: "server_error" });
 
 const broker = tokenExchange.createGitHubAppTokenExchange({
   composition: { oidcProviderRegistrations: [], tokenIssuancePolicy: { permitStatements: [] } },
