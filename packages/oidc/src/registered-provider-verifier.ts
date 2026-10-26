@@ -185,9 +185,15 @@ class RegisteredOidcProviderVerifierImplementation implements RegisteredOidcProv
       }
 
       if (this.#providerRegistration.idTokenProfile !== null) {
-        const profileResult: unknown = this.#providerRegistration.idTokenProfile.validate(
-          verifiedIdToken.claims,
-        );
+        let profileResult: unknown;
+        try {
+          profileResult = this.#providerRegistration.idTokenProfile.validate(
+            verifiedIdToken.claims,
+          );
+        } catch {
+          // Profile exceptions are local failures, regardless of their error class.
+          return internalFailure();
+        }
 
         if (typeof profileResult !== "boolean") {
           // A mistakenly asynchronous profile must not cause an unhandled rejection.
