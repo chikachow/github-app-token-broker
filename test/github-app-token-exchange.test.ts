@@ -7,7 +7,8 @@ import {
   type TokenExchangeObservation,
   type TokenExchangeRuntimeDependencies,
 } from "@github-app-token-broker/token-exchange";
-import { decodeJwt } from "jose";
+import { decodeJwt, errors } from "jose";
+import { OidcProviderMetadataValidationError } from "@github-app-token-broker/oidc/provider-metadata";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -35,7 +36,11 @@ const defaultInstallationAccessTokenRequestLogFields = {
 } as const;
 
 describe("GitHub App Token Exchange public interface", () => {
-  it("omits OIDC ID Token Profile error properties from Mandatory Token Exchange Observations", async () => {
+  it.each([
+    { name: "an arbitrary object", failure: (detail: string) => ({ code: detail }) },
+    { name: "a JOSE error", failure: (detail: string) => new errors.JWTExpired(detail, {}) },
+    { name: "a metadata error", failure: () => new OidcProviderMetadataValidationError() },
+  ])("sanitizes a profile throwing $name as an internal failure", async ({ failure }) => {
     const privateDetail = "private-token-in-exception-code";
     const observations: TokenExchangeObservation[] = [];
     const external = vi.fn(fetchGitHubActionsTokenExchangeExternalTestDouble);
@@ -49,7 +54,7 @@ describe("GitHub App Token Exchange public interface", () => {
               ...githubActionsOidcProviderRegistration,
               idTokenProfile: {
                 validate() {
-                  throw { code: privateDetail };
+                  throw failure(privateDetail);
                 },
               },
             }),

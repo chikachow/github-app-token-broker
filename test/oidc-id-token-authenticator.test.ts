@@ -1,3 +1,4 @@
+import { errors } from "jose";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -12,6 +13,8 @@ import {
   createOidcProviderRegistration,
   type OidcIdTokenSigningAlgorithm,
 } from "@github-app-token-broker/oidc/provider-registration";
+
+import { OidcProviderMetadataValidationError } from "@github-app-token-broker/oidc/provider-metadata";
 
 import {
   authenticationTestNow,
@@ -146,6 +149,33 @@ describe("OIDC ID Token Authenticator", () => {
     await expect(authenticator.authenticateIdToken(await signedIdToken())).resolves.toEqual(
       expectedFailure("internal_failure"),
     );
+  });
+
+  it.each([
+    { name: "a JOSE token error", error: new errors.JWTExpired("private profile failure", {}) },
+    { name: "a metadata error", error: new OidcProviderMetadataValidationError() },
+  ])("treats a profile throwing $name as an internal failure", async ({ error }) => {
+    const validate = vi.fn(() => {
+      throw error;
+    });
+    const authenticator = createOidcIdTokenAuthenticator(
+      {
+        providerRegistrations: [
+          createOidcProviderRegistration({
+            acceptedIdTokenSigningAlgorithms: ["RS256"],
+            idTokenProfile: { validate },
+            issuer,
+          }),
+        ],
+        subjectTokenAudience,
+      },
+      { fetch: successfulProviderFetch, now: () => authenticationTestNow },
+    );
+
+    await expect(authenticator.authenticateIdToken(await signedIdToken())).resolves.toEqual(
+      expectedFailure("internal_failure"),
+    );
+    expect(validate).toHaveBeenCalledOnce();
   });
 
   it("enforces the provider deadline while waiting for response headers", async () => {
