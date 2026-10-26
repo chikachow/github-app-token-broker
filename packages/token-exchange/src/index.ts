@@ -117,10 +117,12 @@ export function compileGitHubAppTokenExchange(
     oidcProviderRegistrations,
     dependencies,
   );
-  const appsByPath = new Map(githubApps.map((app) => [`/github/apps/${app.slug}/token`, app]));
-  const endpointFactories = new Map<
+  const appsByPath = new Map<
     string,
-    (credentials: GitHubAppConfiguration) => TokenExchangeHandler
+    {
+      readonly clientId: string;
+      readonly createHandler: (credentials: GitHubAppConfiguration) => TokenExchangeHandler;
+    }
   >();
   for (const app of githubApps) {
     const policy = Object.freeze({
@@ -131,19 +133,21 @@ export function compileGitHubAppTokenExchange(
       ),
     });
     const authenticator = createAuthenticator(app.subjectTokenAudiences);
-    endpointFactories.set(`/github/apps/${app.slug}/token`, (credentials) =>
-      createTokenExchangeEndpoint({
-        installationAccessTokenExchange: createInstallationAccessTokenExchange({
-          githubApp: credentials,
-          githubAppDependencies: dependencies,
-          oidcIdTokenAuthenticator: authenticator,
-          tokenIssuancePolicy: policy,
+    appsByPath.set(`/github/apps/${app.slug}/token`, {
+      clientId: app.clientId,
+      createHandler: (credentials) =>
+        createTokenExchangeEndpoint({
+          installationAccessTokenExchange: createInstallationAccessTokenExchange({
+            githubApp: credentials,
+            githubAppDependencies: dependencies,
+            oidcIdTokenAuthenticator: authenticator,
+            tokenIssuancePolicy: policy,
+          }),
+          now: dependencies.now,
         }),
-        now: dependencies.now,
-      }),
-    );
+    });
   }
-  const tokenEndpointPaths = Object.freeze(Array.from(endpointFactories.keys()));
+  const tokenEndpointPaths = Object.freeze(Array.from(appsByPath.keys()));
   function captureCredential(
     credential: GitHubAppConfiguration,
     expectedClientId?: string,
@@ -180,7 +184,7 @@ export function compileGitHubAppTokenExchange(
         throw new TypeError("GitHub App credentials must match the selected endpoint");
       }
       const captured = captureCredential(credential, app.clientId);
-      return Object.freeze(dispatch(new Map([[path, endpointFactories.get(path)!(captured)]])));
+      return Object.freeze(dispatch(new Map([[path, app.createHandler(captured)]])));
     },
     bindPrivateKeys(credentials: readonly GitHubAppConfiguration[]) {
       if (!Array.isArray(credentials))
@@ -197,7 +201,7 @@ export function compileGitHubAppTokenExchange(
         throw new TypeError("GitHub App credentials must cover the configured catalogue");
       const endpoints = new Map<string, TokenExchangeHandler>();
       for (const [path, app] of appsByPath) {
-        endpoints.set(path, endpointFactories.get(path)!(captured.get(app.clientId)!));
+        endpoints.set(path, app.createHandler(captured.get(app.clientId)!));
       }
       const handler = dispatch(endpoints);
       return Object.freeze(Object.assign(handler, { tokenEndpointPaths }));
