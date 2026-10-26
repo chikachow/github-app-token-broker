@@ -1686,6 +1686,46 @@ describe("Registered OIDC Provider Verifier", () => {
     ).resolves.toEqual(expectedFailure("provider_unavailable", "ERR_OIDC_JWKS_KEY_INVALID"));
   });
 
+  it.each(["values", "accessors"] as const)(
+    "omits arbitrary error %s from Optional OIDC Diagnostics after an unexpected refresh failure",
+    async (properties) => {
+      const readDiagnostic = vi.fn(() => {
+        throw new Error("private diagnostic accessor");
+      });
+      const failure =
+        properties === "values"
+          ? { code: "private-error-code", providerHttpStatus: 299 }
+          : Object.defineProperties(
+              {},
+              {
+                code: { get: readDiagnostic },
+                providerHttpStatus: { get: readDiagnostic },
+              },
+            );
+      const response = new Response();
+      // Fetch rejections are transport failures; fail while consuming the returned response.
+      vi.spyOn(response.headers, "get").mockImplementation(() => {
+        throw failure;
+      });
+      const fetchOidcRemoteDocumentResponse = vi.fn(async () => response);
+      const events: OidcDiagnosticEvent[] = [];
+      const verifier = testVerifier(fetchOidcRemoteDocumentResponse);
+
+      await expect(
+        verifier.verifyIdToken(await signedIdToken(), (event) => events.push(event)),
+      ).resolves.toEqual(expectedFailure("internal_failure"));
+      expect(events).toEqual([
+        {
+          event: "oidc_remote_document_refresh_failed",
+          issuer: registration.issuer,
+          remoteDocumentKind: "provider_configuration",
+        },
+      ]);
+      expect(readDiagnostic).not.toHaveBeenCalled();
+      expect(fetchOidcRemoteDocumentResponse).toHaveBeenCalledOnce();
+    },
+  );
+
   it("backs off a failed Provider Configuration fetch when no metadata is cached", async () => {
     const fetchOidcRemoteDocumentResponse = vi.fn(async () => new Response(null, { status: 503 }));
     const events: OidcDiagnosticEvent[] = [];
