@@ -1,5 +1,5 @@
-import { googleServiceAccountOidcProviderRegistration } from "../../packages/oidc-provider-google-service-account/src/provider-registration.ts";
-import { createFlyOidcProviderRegistration } from "../../packages/oidc-provider-fly/src/provider-registration.ts";
+import { googleServiceAccountOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-google-service-account";
+import { createFlyOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-fly";
 import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-github-actions";
 import { buildkiteOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-buildkite";
 import {

@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 
 import { buildkiteOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-buildkite";
 import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-github-actions";
-import { createFlyOidcProviderRegistration } from "../packages/oidc-provider-fly/src/provider-registration.ts";
-import { googleServiceAccountOidcProviderRegistration } from "../packages/oidc-provider-google-service-account/src/provider-registration.ts";
+import { createFlyOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-fly";
+import { googleServiceAccountOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-google-service-account";
 import { createOidcIdTokenAuthenticator } from "@github-app-token-broker/oidc/id-token-authenticator";
 import type { OidcProviderRegistration } from "@github-app-token-broker/oidc/provider-registration";
 import { parseSubjectTokenAudience } from "@github-app-token-broker/oidc/subject-token-audience";
