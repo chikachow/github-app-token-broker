@@ -4,12 +4,7 @@ export default defineConfig({
   clean: true,
   deps: {
     alwaysBundle: [/^@github-app-token-broker\//u],
-    onlyBundle: [
-      "@github-app-token-broker/fastify",
-      "@github-app-token-broker/token-exchange",
-      "jose",
-      "zod",
-    ],
+    onlyBundle: ["jose", "zod"],
   },
   entry: ["src/normal.ts", "src/observation-failure.ts", "src/other-app-observation-failure.ts"],
   fixedExtension: false,
