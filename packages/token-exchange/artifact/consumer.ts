@@ -2,6 +2,7 @@ import {
   createGitHubAppTokenExchange,
   compileGitHubAppTokenExchange,
   snapshotGitHubAppMetadata,
+  unexpectedTokenExchangeFailureResponse,
   type GitHubAppTokenExchangeFactory,
   type TokenExchangeGitHubAppMetadata,
   type GitHubAppTokenExchangeConfiguration,
@@ -13,6 +14,9 @@ import {
 } from "@github-app-token-broker/token-exchange";
 
 declare const composition: TokenExchangeComposition;
+declare const unexpectedFailure: unknown;
+const failureResponse: Response = unexpectedTokenExchangeFailureResponse(unexpectedFailure);
+void failureResponse;
 
 const configuration = Object.freeze({
   composition,

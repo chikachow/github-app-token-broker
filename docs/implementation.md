@@ -127,6 +127,11 @@ App private keys remain separate Worker secrets or Secrets Store bindings. The r
 7. The issuance module awaits `installation_access_token_issuance_succeeded` before returning a token. Rejection triggers one awaited best-effort invocation of the token's bound revocation capability and never re-enters the failed observer.
 8. The Token Endpoint maps authentication, policy, and issuance failure reasons directly to stable OAuth errors and sanitizes every otherwise unexpected failure to non-cacheable `500 {"error":"server_error"}` without logging raw tokens.
 
+The endpoint, compiled dispatcher, and Worker use the Token Exchange package's
+exported `unexpectedTokenExchangeFailureResponse` for terminal failure logging
+and response construction. Each retains its catch boundary around the operations
+it owns.
+
 ## OIDC security boundary
 
 Unused Provider Configuration and JWK Set response bodies are cancelled on
