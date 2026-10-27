@@ -95,6 +95,10 @@ The driver discovers dynamically assigned ports bound to `127.0.0.1`: the broker
 HTTP listener and each mock's separate HTTP control listener. The bridge permits
 outbound access; this suite does not enforce an egress-denial boundary. Control
 listeners are test infrastructure and never part of the broker's public routes.
+They close each response connection so synchronous Docker commands cannot leave
+the driver reusing an expired idle control socket. HTTPS protocol listeners retain
+their normal connection lifecycle. A driver regression blocks past the control
+listener's idle timeout before reading both mocks' evidence.
 
 ## Scenarios and evidence
 
