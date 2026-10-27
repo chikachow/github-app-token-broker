@@ -248,6 +248,12 @@ void describe(host === "worker" ? "Workerd" : "Fastify", { concurrency: false },
     await reset();
     assert.deepEqual(await evidence(), [[], []]);
   });
+  void it("keeps fixture controls usable after blocking host work", async () => {
+    await reset();
+    // Compose runs synchronously; a slow command can outlast the controls' idle sockets.
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 7000);
+    assert.deepEqual(await evidence(), [[], []]);
+  });
   void it("rejects the upstream TLS certificate without the test CA", async () => {
     await reset();
     restartHost("untrusted-ca");
@@ -261,6 +267,7 @@ void describe(host === "worker" ? "Workerd" : "Fastify", { concurrency: false },
     const pending = githubActionsExchange().finally(() => {
       settled = true;
     });
+    const completed = Promise.allSettled([pending]);
     try {
       const deadline = Date.now() + 5000;
       while (!(await control(github, "state")).events.some((event) => event.method === "DELETE")) {
@@ -270,7 +277,11 @@ void describe(host === "worker" ? "Workerd" : "Fastify", { concurrency: false },
       await delay(50);
       assert.equal(settled, false, "broker must await the revocation response");
     } finally {
-      await control(github, "release-revocation", {});
+      try {
+        await control(github, "release-revocation", {});
+      } finally {
+        await completed;
+      }
     }
     failure(await pending, 500, "server_error");
     const [, events] = await evidence();
@@ -315,6 +326,7 @@ void describe(host === "worker" ? "Workerd" : "Fastify", { concurrency: false },
       await reset("cache");
       await control(github, "hold-app", { clientId: "Iv1.fixtureApp" });
       const first = githubActionsExchange();
+      const completed = Promise.allSettled([first]);
       try {
         const deadline = Date.now() + 5000;
         while (
@@ -334,8 +346,11 @@ void describe(host === "worker" ? "Workerd" : "Fastify", { concurrency: false },
           "ghs_disposable_other_app_token",
         );
       } finally {
-        await control(github, "release-app", { clientId: "Iv1.fixtureApp" });
-        await Promise.allSettled([first]);
+        try {
+          await control(github, "release-app", { clientId: "Iv1.fixtureApp" });
+        } finally {
+          await completed;
+        }
       }
       success(await first);
       const [documents, events] = await evidence();
@@ -398,6 +413,7 @@ void describe(host === "worker" ? "Workerd" : "Fastify", { concurrency: false },
     }).finally(() => {
       settled = true;
     });
+    const completed = Promise.allSettled([pending]);
     try {
       const deadline = Date.now() + 5000;
       while (!(await control(github, "state")).events.some((event) => event.method === "DELETE")) {
@@ -407,8 +423,11 @@ void describe(host === "worker" ? "Workerd" : "Fastify", { concurrency: false },
       success(await githubActionsExchange());
       assert.equal(settled, false, "App B must await its revocation while App A can complete");
     } finally {
-      await control(github, "release-revocation", {});
-      await Promise.allSettled([pending]);
+      try {
+        await control(github, "release-revocation", {});
+      } finally {
+        await completed;
+      }
     }
     failure(await pending, 500, "server_error");
     const [, events] = await evidence();

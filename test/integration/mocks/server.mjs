@@ -67,6 +67,8 @@ export function createMockServer(name) {
       );
       const control = httpServer(
         guarded(async (request, response) => {
+          // Synchronous Docker commands can prevent the driver from observing idle socket closure.
+          response.setHeader("connection", "close");
           if (request.method === "GET" && request.url === "/health")
             return sendJson(response, 200, { ready: true });
           if (request.method === "GET" && request.url === "/state")
