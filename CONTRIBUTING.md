@@ -108,10 +108,10 @@ node --run pnpm:check
 pnpm install --frozen-lockfile
 ```
 
-CI installs the manifest pin with `pnpm/action-setup`. The local `check` command
-retains the version guard for developer environments. `pmOnFail: ignore` keeps
-the lockfile as one YAML document for GitHub's dependency graph; direct pnpm commands do not automatically select or enforce the
-pin. Adding config dependencies requires reviewing that compatibility assumption.
+CI installs the manifest pin, and the local `check` command verifies it.
+`pmOnFail: ignore` keeps the lockfile as one YAML document for GitHub's dependency
+graph; direct pnpm commands do not automatically select or enforce the pin.
+Adding config dependencies requires reviewing that compatibility assumption.
 
 Routine dependency updates use a three-day release age: `minimumReleaseAge: 4320` in
 `pnpm-workspace.yaml` applies to pnpm resolution, including the scheduled
@@ -145,12 +145,10 @@ Dependency build scripts require an explicit decision in `allowBuilds` in
 and `workerd` install scripts are disabled; their platform packages supply the
 binaries used by the validated builds and tests.
 
-The scheduled `pnpm-up` workflow updates pnpm to the latest stable release,
-including new majors, using the same release-age policy. The step explicitly
-forwards that policy because `self-update` ignores project release-age settings.
-It overrides `pmOnFail` for this command so the manifest pin is updated. A changed
-`packageManager` pin is committed before dependencies are updated with that
-version; unchanged pins do not create empty commits.
+The scheduled [dependency-update workflow](.github/workflows/pnpm-up.yml) opens PRs
+for pnpm and transitive dependency updates under the repository's release-age
+policy. pnpm updates may include new majors and are committed separately.
+Dependency installation, tests, and builds run in the resulting PR's CI.
 
 `autoDedupe` consolidates compatible resolutions during updates, including across
 workspace projects outside a command's filter. Frozen installs leave the graph
