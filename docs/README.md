@@ -4,6 +4,7 @@
 - [Service contract](service-contract.md): authoritative public API, security boundaries, provider and policy behavior, runtime bindings, and errors.
 - [Implementation](implementation.md): package layout, composition Interface, request flow, and validation commands.
 - [Deployment](deployment.md): interface between this public source repository and an external deployment system.
+- [Tested source deployment handoff](decisions/tested-source-deployment-handoff.md): exact CI-tested revision selection and receiver-first migration.
 - [Contributing](../CONTRIBUTING.md): validation and source-artifact publication.
 - [Domain glossary](../CONTEXT.md): project terminology.
 - [OIDC authentication decision](decisions/oidc-id-token-authentication.md), [CEL-free policy decision](decisions/cel-free-token-issuance-policy.md), [GitHub failure-classification decision](decisions/github-api-failure-classification.md), [GitHub App Information RPC decision](decisions/github-app-information-rpc.md), and [property-based testing decision](decisions/property-based-testing.md): durable security, interface, and testing rationale.

@@ -133,6 +133,13 @@ The deployment system owns the accepted audience list for each app and its publi
 
 Source maintenance workflows pin an immutable external action release and use its caller-side broker request defaults where appropriate; workflows targeting a different Repository Resource or Requested Permissions explicitly override them. The workflow files are authoritative for that caller-side contract. Direct Clients must supply a non-empty scope because the broker has no permission default.
 
+For changes to the source update trigger or its receiver, follow the
+[tested source deployment handoff decision](decisions/tested-source-deployment-handoff.md),
+including its required `source_sha` input and receiver-first migration. The
+[source workflow](../.github/workflows/run-github-app-token-broker-deploy-update.yml)
+owns the dispatch implementation; the external receiver owns source admission,
+monotonic pin updates, and reviewed deployment publication.
+
 ## Public source boundary
 
 Source CI runs independent validation workflows in parallel. Dedicated `artifact:check` and
