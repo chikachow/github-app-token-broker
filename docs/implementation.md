@@ -81,8 +81,10 @@ One issuer-verifier collection owns discovery, JWK Sets, refresh coalescing, and
 `githubAppTokenExchangePlugin` is an encapsulated Fastify adapter around a
 `GitHubAppTokenExchangeHandler`. The broker exposes its immutable
 `tokenEndpointPaths` inventory alongside its call signature. The adapter snapshots
-that inventory and delegates unknown App paths reaching its route to the broker
-before body parsing, so malformed or oversized bodies on those paths receive 404.
+that inventory and rejects unknown App paths reaching its route with the shared
+HTTP problem response before Fetch request construction or body parsing. Routed
+methods that Fetch cannot represent and malformed or oversized bodies on those
+paths therefore receive 404.
 Fastify rejects overlong route parameters and malformed percent encoding before
 plugin dispatch; unrelated routes keep the host's routing and parser behavior.
 For configured paths, the deep endpoint classifies methods Fetch can represent;

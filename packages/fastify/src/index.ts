@@ -1,6 +1,7 @@
 // oxlint-disable-next-line import/no-nodejs-modules -- This package intentionally targets Node.js.
 import { Buffer } from "node:buffer";
 
+import { problemResponse } from "@github-app-token-broker/http/problem-details";
 import {
   maxTokenExchangeBodyBytes,
   tokenExchangeInvalidRequestResponse,
@@ -47,19 +48,22 @@ export const githubAppTokenExchangePlugin: FastifyPluginAsync<
     {
       bodyLimit: maxTokenExchangeBodyBytes,
       async onRequest(request, reply) {
-        const webRequest = fastifyRequestToWebRequest(request, fastify.prefix);
-        if (webRequest === null) {
-          await sendWebResponse(reply, tokenExchangeInvalidRequestResponse(400));
+        const url = tokenExchangeRequestUrl(request, fastify.prefix);
+        // App selection precedes Fetch method validation and Fastify body parsing.
+        if (url !== null && !tokenEndpointPaths.has(url.pathname)) {
+          await sendWebResponse(reply, problemResponse(404));
           return;
         }
-        if (tokenEndpointPaths.has(new URL(webRequest.url).pathname)) return;
-        // Unknown Apps must be rejected before Fastify consumes or classifies a body.
-        const response = await options.tokenExchange(webRequest, tokenExchangeContext(request));
-        await sendWebResponse(reply, response);
+        if (fastifyRequestToWebRequest(request, url) === null) {
+          await sendWebResponse(reply, tokenExchangeInvalidRequestResponse(400));
+        }
       },
     },
     async (request, reply) => {
-      const webRequest = fastifyRequestToWebRequest(request, fastify.prefix);
+      const webRequest = fastifyRequestToWebRequest(
+        request,
+        tokenExchangeRequestUrl(request, fastify.prefix),
+      );
 
       if (webRequest === null) {
         await sendWebResponse(reply, tokenExchangeInvalidRequestResponse(400));
@@ -102,7 +106,19 @@ function logObservation(request: FastifyRequest, observation: TokenExchangeObser
   request.log[observation.level](observation.fields, message);
 }
 
-function fastifyRequestToWebRequest(request: FastifyRequest, prefix: string): Request | null {
+function tokenExchangeRequestUrl(request: FastifyRequest, prefix: string): URL | null {
+  try {
+    const url = new URL(request.raw.url ?? request.url, `${request.protocol}://${request.host}`);
+    url.pathname = url.pathname.slice(prefix.length);
+    return url;
+  } catch {
+    return null;
+  }
+}
+
+function fastifyRequestToWebRequest(request: FastifyRequest, url: URL | null): Request | null {
+  if (url === null) return null;
+
   try {
     const headers = new Headers();
 
@@ -119,10 +135,6 @@ function fastifyRequestToWebRequest(request: FastifyRequest, prefix: string): Re
     const mayHaveBody = request.method !== "GET" && request.method !== "HEAD";
     const body =
       mayHaveBody && requestBody !== undefined ? Uint8Array.from(requestBody) : undefined;
-    const url = new URL(request.raw.url ?? request.url, `${request.protocol}://${request.host}`);
-
-    url.pathname = url.pathname.slice(prefix.length);
-
     return new Request(url, {
       ...(body === undefined ? {} : { body }),
       headers,

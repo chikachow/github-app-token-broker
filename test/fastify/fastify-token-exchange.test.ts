@@ -107,7 +107,7 @@ describe("githubAppTokenExchangePlugin", () => {
     }
   });
 
-  it.each(["GET", "HEAD", "OPTIONS", "POST"] as const)(
+  it.each(["GET", "HEAD", "OPTIONS", "POST", "TRACE"] as const)(
     "returns 404 for %s to an unconfigured app before protocol classification",
     async (method) => {
       const outbound = vi.fn<typeof fetch>();
@@ -122,11 +122,23 @@ describe("githubAppTokenExchangePlugin", () => {
         { fetch: outbound, now: () => new Date() },
       );
       const app = Fastify();
-      await app.register(githubAppTokenExchangePlugin, { tokenExchange });
+      await app.register(githubAppTokenExchangePlugin, { prefix: "/automation", tokenExchange });
+      const address = await app.listen({ host: "127.0.0.1", port: 0 });
       try {
-        expect((await app.inject({ method, url: "/github/apps/missing/token" })).statusCode).toBe(
-          404,
-        );
+        const response = await makeNodeRequest(`${address}/automation/github/apps/missing/token`, {
+          body: "",
+          headers: {},
+          method,
+        });
+        expect(response.statusCode).toBe(404);
+        expect(response.contentType).toBe("application/problem+json; charset=utf-8");
+        if (method !== "HEAD") {
+          expect(JSON.parse(response.body)).toEqual({
+            type: "about:blank",
+            title: "Not Found",
+            status: 404,
+          });
+        }
         expect(outbound).not.toHaveBeenCalled();
       } finally {
         await app.close();
@@ -740,6 +752,7 @@ describe("githubAppTokenExchangePlugin", () => {
       expect(response).toEqual({
         body: '{"ok":true}',
         cacheControl: "no-store",
+        contentType: "application/json",
         pragma: "no-cache",
         setCookie: ["socket=value; Path=/; HttpOnly"],
         statusCode: 200,
@@ -781,6 +794,7 @@ async function makeNodeRequest(
 ): Promise<{
   body: string;
   cacheControl: string | undefined;
+  contentType: string | undefined;
   pragma: string | undefined;
   setCookie: string[] | undefined;
   statusCode: number | undefined;
@@ -799,6 +813,7 @@ async function makeNodeRequest(
               typeof response.headers["cache-control"] === "string"
                 ? response.headers["cache-control"]
                 : undefined,
+            contentType: response.headers["content-type"],
             pragma:
               typeof response.headers["pragma"] === "string"
                 ? response.headers["pragma"]

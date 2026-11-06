@@ -124,6 +124,9 @@ importers:
 
   packages/fastify:
     dependencies:
+      '@github-app-token-broker/http':
+        specifier: workspace:*
+        version: link:../http
       '@github-app-token-broker/token-exchange':
         specifier: workspace:*
         version: link:../token-exchange
