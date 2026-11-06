@@ -1988,8 +1988,20 @@ describe("Registered OIDC Provider Verifier", () => {
       issuer,
     });
     const verifier = testVerifier(successfulProviderFetch, undefined, profileRegistration);
+    const subjectToken = await signedIdToken();
+    const invalidSignatureToken = subjectToken.split(".");
+    invalidSignatureToken[2] = base64url.encode(new Uint8Array(256));
 
-    await expect(verifier.verifyIdToken(await signedIdToken())).resolves.toEqual(
+    await expect(verifier.verifyIdToken(invalidSignatureToken.join("."))).resolves.toEqual(
+      expectedFailure("subject_token_rejected", "ERR_JWS_SIGNATURE_VERIFICATION_FAILED"),
+    );
+    expect(validate).not.toHaveBeenCalled();
+    await expect(
+      verifier.verifyIdToken(await signedIdToken({ expiresInSeconds: -1 })),
+    ).resolves.toEqual(expectedFailure("subject_token_rejected", "ERR_JWT_EXPIRED"));
+    expect(validate).not.toHaveBeenCalled();
+
+    await expect(verifier.verifyIdToken(subjectToken)).resolves.toEqual(
       expectedFailure("subject_token_rejected", "ERR_OIDC_ID_TOKEN_PROFILE_REJECTED"),
     );
     expect(validate).toHaveBeenCalledOnce();

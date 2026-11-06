@@ -200,103 +200,90 @@ describe("Token Exchange Endpoint public handler", () => {
     expect(fetchExternal).not.toHaveBeenCalled();
   });
 
-  it("ignores empty unsupported parameters before authenticating the Subject Token", async () => {
+  it.each([
+    ["grant_type", "invalid_request"],
+    ["requested_token_type", "invalid_request"],
+    ["subject_token", "invalid_request"],
+    ["subject_token_type", "invalid_request"],
+    ["resource", "invalid_target"],
+    ["scope", "invalid_request"],
+  ])("rejects duplicate non-empty %s values before authentication", async (field, error) => {
+    const fetchExternal = vi.fn<typeof fetch>();
     const observe = vi.fn(async () => undefined);
     const tokenExchange = createGitHubAppTokenExchange(
       testGitHubActionsTokenExchangeConfiguration,
       {
-        fetch: vi.fn<typeof fetch>(),
+        fetch: fetchExternal,
         now: () => testNow,
       },
     );
     const form = structurallyValidTokenExchangeForm();
-
-    for (const field of [
-      "actor_token",
-      "actor_token_type",
-      "authorization_details",
-      "client_assertion",
-      "client_assertion_type",
-      "client_id",
-      "client_secret",
-    ]) {
-      form.append(field, "");
-    }
-
+    form.append(field, form.get(field)!);
     const response = await tokenExchange(formRequest({}, form), { observe });
 
     expect(response.status).toBe(400);
-    expect(observe).toHaveBeenCalledWith({
-      fields: {
-        diagnosticCode: "ERR_JWT_INVALID",
-        path: "/github/apps/fixture-app/token",
-        reason: "invalid_token",
-        userAgent: null,
-      },
-      level: "warn",
-      message: "OIDC authentication failed",
-    });
+    await expect(response.json()).resolves.toEqual({ error });
+    expect(observe).not.toHaveBeenCalled();
+    expect(fetchExternal).not.toHaveBeenCalled();
   });
 
-  it("rejects duplicate non-empty singleton values and accepts surrounding empty values", async () => {
-    const tokenExchange = createGitHubAppTokenExchange(
-      testGitHubActionsTokenExchangeConfiguration,
-      {
-        fetch: vi.fn<typeof fetch>(),
-        now: () => testNow,
-      },
-    );
-    const rejectedForm = structurallyValidTokenExchangeForm();
-    rejectedForm.append("scope", "contents:read");
-    const rejectedObserve = vi.fn(async () => undefined);
-    const rejected = await tokenExchange(formRequest({}, rejectedForm), {
-      observe: rejectedObserve,
-    });
-    const acceptedForm = structurallyValidTokenExchangeForm();
-    acceptedForm.append("scope", "");
-    acceptedForm.append("resource", "");
-    const acceptedObserve = vi.fn(async () => undefined);
-    const accepted = await tokenExchange(formRequest({}, acceptedForm), {
-      observe: acceptedObserve,
-    });
-
-    expect(rejected.status).toBe(400);
-    expect(rejectedObserve).not.toHaveBeenCalled();
-    expect(accepted.status).toBe(400);
-    expect(acceptedObserve).toHaveBeenCalled();
-  });
-
-  it("accepts an empty singleton occurrence before its non-empty value", async () => {
-    const observations: TokenExchangeObservation[] = [];
-    const tokenExchange = createGitHubAppTokenExchange(
-      testGitHubActionsTokenExchangeConfiguration,
-      {
-        fetch: fetchGitHubActionsTokenExchangeExternalTestDouble,
-        now: () => testNow,
-      },
-    );
-    const validBody = new URLSearchParams(await githubActionsTokenExchangeRequestBody());
-    const form = new URLSearchParams([["grant_type", ""], ...validBody]);
-    const response = await tokenExchange(
-      new Request("https://broker.example/github/apps/fixture-app/token", {
-        body: form,
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        method: "POST",
-      }),
-      {
-        observe: async (observation) => {
-          observations.push(observation);
+  it.each(["before", "after"] as const)(
+    "issues the requested token with empty form values %s non-empty values",
+    async (position) => {
+      const observations: TokenExchangeObservation[] = [];
+      const tokenExchange = createGitHubAppTokenExchange(
+        testGitHubActionsTokenExchangeConfiguration,
+        {
+          fetch: fetchGitHubActionsTokenExchangeExternalTestDouble,
+          now: () => testNow,
         },
-      },
-    );
+      );
+      const validBody = new URLSearchParams(await githubActionsTokenExchangeRequestBody());
+      const emptyEntries: [string, string][] = [
+        "grant_type",
+        "requested_token_type",
+        "subject_token",
+        "subject_token_type",
+        "resource",
+        "scope",
+        "audience",
+        "actor_token",
+        "actor_token_type",
+        "authorization_details",
+        "client_assertion",
+        "client_assertion_type",
+        "client_id",
+        "client_secret",
+      ].map((field) => [field, ""]);
+      const form = new URLSearchParams(
+        position === "before" ? [...emptyEntries, ...validBody] : [...validBody, ...emptyEntries],
+      );
+      const response = await tokenExchange(
+        new Request("https://broker.example/github/apps/fixture-app/token", {
+          body: form,
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          method: "POST",
+        }),
+        {
+          observe: async (observation) => {
+            observations.push(observation);
+          },
+        },
+      );
 
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({ access_token: "ghs_test_token" });
-    expect(observations.map(({ fields }) => fields["event"])).toEqual([
-      "installation_access_token_issuance_started",
-      "installation_access_token_issuance_succeeded",
-    ]);
-  });
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        access_token: "ghs_test_token",
+        issued_token_type: "urn:ietf:params:oauth:token-type:access_token",
+        scope: "contents:write pull_requests:write",
+        token_type: "Bearer",
+      });
+      expect(observations.map(({ fields }) => fields["event"])).toEqual([
+        "installation_access_token_issuance_started",
+        "installation_access_token_issuance_succeeded",
+      ]);
+    },
+  );
 
   it("rejects an oversized body before authentication", async () => {
     const observe = vi.fn(async () => undefined);
