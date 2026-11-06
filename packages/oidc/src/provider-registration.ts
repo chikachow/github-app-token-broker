@@ -56,12 +56,14 @@ export function createOidcProviderRegistration(input: {
     throw new TypeError("invalid OIDC Issuer Identifier");
   }
 
+  const acceptedIdTokenSigningAlgorithms = Array.isArray(input.acceptedIdTokenSigningAlgorithms)
+    ? Array.from(input.acceptedIdTokenSigningAlgorithms)
+    : [];
+
   if (
-    !Array.isArray(input.acceptedIdTokenSigningAlgorithms) ||
-    input.acceptedIdTokenSigningAlgorithms.length === 0 ||
-    new Set(input.acceptedIdTokenSigningAlgorithms).size !==
-      input.acceptedIdTokenSigningAlgorithms.length ||
-    input.acceptedIdTokenSigningAlgorithms.some(
+    acceptedIdTokenSigningAlgorithms.length === 0 ||
+    new Set(acceptedIdTokenSigningAlgorithms).size !== acceptedIdTokenSigningAlgorithms.length ||
+    acceptedIdTokenSigningAlgorithms.some(
       (algorithm) => !supportedIdTokenSigningAlgorithmSet.has(algorithm),
     )
   ) {
@@ -80,7 +82,7 @@ export function createOidcProviderRegistration(input: {
     idTokenProfileValue === null ? null : Object.freeze(idTokenProfileValue as OidcIdTokenProfile);
 
   return Object.freeze({
-    acceptedIdTokenSigningAlgorithms: Object.freeze([...input.acceptedIdTokenSigningAlgorithms]),
+    acceptedIdTokenSigningAlgorithms: Object.freeze(acceptedIdTokenSigningAlgorithms),
     idTokenProfile,
     issuer,
   });
@@ -89,8 +91,12 @@ export function createOidcProviderRegistration(input: {
 export function snapshotOidcProviderRegistrations(
   registrations: readonly OidcProviderRegistration[],
 ): readonly OidcProviderRegistration[] {
+  if (!Array.isArray(registrations)) {
+    throw new TypeError("OIDC Provider Registrations must be an array");
+  }
+
   const issuers = new Set<OidcIssuerIdentifier>();
-  const snapshot = registrations.map((registration) => {
+  const snapshot = Array.from(registrations, (registration) => {
     const validatedRegistration = createOidcProviderRegistration({
       acceptedIdTokenSigningAlgorithms: registration.acceptedIdTokenSigningAlgorithms,
       idTokenProfile: registration.idTokenProfile,

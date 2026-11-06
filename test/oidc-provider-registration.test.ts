@@ -41,6 +41,14 @@ describe("OIDC Provider Registration", () => {
       message: "invalid OIDC ID Token signing algorithm allowlist",
     },
     {
+      acceptedIdTokenSigningAlgorithms: Object.assign([], { length: 1 }),
+      message: "invalid OIDC ID Token signing algorithm allowlist",
+    },
+    {
+      acceptedIdTokenSigningAlgorithms: Object.assign(["RS256"], { length: 2 }),
+      message: "invalid OIDC ID Token signing algorithm allowlist",
+    },
+    {
       acceptedIdTokenSigningAlgorithms: ["RS256"],
       issuer: "not a URL",
       message: "invalid OIDC Issuer Identifier",
@@ -127,6 +135,25 @@ describe("OIDC Provider Registration", () => {
       "duplicate OIDC Provider Registration issuer",
     );
   });
+
+  it.each([0, 1])("rejects a registration collection with a hole at index %i", (index) => {
+    const registration = createOidcProviderRegistration({
+      acceptedIdTokenSigningAlgorithms: ["RS256"],
+      idTokenProfile: null,
+      issuer: "https://issuer.example",
+    });
+    const registrations = index === 0 ? [] : [registration];
+    registrations.length = index + 1;
+
+    expect(() => snapshotOidcProviderRegistrations(registrations)).toThrow(TypeError);
+  });
+
+  it.each([null, {}, { length: 0 }, ""])(
+    "rejects a non-array registration collection: %j",
+    (registrations) => {
+      expect(() => snapshotOidcProviderRegistrations(registrations as never)).toThrow(TypeError);
+    },
+  );
 
   it("rejects inherited and accessor-backed OIDC ID Token Profiles without invoking accessors", () => {
     const inherited = Object.assign(Object.create({ idTokenProfile: null }), {

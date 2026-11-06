@@ -189,7 +189,7 @@ export function createOidcIdTokenAuthenticatorFactory(
     if (!Array.isArray(audiences) || audiences.length === 0) {
       throw new TypeError("Subject-Token Audiences must not be empty");
     }
-    const captured = Object.freeze(audiences.map(parseSubjectTokenAudience));
+    const captured = Object.freeze(Array.from(audiences, parseSubjectTokenAudience));
     if (new Set(captured).size !== captured.length) {
       throw new TypeError("Subject-Token Audiences must not contain duplicates");
     }

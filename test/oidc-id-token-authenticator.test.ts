@@ -284,16 +284,21 @@ function testAuthenticator(fetchOidcRemoteDocumentResponse: typeof fetch) {
 }
 
 describe("audience-bound authenticator construction", () => {
-  it.each([null, {}, [], ["urn:example", "urn:example"], [""]])(
-    "rejects invalid audience configuration %j without I/O",
-    (audiences) => {
-      const fetch = vi.fn<typeof globalThis.fetch>();
-      const bindAudience = createOidcIdTokenAuthenticatorFactory([], {
-        fetch,
-        now: () => new Date(),
-      });
-      expect(() => bindAudience(audiences as never)).toThrow(TypeError);
-      expect(fetch).not.toHaveBeenCalled();
-    },
-  );
+  it.each([
+    null,
+    {},
+    [],
+    ["urn:example", "urn:example"],
+    [""],
+    Object.assign([], { length: 1 }),
+    Object.assign(["urn:example"], { length: 2 }),
+  ])("rejects invalid audience configuration %j without I/O", (audiences) => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    const bindAudience = createOidcIdTokenAuthenticatorFactory([], {
+      fetch,
+      now: () => new Date(),
+    });
+    expect(() => bindAudience(audiences as never)).toThrow(TypeError);
+    expect(fetch).not.toHaveBeenCalled();
+  });
 });
