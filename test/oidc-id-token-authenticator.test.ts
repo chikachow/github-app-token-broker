@@ -5,7 +5,6 @@ import {
   createOidcIdTokenAuthenticator,
   createOidcIdTokenAuthenticatorFactory,
   type OidcDiagnosticEvent,
-  type OidcIdTokenAuthenticationFailure,
   type OidcVerificationEvidence,
   type VerifiedSubjectToken,
 } from "@github-app-token-broker/oidc/id-token-authenticator";
@@ -18,7 +17,6 @@ import { OidcProviderMetadataValidationError } from "@github-app-token-broker/oi
 
 import {
   authenticationTestNow,
-  type AuthenticationFailure,
   expectedFailure,
   issuer,
   jwksUri,
@@ -93,9 +91,12 @@ describe("OIDC ID Token Authenticator", () => {
         await signedIdToken({ tokenIssuer: "https://attacker.example" }),
       ),
     ).resolves.toEqual(expectedFailure("subject_token_rejected", "ERR_OIDC_ISSUER_NOT_REGISTERED"));
-    await expect(authenticator.authenticateIdToken("not-a-jwt")).resolves.toEqual(
-      expectedFailure("subject_token_rejected", "ERR_JWT_INVALID"),
-    );
+    const malformedToken = await authenticator.authenticateIdToken("not-a-jwt");
+    expect(malformedToken).toEqual(expectedFailure("subject_token_rejected", "ERR_JWT_INVALID"));
+    if (!malformedToken.ok && malformedToken.failure.kind === "subject_token_rejected") {
+      // @ts-expect-error Provider HTTP status is not valid subject-token rejection diagnostics.
+      expect(malformedToken.failure.diagnostics.providerHttpStatus).toBeUndefined();
+    }
     await expect(
       authenticator.authenticateIdToken(await signedIdToken({ claimOverrides: { iss: "" } })),
     ).resolves.toEqual(expectedFailure("subject_token_rejected", "ERR_JWT_INVALID"));
@@ -251,25 +252,6 @@ describe("OIDC ID Token Authenticator", () => {
     expect(defaultEvents).toContainEqual(
       expect.objectContaining({ event: "oidc_provider_configuration_refreshed" }),
     );
-  });
-
-  it("makes provider HTTP status impossible on non-provider failures", () => {
-    const subjectTokenRejection: AuthenticationFailure = expectedFailure(
-      "subject_token_rejected",
-      "ERR_JWT_INVALID",
-    );
-    const rejection: OidcIdTokenAuthenticationFailure = subjectTokenRejection.failure;
-    const invalidSubjectTokenRejection: AuthenticationFailure = {
-      failure: {
-        // @ts-expect-error Provider HTTP status is not valid subject-token rejection diagnostics.
-        diagnostics: { providerHttpStatus: 401 },
-        kind: "subject_token_rejected",
-      },
-      ok: false,
-    };
-
-    expect(rejection.kind).toBe("subject_token_rejected");
-    expect(invalidSubjectTokenRejection.failure.kind).toBe("subject_token_rejected");
   });
 });
 
