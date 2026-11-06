@@ -32,7 +32,8 @@ jobs:
 
       - run: |
           # self-update ignores project release-age settings; forward the policy explicitly.
-          pnpm --pm-on-fail=error --config.minimumReleaseAge="$(pnpm config get minimumReleaseAge)" self-update
+          pnpm --config.minimumReleaseAge="$(pnpm config get minimumReleaseAge)" self-update
+          node --run pnpm:check
           if ! git diff --quiet -- package.json; then
             git -c user.name='github-actions[bot]' \
               -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
