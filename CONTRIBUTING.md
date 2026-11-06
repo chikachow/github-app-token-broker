@@ -119,8 +119,11 @@ resolving dependencies.
 
 Routine dependency updates use a three-day release age: `minimumReleaseAge: 4320` in
 `pnpm-workspace.yaml` applies to pnpm resolution, including the scheduled
-`pnpm-up` workflow, and the npm Dependabot configuration uses a matching
+`pnpm-up` workflow, and the npm and Docker Dependabot configurations use a matching
 three-day cooldown. Keep these values aligned. Frozen installs also verify the lockfile against the release-age policy.
+
+Dependabot maintains the digest-pinned Node image in `test/integration/Dockerfile`
+within Node 24. Node major upgrades require a coordinated runtime change.
 
 When updating the Codecov action, review its separate CLI `version` input in
 `.github/workflows/ci-test.yml` too; Dependabot does not maintain that input.

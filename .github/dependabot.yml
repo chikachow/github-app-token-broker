@@ -1,5 +1,20 @@
 version: 2
 updates:
+  - package-ecosystem: docker
+    directory: /test/integration
+    cooldown:
+      default-days: 3
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Australia/Sydney
+    commit-message:
+      prefix: chore(deps-dev)
+    open-pull-requests-limit: 10
+    ignore:
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
