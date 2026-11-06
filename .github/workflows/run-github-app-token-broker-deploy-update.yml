@@ -9,6 +9,11 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Full source commit SHA whose main-push CI passed
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -21,12 +26,24 @@ jobs:
     timeout-minutes: 10
 
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      - id: source
+        run: node scripts/deployment-source.ts
+
       - uses: chikachow/cyspbot-app-token-action@bf8d299cd20f755c47feb733e3c0f56331a4b49e # v0.0.12
         id: cyspbot
         with:
           resource: https://api.github.com/repos/chikachow/github-app-token-broker-deploy
           scope: actions:write
 
-      - run: gh workflow run update-github-app-token-broker.yml --repo chikachow/github-app-token-broker-deploy --ref main
+      - run: gh workflow run update-github-app-token-broker.yml --repo chikachow/github-app-token-broker-deploy --ref main --raw-field "source_sha=$SOURCE_SHA"
         env:
           GH_TOKEN: ${{ steps.cyspbot.outputs.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
