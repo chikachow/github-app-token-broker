@@ -16,6 +16,7 @@
     "build": "node ../../scripts/build-package.mjs"
   },
   "dependencies": {
+    "@github-app-token-broker/http": "workspace:*",
     "@github-app-token-broker/token-exchange": "workspace:*"
   },
   "peerDependencies": {
