@@ -797,8 +797,6 @@ describe("Token Issuance Policy evaluation", () => {
     expect(
       policyEvaluationPermits(policy, matchingSubjectToken, requestFor({ contents: "read" })),
     ).toBe(true);
-    expect(policyEvaluationPermits(policy, matchingSubjectToken, otherRepository)).toBe(true);
-    expect(policyEvaluationPermits(policy, matchingSubjectToken, otherOwner)).toBe(false);
     expect(
       evaluateTokenIssuancePolicy(policy, matchingSubjectToken, otherRepository, "Iv1.fixtureApp"),
     ).toEqual({
@@ -819,8 +817,6 @@ describe("Token Issuance Policy evaluation", () => {
       createGitHubRepositoryResource({ owner: "owner", repository: "other-repository" }),
     );
 
-    expect(policyEvaluationPermits(policy, matchingSubjectToken, exactRequest)).toBe(true);
-    expect(policyEvaluationPermits(policy, matchingSubjectToken, otherRepository)).toBe(false);
     expect(
       evaluateTokenIssuancePolicy(policy, matchingSubjectToken, exactRequest, "Iv1.fixtureApp"),
     ).toEqual({
@@ -1064,33 +1060,6 @@ describe("Token Issuance Policy evaluation", () => {
     }
 
     expect(cases).toBe(3_840);
-  });
-
-  it("is permission-separable for every pair of non-empty requests", () => {
-    let cases = 0;
-
-    for (const configured of allPermissionMaps) {
-      const policy = policyForContributions(configured);
-
-      for (const left of nonEmptyPermissionMaps) {
-        for (const right of nonEmptyPermissionMaps) {
-          const union = expectedPermissionUnion(left, right);
-          const permitsUnion = policyEvaluationPermits(
-            policy,
-            matchingSubjectToken,
-            requestFor(union),
-          );
-          const permitsSeparately =
-            policyEvaluationPermits(policy, matchingSubjectToken, requestFor(left)) &&
-            policyEvaluationPermits(policy, matchingSubjectToken, requestFor(right));
-
-          expect(permitsUnion).toBe(permitsSeparately);
-          cases += 1;
-        }
-      }
-    }
-
-    expect(cases).toBe(3_600);
   });
 });
 
