@@ -112,6 +112,10 @@ CI installs the manifest pin, and the local `check` command verifies it.
 `pmOnFail: ignore` keeps the lockfile as one YAML document for GitHub's dependency
 graph; direct pnpm commands do not automatically select or enforce the pin.
 Adding config dependencies requires reviewing that compatibility assumption.
+Keep this setting during `pnpm self-update`: overriding it to `error` adds a
+package-manager boot document that later installs retain. The update workflow
+checks that the newly installed pnpm matches the updated manifest before
+resolving dependencies.
 
 Routine dependency updates use a three-day release age: `minimumReleaseAge: 4320` in
 `pnpm-workspace.yaml` applies to pnpm resolution, including the scheduled
