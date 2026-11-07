@@ -5,7 +5,7 @@ packages:
 
 catalog:
   "@types/node": 24.19.2
-  "fastify": 5.12.7
+  "fastify": 5.12.8
   "jose": 6.2.15
   "tsdown": 0.23.4
   "typescript": 7.0.2
