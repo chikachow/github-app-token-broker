@@ -2,11 +2,8 @@
 
 This public repository owns the broker source, tests, documentation, public-safe Wrangler templates, and the source side of the release handoff. It does not own credentials, production routes, Cloudflare account identifiers, deployment overlays, or deployment execution.
 
-Package exports resolve to compiled JavaScript and declarations. After installing
-the source checkout, run `node --run build` from its root before compiling a
-deployment entrypoint. This builds all library dependencies in order; importing
-an individual package does not compile its source. Existing package names and
-subpaths are unchanged. Library consumers need no package-specific bundling rules.
+After installing a source checkout, run `node --run build` from its root before
+compiling a deployment entrypoint: package exports resolve to built artifacts.
 
 ## Cloudflare Worker: explicit app catalogue
 
