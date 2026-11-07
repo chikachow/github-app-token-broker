@@ -27,6 +27,7 @@ minimumReleaseAge: 4320
 # Explicit version selection and CI enforce the manifest pin; keep GitHub-compatible lockfiles.
 pmOnFail: ignore
 autoDedupe: true
+catalogPrune: true
 lockfile:
   includeResolutionSettings: true
 verifyDepsBeforeRun: error
