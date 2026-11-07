@@ -17,6 +17,7 @@ import { OidcProviderMetadataValidationError } from "@github-app-token-broker/oi
 
 import {
   authenticationTestNow,
+  type AuthenticationFailure,
   expectedFailure,
   issuer,
   jwksUri,
@@ -93,10 +94,14 @@ describe("OIDC ID Token Authenticator", () => {
     ).resolves.toEqual(expectedFailure("subject_token_rejected", "ERR_OIDC_ISSUER_NOT_REGISTERED"));
     const malformedToken = await authenticator.authenticateIdToken("not-a-jwt");
     expect(malformedToken).toEqual(expectedFailure("subject_token_rejected", "ERR_JWT_INVALID"));
-    if (!malformedToken.ok && malformedToken.failure.kind === "subject_token_rejected") {
-      // @ts-expect-error Provider HTTP status is not valid subject-token rejection diagnostics.
-      expect(malformedToken.failure.diagnostics.providerHttpStatus).toBeUndefined();
-    }
+    void ({
+      failure: {
+        // @ts-expect-error Provider HTTP status is not valid subject-token rejection diagnostics.
+        diagnostics: { providerHttpStatus: 401 },
+        kind: "subject_token_rejected",
+      },
+      ok: false,
+    } satisfies AuthenticationFailure);
     await expect(
       authenticator.authenticateIdToken(await signedIdToken({ claimOverrides: { iss: "" } })),
     ).resolves.toEqual(expectedFailure("subject_token_rejected", "ERR_JWT_INVALID"));
