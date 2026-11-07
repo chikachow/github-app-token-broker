@@ -131,7 +131,8 @@ Verify the OIDC upload and tokenless fork-PR upload paths for CLI updates.
 
 Shared exact dependency versions live in the default catalog in
 `pnpm-workspace.yaml`. Update the catalog entry to keep package and deployment
-fixture dependencies aligned. Public peer dependency ranges remain separate.
+fixture dependencies aligned. `catalogPrune` removes entries without workspace
+consumers during installation. Public peer dependency ranges remain separate.
 
 Dependency updates use `strictPeerDependencies: false` to allow intermediate
 peer conflicts while Dependabot assembles grouped updates. `autoInstallPeers: false`
