@@ -2,11 +2,29 @@
   "name": "@github-app-token-broker/http",
   "version": "0.0.1",
   "private": true,
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "exports": {
-    "./abort": "./src/abort.ts",
-    "./body": "./src/body.ts",
-    "./problem-details": "./src/problem-details.ts",
-    "./request-body": "./src/request-body.ts"
+    "./abort": {
+      "types": "./dist/abort.d.ts",
+      "import": "./dist/abort.js"
+    },
+    "./body": {
+      "types": "./dist/body.d.ts",
+      "import": "./dist/body.js"
+    },
+    "./problem-details": {
+      "types": "./dist/problem-details.d.ts",
+      "import": "./dist/problem-details.js"
+    },
+    "./request-body": {
+      "types": "./dist/request-body.d.ts",
+      "import": "./dist/request-body.js"
+    }
+  },
+  "scripts": {
+    "build": "node ../../scripts/build-package.mjs"
   }
 }

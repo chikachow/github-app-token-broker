@@ -10,12 +10,12 @@ import {
   GitHubAppNotFoundError,
   GitHubAppUnavailableError,
   GitHubAppUpstreamError,
-} from "../packages/github/src/app-information.ts";
+} from "../packages/github/dist/app-information.js";
 import {
   GitHubAppConfigurationError,
   type GitHubAppConfiguration,
-} from "../packages/github/src/app.ts";
-import { createGitHubAppInformationEntrypoint } from "../workers/github-app-token-broker/src/app-information-entrypoint.ts";
+} from "../packages/github/dist/app.js";
+import { createGitHubAppInformationEntrypoint } from "../workers/github-app-token-broker/dist/app-information-entrypoint.js";
 import {
   testGitHubAppResponse,
   testGitHubEnterpriseAccount,

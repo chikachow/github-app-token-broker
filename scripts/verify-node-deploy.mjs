@@ -119,7 +119,6 @@ await app.close();
     `${JSON.stringify(
       {
         compilerOptions: {
-          allowImportingTsExtensions: true,
           module: "NodeNext",
           moduleResolution: "NodeNext",
           noEmit: true,

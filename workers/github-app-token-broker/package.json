@@ -2,9 +2,15 @@
   "name": "@github-app-token-broker/worker",
   "version": "0.0.1",
   "private": true,
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   },
   "scripts": {
     "check": "node --run env-types:check && node --run typecheck && node --run deploy:dry-run",
@@ -13,7 +19,8 @@
     "env-types:check": "WRANGLER_LOG=none WRANGLER_LOG_PATH=../../.wrangler/logs WRANGLER_REGISTRY_PATH=../../.wrangler/registry wrangler types src/env.generated.d.ts --config wrangler.jsonc --env-interface TokenExchangeEnv --include-runtime false --check",
     "env-types:generate": "WRANGLER_LOG=none WRANGLER_LOG_PATH=../../.wrangler/logs WRANGLER_REGISTRY_PATH=../../.wrangler/registry wrangler types src/env.generated.d.ts --config wrangler.jsonc --env-interface TokenExchangeEnv --include-runtime false",
     "runtime-types:generate": "WRANGLER_LOG=none WRANGLER_LOG_PATH=../../.wrangler/logs WRANGLER_REGISTRY_PATH=../../.wrangler/registry wrangler types src/runtime.generated.d.ts --config wrangler.jsonc --include-env false",
-    "typecheck": "node --run runtime-types:generate && tsc --project tsconfig.json"
+    "typecheck": "node --run runtime-types:generate && tsc --noEmit --project tsconfig.json",
+    "build": "node --run runtime-types:generate && node ../../scripts/build-package.mjs"
   },
   "dependencies": {
     "@github-app-token-broker/github": "workspace:*",

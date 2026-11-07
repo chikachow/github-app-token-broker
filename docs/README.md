@@ -3,6 +3,7 @@
 - [Multiple GitHub Apps decision](decisions/multiple-github-apps.md): explicit app selection, audience ownership, policy isolation, and scoped RPC bindings.
 - [Service contract](service-contract.md): authoritative public API, security boundaries, provider and policy behavior, runtime bindings, and errors.
 - [Implementation](implementation.md): package layout, composition Interface, request flow, and validation commands.
+- [Package artifacts decision](decisions/package-artifacts.md): uniform library compilation, package exports, and deployment-owned bundling.
 - [Deployment](deployment.md): interface between this public source repository and an external deployment system.
 - [Contributing](../CONTRIBUTING.md): validation and source-artifact publication.
 - [Domain glossary](../CONTEXT.md): project terminology.

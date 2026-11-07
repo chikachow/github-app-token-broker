@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "declaration": true,
+    "inlineSources": true,
+    "lib": ["ES2024", "WebWorker"],
+    "module": "NodeNext",
+    "noEmit": false,
+    "rewriteRelativeImportExtensions": true,
+    "sourceMap": true,
+    "types": ["@cloudflare/workers-types"]
+  }
+}

@@ -13,7 +13,7 @@ import {
   createGitHubAppInformationEntrypoint,
 } from "@github-app-token-broker/worker";
 import { parseOidcIssuerIdentifier } from "@github-app-token-broker/oidc/provider-registration";
-import genericTokenExchangeWorker from "../workers/github-app-token-broker/src/generic-worker.ts";
+import genericTokenExchangeWorker from "../workers/github-app-token-broker/dist/generic-worker.js";
 import { testGitHubActionsTokenIssuancePolicy } from "./support/github-actions-token-issuance-policy.ts";
 
 describe("worker entrypoint shapes", () => {
