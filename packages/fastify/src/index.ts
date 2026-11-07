@@ -108,7 +108,7 @@ function logObservation(request: FastifyRequest, observation: TokenExchangeObser
 
 function tokenExchangeRequestUrl(request: FastifyRequest, prefix: string): URL | null {
   try {
-    const url = new URL(request.raw.url ?? request.url, `${request.protocol}://${request.host}`);
+    const url = new URL(request.url, `${request.protocol}://${request.host}`);
     url.pathname = url.pathname.slice(prefix.length);
     return url;
   } catch {
