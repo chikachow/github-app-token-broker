@@ -33,6 +33,14 @@ describe("OIDC Provider Registration", () => {
       message: "invalid OIDC ID Token signing algorithm allowlist",
     },
     {
+      acceptedIdTokenSigningAlgorithms: { 0: "RS256", length: 1 },
+      message: "invalid OIDC ID Token signing algorithm allowlist",
+    },
+    {
+      acceptedIdTokenSigningAlgorithms: new Set(["RS256"]),
+      message: "invalid OIDC ID Token signing algorithm allowlist",
+    },
+    {
       acceptedIdTokenSigningAlgorithms: ["RS256", "RS256"],
       message: "invalid OIDC ID Token signing algorithm allowlist",
     },
