@@ -12,7 +12,7 @@ import {
   type OidcProviderRegistration,
 } from "@github-app-token-broker/oidc/provider-registration";
 
-import { createRegisteredOidcProviderVerifier } from "../packages/oidc/src/registered-provider-verifier.ts";
+import { createRegisteredOidcProviderVerifier } from "../packages/oidc/dist/registered-provider-verifier.js";
 import {
   authenticationTestNow,
   expectedFailure,

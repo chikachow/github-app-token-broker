@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { githubActionsOidcProviderRegistration } from "../src/provider-registration.ts";
+import { githubActionsOidcProviderRegistration } from "../dist/provider-registration.js";
 
 describe("GitHub Actions OIDC Provider Registration", () => {
   const claims = {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { GitHubApiError } from "../packages/github/src/http.ts";
+import { GitHubApiError } from "../packages/github/dist/http.js";
 
 describe("GitHub API error defaults", () => {
   it("defaults to no rate limit and preserves the supplied upstream status", () => {

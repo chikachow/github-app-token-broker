@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { observeTokenExchangeWithConsole } from "../workers/github-app-token-broker/src/observability.ts";
+import { observeTokenExchangeWithConsole } from "../workers/github-app-token-broker/dist/observability.js";
 
 afterEach(() => {
   vi.restoreAllMocks();

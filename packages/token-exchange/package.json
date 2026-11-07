@@ -14,14 +14,12 @@
   },
   "scripts": {
     "artifact:check": "node artifact/runtime-smoke.mjs && tsc --project artifact/tsconfig.json",
-    "build": "tsdown --config tsdown.config.ts"
+    "build": "node ../../scripts/build-package.mjs"
   },
   "dependencies": {
     "@github-app-token-broker/github": "workspace:*",
     "@github-app-token-broker/http": "workspace:*",
     "@github-app-token-broker/oidc": "workspace:*",
-    "@github-app-token-broker/token-issuance-policy": "workspace:*",
-    "jose": "catalog:",
-    "zod": "catalog:"
+    "@github-app-token-broker/token-issuance-policy": "workspace:*"
   }
 }

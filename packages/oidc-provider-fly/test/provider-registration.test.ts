@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createFlyOidcProviderRegistration,
   flyOidcIssuerIdentifierForOrganizationSlug,
-} from "../src/provider-registration.ts";
+} from "../dist/provider-registration.js";
 
 describe("Fly OIDC Provider Registration", () => {
   it.each(["a", "example-org", "example--org"])(

@@ -13,7 +13,7 @@
     }
   },
   "scripts": {
-    "build": "tsdown --config tsdown.config.ts"
+    "build": "node ../../scripts/build-package.mjs"
   },
   "dependencies": {
     "@github-app-token-broker/token-exchange": "workspace:*"

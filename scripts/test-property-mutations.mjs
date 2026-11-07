@@ -62,6 +62,7 @@ try {
 
       writeFileSync(sourcePath, mutated);
       try {
+        runPackageManager(["run", "build"], clone);
         runPackageManager(["run", "typecheck:built"], clone);
       } catch (error) {
         throw new Error(`invalid-mutant ${mutation.id}: repository typecheck failed`, {
@@ -93,6 +94,7 @@ try {
       });
     } finally {
       writeFileSync(sourcePath, original);
+      runPackageManager(["run", "build"], clone);
     }
   }
 

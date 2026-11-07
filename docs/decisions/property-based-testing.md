@@ -45,10 +45,12 @@ Classify its demonstrated value as:
 Mutation checks establish sensitivity to a curated fault, not an exhaustive
 mutation score or a defect probability. The optional
 `pnpm test:mutations:property` command applies its manifest only in a temporary
-clone of a clean committed revision. After the frozen install, it builds package
-artifacts once, typechecks the clean clone, and runs the complete unmutated suite
-once. It then typechecks every mutant before running all non-property tests and
-the exact responsible property. A responsible property that does not kill its
+clone of a clean committed revision. After the frozen install, it builds and
+typechecks the clean clone and runs the complete unmutated suite once. It then
+rebuilds and typechecks every mutant before running all non-property tests and
+the exact responsible property against those compiled modules. Restoring source
+also rebuilds the artifacts, so no mutant output leaks into the next case.
+A responsible property that does not kill its
 mutant is unsupported even when an ordinary regression kills the same mutant.
 
 Every lane must establish a completed test run, including teardown, with no

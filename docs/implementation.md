@@ -18,6 +18,26 @@
 
 There is no webhook runtime, deployment endpoint, or dynamic issuer registry. App selection is limited to the reviewed catalogue.
 
+## Package artifacts
+
+Every library package, including the Worker adapter, exports compiled ESM and
+declarations from `dist`. Public import paths are independent of the source
+layout. Package compilation preserves imports of other packages and
+host-provided modules; it does not bundle dependencies. Adding a package import
+requires declaring the dependency, without a package-specific bundling rule.
+
+`tsconfig.library.json` owns the shared compiler settings. Each package's
+`tsconfig.json` identifies its source and output directories and any host types.
+The shared build command removes that package's previous output before compiling
+all its source modules. The root build follows pnpm's workspace dependency order,
+so consumers compile against their dependencies' current declarations.
+
+Deployment builds own bundling. The Fastify deployment fixtures use tsdown, and
+Wrangler builds Worker deployments. These builds consume the same compiled
+package exports as ordinary package consumers. See the
+[package artifacts decision](decisions/package-artifacts.md) for the rationale
+and compatibility requirements.
+
 ## GitHub App Information RPC
 
 `packages/github/src/app-information.ts` is the runtime-neutral read-only
@@ -217,10 +237,14 @@ is remapped into Istanbul's coverage model to produce reports, including LCOV. T
 [coverage decision](decisions/v8-coverage.md) records the accepted measurement
 limitations.
 
-Coverage explicitly includes package and Worker source files, including files
-not imported by tests, and excludes declarations. Vitest otherwise reports
-only loaded files, which can hide untested source files from the coverage
-thresholds.
+Tests import compiled package exports without source aliases. Focused tests of
+private modules import their corresponding compiled files without adding public
+exports. Coverage includes all emitted package and Worker JavaScript, including
+modules not imported by tests, and maps results back to the TypeScript source
+through compiler source maps. Declarations are excluded. Every source module is
+compiled, so the execution inventory does not depend on which public exports or
+tests happen to reach it. Vitest otherwise reports only loaded files, which can
+hide untested modules from the coverage thresholds.
 
 The `node` Vitest project exclusively owns `test/node/**/*.test.ts`; the Workerd `unit` project excludes that directory, making the selected runtime explicit for those behavioral tests.
 
@@ -239,7 +263,33 @@ unknown selectors must preserve the configuration error without GitHub I/O.
 The fixture consumes RPC inside a Worker; that separately launched process is
 outside Vitest coverage collection, as are the separate Compose deployments.
 
-The aggregate check builds once, then reuses that artifact for the artifact, typecheck, test, Node production-consumer, and deployment lanes. Standalone `artifact:check`, `typecheck`, `test`, `node-deploy:check`, and `deploy:dry-run` commands build their prerequisites first. Workspace dependencies use links, and pnpm 12 deploy packages their built files without injected-package synchronization. Standalone commands also work after a frozen clean install with no pre-existing `dist`. The artifact check imports the built Token Exchange ESM directly under Node and typechecks a self-importing consumer through the package's exports and bundled declarations; no source alias participates. The Node deployment check production-deploys a Fastify host fixture, imports the deployed package roots, typechecks the public adapter options, and exercises a real loopback listener with GET and form POST requests. The POST reaches the built Token Exchange handler and checks its `unsupported_grant_type` response. Both Fastify fixtures explicitly bundle workspace packages with `alwaysBundle`. Their `onlyBundle` guard permits `jose` and `zod` when tsdown encounters third-party modules under `node_modules`; other such bundled dependencies fail the build. Linked workspace source paths are outside that guard. This guard cannot identify dependencies already embedded in consumed package artifacts. The root Wrangler file is a unit-test harness. It intentionally repeats the package Worker's compatibility flags and binding shapes; `env-types:check`, the GitHub App Information Workerd integration project, and the package dry-run validate the deployable config. The package Wrangler file is a public-safe dry-run template; deployment-owned identifiers and routes are supplied by the external deployment system.
+The aggregate check builds once, then reuses those artifacts for lint, unused-code
+analysis, artifact, test-consumer typechecking, tests, Node production-consumer,
+and deployment lanes. Library compilation itself typechecks every package.
+Standalone `artifact:check`, `typecheck`, `lint`, `knip`, `test`, `test:coverage`,
+`node-deploy:check`, and `deploy:dry-run` commands build their prerequisites first.
+Workspace dependencies use links, and pnpm deploy packages their built files.
+These commands also work after a frozen clean install with no pre-existing `dist`.
+
+The artifact check imports the built Token Exchange ESM directly under Node and
+typechecks a self-importing consumer through package exports and declarations.
+The Node deployment check production-deploys a Fastify host fixture, imports the
+deployed package roots, typechecks the public adapter options, and exercises a
+real loopback listener with GET and form POST requests. The POST reaches the built
+Token Exchange handler and checks its `unsupported_grant_type` response.
+
+Both Fastify deployment fixtures bundle workspace packages with `alwaysBundle`.
+Their `onlyBundle` guard permits `jose` and `zod` when tsdown encounters third-party
+modules under `node_modules`; other such bundled dependencies fail the build.
+Linked workspace paths are outside that guard. Libraries do not embed dependencies
+before this deployment build, so their package imports remain visible to it.
+
+The root Wrangler file is a unit-test harness. It intentionally repeats the
+package Worker's compatibility flags and binding shapes; `env-types:check`, the
+GitHub App Information Workerd integration project, and the package dry-run
+validate the deployable config. The package Wrangler file is a public-safe dry-run
+template; deployment-owned identifiers and routes are supplied by the external
+deployment system.
 
 OIDC verification evidence exposes the verified token header's optional `kid` as
 `idTokenHeaderKeyId`; Token Exchange observations serialize it as

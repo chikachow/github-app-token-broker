@@ -1,23 +1,11 @@
 import { cloudflareTest } from "@cloudflare/vitest-plugin";
 import { configDefaults, defineConfig } from "vitest/config";
 
-const tokenExchangeSourceAlias = {
-  "@github-app-token-broker/token-exchange": new URL(
-    "./packages/token-exchange/src/index.ts",
-    import.meta.url,
-  ).pathname,
-};
-
-const fastifySourceAlias = {
-  "@github-app-token-broker/fastify": new URL("./packages/fastify/src/index.ts", import.meta.url)
-    .pathname,
-};
-
 export default defineConfig({
   test: {
     coverage: {
       exclude: ["**/*.d.ts"],
-      include: ["packages/*/src/**/*.ts", "workers/*/src/**/*.ts"],
+      include: ["packages/*/dist/**/*.js", "workers/*/dist/**/*.js"],
       provider: "v8",
       reporter: ["text", "lcov"],
       thresholds: {
@@ -40,7 +28,7 @@ export default defineConfig({
             },
           }),
         ],
-        resolve: { alias: tokenExchangeSourceAlias },
+
         test: {
           allowOnly: false,
           detectAsyncLeaks: true,
@@ -55,7 +43,6 @@ export default defineConfig({
         },
       },
       {
-        resolve: { alias: tokenExchangeSourceAlias },
         test: {
           allowOnly: false,
           include: ["test/node/**/*.test.ts"],
@@ -63,7 +50,6 @@ export default defineConfig({
         },
       },
       {
-        resolve: { alias: { ...fastifySourceAlias, ...tokenExchangeSourceAlias } },
         test: {
           allowOnly: false,
           include: ["test/fastify/**/*.test.ts"],
@@ -71,7 +57,6 @@ export default defineConfig({
         },
       },
       {
-        resolve: { alias: tokenExchangeSourceAlias },
         test: {
           allowOnly: false,
           include: ["test/properties/**/*.property.test.ts"],

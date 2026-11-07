@@ -1,9 +1,0 @@
-{
-  "extends": "./tsconfig.base.json",
-  "compilerOptions": {
-    "lib": ["ES2024", "WebWorker"],
-    "rootDir": "packages",
-    "types": ["@cloudflare/workers-types"]
-  },
-  "include": ["packages/*/src/**/*.ts"]
-}

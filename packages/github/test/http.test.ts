@@ -6,7 +6,7 @@ import {
   GitHubApiError,
   GitHubApiTransportError,
   revokeGitHubInstallationAccessToken,
-} from "../src/http.ts";
+} from "../dist/http.js";
 
 const responseSchema = z.object({ value: z.string() });
 const requestPath = "/test/response";

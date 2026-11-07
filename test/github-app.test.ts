@@ -5,7 +5,7 @@ import {
   issueInstallationAccessToken,
   githubAppAuthenticationHeaders,
   type GitHubAppConfiguration,
-} from "../packages/github/src/app.ts";
+} from "../packages/github/dist/app.js";
 import { createInstallationAccessTokenRequest } from "@github-app-token-broker/github/installation-access-token-request";
 import { testInstallationId, testRepository } from "./support/constants.ts";
 import { githubInstallationResponse } from "./support/github-api.ts";
