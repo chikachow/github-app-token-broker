@@ -39,7 +39,7 @@
     "jose": "catalog:"
   },
   "devDependencies": {
-    "@cloudflare/vitest-plugin": "1.5.1",
+    "@cloudflare/vitest-plugin": "1.6.0",
     "@cloudflare/workers-types": "5.20261104.1",
     "@fast-check/vitest": "0.5.0",
     "@github-app-token-broker/fastify": "workspace:*",
@@ -65,7 +65,7 @@
     "typescript": "catalog:",
     "vite": "8.3.5",
     "vitest": "5.1.0",
-    "wrangler": "4.157.0"
+    "wrangler": "4.158.0"
   },
   "engines": {
     "node": "24"
