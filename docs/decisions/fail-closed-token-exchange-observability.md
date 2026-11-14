@@ -26,13 +26,14 @@ the first GitHub request for a policy-permitted exchange, it awaits a token-free
 `installation_access_token_issuance_started` observation. After GitHub returns a token, it awaits
 `installation_access_token_issuance_succeeded` before returning that token to the Client.
 
-If the success acknowledgement rejects, the broker stops using that observer, awaits one
+If the success acknowledgement rejects or exceeds the remaining success budget, the broker stops using that observer, awaits one
 best-effort invocation of the issued token's GitHub-owned revocation capability. That capability
 performs `DELETE https://api.github.com/installation/token` through the fixed-origin,
 redirect-rejecting, 10-second-bounded GitHub HTTP adapter. The broker always returns sanitized
 `500 {"error":"server_error"}` without the token. Revocation failure neither permits the token to
-escape nor causes a recursive observation. Fallback logging receives only a new sanitized error,
-not the observer failure, revocation failure, or token.
+escape nor causes a recursive observation. Independent best-effort fallback logging records only the configured App client ID,
+release stage, and revocation outcome. It contains no observer failure, revocation
+failure, or token. The failed mandatory observer is never called again.
 
 OIDC remote-document cache events use a separately named optional synchronous diagnostic
 callback. Its exact `undefined` return type excludes the mandatory promise-returning observer, and
@@ -41,6 +42,10 @@ diagnostic callback failure is contained.
 The default mandatory console adapter acknowledges completion of its console call. This decision
 does not describe that acknowledgement as durable persistence. A deployment requiring durability
 must supply an adapter whose promise resolves only after its sink confirms persistence.
+
+The [bounded exchange lifecycle decision](bounded-token-exchange-lifecycle.md)
+owns cancellation, the response-construction release boundary, and recovery
+after the success budget expires.
 
 ## Consequences
 
@@ -51,8 +56,9 @@ must supply an adapter whose promise resolves only after its sink confirms persi
   until expiry.
 - If GitHub creates a token but the mint response is lost, the broker does not know the credential
   needed to revoke it. The acknowledged pre-mint event records the ambiguous attempt.
-- Durable sink selection, correlation identifiers, idempotency, retry policy, and sink-specific
-  timeout policy remain separate deployment design decisions.
+- Durable sink selection, correlation identifiers, idempotency, retries, and tighter sink-specific
+  timeouts remain deployment decisions. The broker bounds acknowledgement by the remaining
+  success budget; a deployment cannot extend it.
 
 ## Rejected alternatives
 

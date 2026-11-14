@@ -49,8 +49,8 @@ observations by returning `Promise<void>`. The broker does not return a token un
 intent and post-mint success observations are acknowledged. The default console adapter's
 fulfilled promise establishes only that its console call completed; it is not durable storage. A
 deployment that requires durable audit acknowledgement must inject an adapter whose promise
-fulfills only after its chosen sink confirms persistence. Sink choice, idempotency, retry, and
-timeout semantics are deployment concerns and are not supplied by this repository. Optional OIDC
+fulfills only after its chosen sink confirms persistence. Sink choice, idempotency, retries, and tighter sink timeouts are deployment concerns.
+The broker always enforces its own remaining success budget around acknowledgement. Optional OIDC
 remote-document diagnostics use the separate synchronous `observeOidcDiagnostic` callback and
 must not be wired to the mandatory async adapter.
 
@@ -118,7 +118,8 @@ The deployment system is maintained outside this repository. It must:
 8. run a strict dry-run against the deployment-owned entrypoint
 9. smoke-test the routed `POST /github/apps/{app_slug}/token` contract without logging tokens
 10. exercise `GitHubAppInformationEntrypoint` through an explicitly configured trusted named service binding; each concrete consumer must test its exact production binding configuration and static `props.githubAppClientId` and the absence of any public HTTP route to that entrypoint
-11. when durable observation is required, inject and test an acknowledgement adapter whose promise resolves only after the selected sink confirms persistence
+11. when durable observation is required, inject and test an acknowledgement adapter whose promise resolves only after the selected sink confirms persistence within the broker success budget
+12. verify real GitHub mint responses against exact permission and optional repository validation before rollout; a legitimate vendor baseline that conflicts with the contract requires an explicit decision before deployment
 
 Before enabling an App, verify that its deployed credential authenticates as the
 configured client ID and slug using GitHub's authenticated `GET /app` operation.

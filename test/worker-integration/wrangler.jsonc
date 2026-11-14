@@ -9,6 +9,7 @@
     "no_nodejs_als",
     "disallow_eval_during_startup",
     "global_fetch_strictly_public",
+    "enable_request_signal",
   ],
   "services": [
     {

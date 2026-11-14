@@ -1,9 +1,11 @@
 import { importPKCS8, SignJWT, type CryptoKey } from "jose";
 import * as z from "zod";
+import { awaitWithAbortSignal } from "@github-app-token-broker/http/abort";
 
 import {
   defaultGitHubApiDependencies,
   fetchGitHubApiJson,
+  fetchGitHubApiJsonResponse,
   GitHubApiError,
   GitHubApiTransportError,
   githubAcceptHeader,
@@ -51,6 +53,7 @@ type GitHubInstallationAccessTokenIssuanceResult =
       readonly installationId: number | undefined;
       readonly ok: false;
       readonly reason: GitHubInstallationAccessTokenIssuanceFailureReason;
+      readonly revocationOutcome?: "succeeded" | "failed";
     };
 
 export class GitHubAppConfigurationError extends Error {
@@ -84,29 +87,44 @@ const githubInstallationResponseSchema = z.object({
 
 const githubInstallationAccessTokenResponseSchema = z.object({
   expires_at: z.iso.datetime({ offset: true }),
-  permissions: z.record(z.string(), z.string()),
+  permissions: z.unknown(),
+  repositories: z
+    .array(z.object({ name: z.string().min(1), owner: z.object({ login: z.string().min(1) }) }))
+    .optional(),
   token: z.string().min(1),
 });
+const githubInstallationAccessTokenValueSchema = z.object({ token: z.string().min(1) });
 
 export async function issueInstallationAccessToken(
   configuration: GitHubAppConfiguration,
   request: InstallationAccessTokenRequest,
   dependencies: GitHubAppDependencies = defaultGitHubAppDependencies,
+  signal?: AbortSignal,
 ): Promise<GitHubInstallationAccessTokenIssuanceResult> {
   let installationId: number | undefined;
+  let recoveredToken: string | undefined;
 
   try {
-    const authenticationHeaders = await githubAppAuthenticationHeaders(configuration, dependencies);
+    signal?.throwIfAborted();
+    const authentication = githubAppAuthenticationHeaders(configuration, dependencies);
+    const authenticationHeaders = await (signal === undefined
+      ? authentication
+      : awaitWithAbortSignal(authentication, signal));
+    signal?.throwIfAborted();
     const repositoryPath = `${request.resource.owner}/${request.resource.repository}`;
     const installation = await fetchGitHubApiJson(dependencies, {
       headers: authenticationHeaders,
+      ...(signal === undefined ? {} : { init: { signal } }),
       path: `/repos/${repositoryPath}/installation`,
       responseSchema: githubInstallationResponseSchema.refine((resolvedInstallation) =>
         githubRepositoryOwnerMatches(request.resource.owner, resolvedInstallation.account.login),
       ),
     });
     installationId = installation.id;
-    const responseBody = await fetchGitHubApiJson(dependencies, {
+    signal?.throwIfAborted();
+    // An accepted mint remains owned through its fixed transport deadline, even after cancellation.
+    const tokenPath = `/app/installations/${installation.id}/access_tokens`;
+    const response = await fetchGitHubApiJsonResponse(dependencies, {
       headers: authenticationHeaders,
       init: {
         body: JSON.stringify({
@@ -118,26 +136,74 @@ export async function issueInstallationAccessToken(
         },
         method: "POST",
       },
-      path: `/app/installations/${installation.id}/access_tokens`,
-      responseSchema: githubInstallationAccessTokenResponseSchema,
+      path: tokenPath,
     });
+    // Own a decoded credential until a successful result transfers it to the caller.
+    const recovered = githubInstallationAccessTokenValueSchema.safeParse(response.body);
+    if (recovered.success) recoveredToken = recovered.data.token;
+    const parsed = githubInstallationAccessTokenResponseSchema.safeParse(response.body);
+
+    if (
+      !parsed.success ||
+      !permissionsMatch(parsed.data.permissions, request.permissions) ||
+      !(Date.parse(parsed.data.expires_at) - dependencies.now().getTime() >= 1000) ||
+      (parsed.data.repositories !== undefined &&
+        (parsed.data.repositories.length !== 1 ||
+          parsed.data.repositories[0]!.name.toLowerCase() !==
+            request.resource.repository.toLowerCase() ||
+          !githubRepositoryOwnerMatches(
+            request.resource.owner,
+            parsed.data.repositories[0]!.owner.login,
+          )))
+    ) {
+      throw new GitHubApiError(
+        502,
+        `GitHub API returned an invalid response: ${tokenPath}`,
+        false,
+        response.status,
+      );
+    }
 
     return {
-      expiresAt: responseBody.expires_at,
+      expiresAt: parsed.data.expires_at,
       installationId: installation.id,
       ok: true,
-      permissions: responseBody.permissions,
-      revoke: () => revokeGitHubInstallationAccessToken(dependencies, responseBody.token),
-      token: responseBody.token,
+      permissions: parsed.data.permissions,
+      revoke: () => revokeGitHubInstallationAccessToken(dependencies, parsed.data.token),
+      token: parsed.data.token,
     };
   } catch (error) {
+    let revocationOutcome: "succeeded" | "failed" | undefined;
+    if (recoveredToken !== undefined) {
+      try {
+        await revokeGitHubInstallationAccessToken(dependencies, recoveredToken);
+        revocationOutcome = "succeeded";
+      } catch {
+        revocationOutcome = "failed";
+      }
+    }
     return {
       error: installationAccessTokenIssuanceErrorFields(error),
       installationId,
       ok: false,
       reason: installationAccessTokenIssuanceFailureReason(error),
+      ...(revocationOutcome === undefined ? {} : { revocationOutcome }),
     };
   }
+}
+
+function permissionsMatch(
+  permissions: unknown,
+  requested: Readonly<Record<string, string>>,
+): permissions is Readonly<Record<string, string>> {
+  if (typeof permissions !== "object" || permissions === null || Array.isArray(permissions)) {
+    return false;
+  }
+  const entries = Object.entries(permissions);
+  return (
+    entries.length === Object.keys(requested).length &&
+    entries.every(([name, level]) => Object.hasOwn(requested, name) && level === requested[name])
+  );
 }
 
 function installationAccessTokenIssuanceFailureReason(

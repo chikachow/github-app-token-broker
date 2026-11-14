@@ -34,10 +34,12 @@ export type {
   TokenExchangeObservation,
   TokenExchangeRequestContext,
 } from "./events.ts";
+export { createTokenExchangeLifetime, awaitTokenExchangeOperation } from "./lifetime.ts";
 import type { TokenExchangeRequestContext } from "./events.ts";
 export {
   maxTokenExchangeBodyBytes,
   tokenExchangeInvalidRequestResponse,
+  tokenExchangeUnavailableResponse,
   unexpectedTokenExchangeFailureResponse,
 } from "./token-exchange.ts";
 

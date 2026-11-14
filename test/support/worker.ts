@@ -1,3 +1,4 @@
+import { createExecutionContext } from "cloudflare:test";
 import {
   createTokenExchangeWorker,
   type TokenExchangeWorkerComposition,
@@ -69,6 +70,10 @@ function fetchWorkerWithApp(
   }
 
   return Promise.resolve(
-    handler(new Request(input, init) as Parameters<typeof handler>[0], env, {} as ExecutionContext),
+    handler(
+      new Request(input, init) as Parameters<typeof handler>[0],
+      env,
+      createExecutionContext(),
+    ),
   );
 }

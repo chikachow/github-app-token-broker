@@ -12,4 +12,6 @@ export type ObserveOidcDiagnostic = (observation: TokenExchangeObservation) => u
 export interface TokenExchangeRequestContext {
   readonly observe: ObserveTokenExchange;
   readonly observeOidcDiagnostic?: ObserveOidcDiagnostic | undefined;
+  /** Keeps bounded issuer-owned refresh work alive when this request stops waiting. */
+  readonly waitUntil?: ((operation: Promise<void>) => void) | undefined;
 }
