@@ -126,7 +126,7 @@ Dependabot maintains the digest-pinned Node image in `test/integration/Dockerfil
 within Node 24. Node major upgrades require a coordinated runtime change.
 
 When updating the Codecov action, review its separate CLI `version` input in
-`.github/workflows/ci-test.yml` too; Dependabot does not maintain that input.
+`.github/workflows/ci.yml` too; Dependabot does not maintain that input.
 Verify the OIDC upload and tokenless fork-PR upload paths for CLI updates.
 
 Shared exact dependency versions live in the default catalog in
@@ -139,7 +139,7 @@ peer conflicts while Dependabot assembles grouped updates. `autoInstallPeers: fa
 keeps peer dependencies explicit. `node --run peer-dependencies:check`, included
 in `check`, runs `pnpm peers check`. It rejects missing required peers and peers
 outside their declared version ranges without changing the lockfile, including
-when the lockfile was generated with permissive settings. The `dependencies` CI
+when the lockfile was generated with permissive settings. The `source` CI
 job also rejects lockfile changes.
 
 `node --run dedupe:check` runs `pnpm dedupe --check --ignore-scripts` in the same

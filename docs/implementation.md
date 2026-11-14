@@ -192,18 +192,29 @@ fnm exec --using=24 pnpm run test:coverage
 fnm exec --using=24 pnpm run test:mutations:property
 ```
 
-Continuous integration runs reusable validation workflows in parallel: dependency validation, formatting, lint,
-generated environment types, typechecking, Knip, test coverage, the built Token Exchange artifact
-contract, the production-pruned Node deployment contract, the Worker deployment dry run, and
-container integration. Separate Fastify and Worker workflows invoke Compose in
-named fixture startup, host-driver execution, logging, and cleanup steps. They share
-`test/integration/compose.yml` with local runs. Each job owns independent fixtures
-and builds frozen dependencies inside its image. Other lanes install the frozen
-dependency tree and invoke their standalone commands to build prerequisites. The test lane alone receives `id-token: write` for its Codecov OIDC
-upload. The required `ci` result aggregates all validation jobs and fails when any lane fails, is
-cancelled, or is skipped.
+Continuous integration has three required validation lanes. The `source` job
+installs frozen dependencies once and runs the local aggregate `check`, including
+dependency validation, formatting, generated environment types, one workspace
+build, lint, artifact and declaration checks, Knip, tests, the production-pruned
+Node consumer check, and the Worker deployment dry run. It then reruns tests with
+coverage against that same build and enforces the local coverage thresholds.
+Separate Fastify and Worker workflows invoke Compose in named fixture startup,
+host-driver execution, logging, and cleanup steps. They share
+`test/integration/compose.yml` with local runs; each owns independent fixtures and
+builds frozen dependencies inside its image. The required `ci` result aggregates
+these three lanes and fails when any fails, is cancelled, or is skipped.
 
-The `dependencies` CI job checks manifest and lockfile consistency with
+The separate `coverage-report` job alone receives `id-token: write` for Codecov;
+fork pull requests retain the tokenless upload path. It does not install or run
+the project. Coverage artifact transfer and reporting failures produce warnings
+without failing required validation or the source workflow's deployment handoff.
+Reporting actions have shorter step deadlines than their job's overall budget,
+so a stalled upload fails the optional job without reaching job cancellation.
+The reporter is excluded from the `ci` dependency list. Repository rules should
+require the stable aggregate `ci` check; the former
+individual source validation jobs have been replaced by `source`.
+
+The `source` CI job checks manifest and lockfile consistency with
 `lockfile:check`, declared peer requirements with `peer-dependencies:check`, and
 lockfile deduplication with `dedupe:check`. It then rejects any lockfile diff.
 Peer validation reads the lockfile with `pnpm peers check`; it does not rely on
