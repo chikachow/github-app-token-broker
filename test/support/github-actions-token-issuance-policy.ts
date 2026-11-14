@@ -1,11 +1,11 @@
-import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-github-actions";
+import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/core/providers/github-actions";
 import {
   claimEquals,
   claimOneOf,
   compileTokenIssuancePolicy,
   githubRepositoryResourceConstraint,
   oidcSubjectTokenConstraint,
-} from "@github-app-token-broker/token-issuance-policy";
+} from "@github-app-token-broker/core/token-issuance-policy";
 
 import { testRepository, testWorkflowDispatchRepository } from "./constants.ts";
 

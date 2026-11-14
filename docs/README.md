@@ -1,5 +1,6 @@
 # github-app-token-broker documentation
 
+- [Core package decision](decisions/core-package.md): runtime-neutral distribution, retained host adapters, and consumer import migration.
 - [Bounded Token Exchange lifecycle](decisions/bounded-token-exchange-lifecycle.md): cancellation, response release, and bounded credential recovery.
 - [Multiple GitHub Apps decision](decisions/multiple-github-apps.md): explicit app selection, audience ownership, policy isolation, and scoped RPC bindings.
 - [Service contract](service-contract.md): authoritative public API, security boundaries, provider and policy behavior, runtime bindings, and errors.

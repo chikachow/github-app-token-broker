@@ -5,7 +5,7 @@ import {
   createGitHubAppTokenExchange,
   maxTokenExchangeBodyBytes,
   type TokenExchangeHandler,
-} from "@github-app-token-broker/token-exchange";
+} from "@github-app-token-broker/core";
 import Fastify from "fastify";
 import { describe, expect, it, vi } from "vitest";
 

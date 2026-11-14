@@ -1,4 +1,4 @@
-import type { TokenExchangeRequestContext } from "@github-app-token-broker/token-exchange";
+import type { TokenExchangeRequestContext } from "@github-app-token-broker/core";
 
 import { accessTokenType, oidcIdTokenType, tokenExchangeGrantType } from "./constants.ts";
 

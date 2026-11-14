@@ -62,7 +62,7 @@ registration option when mounting the canonical app paths below an application p
 
 ```ts
 import { githubAppTokenExchangePlugin } from "@github-app-token-broker/fastify";
-import { createGitHubAppTokenExchange } from "@github-app-token-broker/token-exchange";
+import { createGitHubAppTokenExchange } from "@github-app-token-broker/core";
 import Fastify from "fastify";
 
 const tokenExchange = createGitHubAppTokenExchange(deploymentOwnedConfiguration);

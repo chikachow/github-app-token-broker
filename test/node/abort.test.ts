@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import process from "node:process";
 
-import { awaitWithAbortSignal } from "@github-app-token-broker/http/abort";
+import { awaitWithAbortSignal } from "@github-app-token-broker/core/http/abort";
 import { describe, expect, it } from "vitest";
 
 describe("awaitWithAbortSignal", () => {
@@ -37,7 +37,7 @@ describe("awaitWithAbortSignal", () => {
           "--input-type=module",
           "--eval",
           `import assert from "node:assert/strict";
-import { awaitWithAbortSignal } from "@github-app-token-broker/http/abort";
+import { awaitWithAbortSignal } from "@github-app-token-broker/core/http/abort";
 const controller = new AbortController();
 const reason = new Error("caller cancellation");
 const operation = Promise.withResolvers();

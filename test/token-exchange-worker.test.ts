@@ -6,7 +6,7 @@ import {
   createTokenExchangeWorker,
   type TokenExchangeWorkerEnv,
 } from "@github-app-token-broker/worker";
-import { compileTokenIssuancePolicy } from "@github-app-token-broker/token-issuance-policy";
+import { compileTokenIssuancePolicy } from "@github-app-token-broker/core/token-issuance-policy";
 import { decodeJwt, exportPKCS8, generateKeyPair, importJWK, jwtVerify } from "jose";
 import { testPublicJwk } from "./support/rsa-test-key-pair.ts";
 

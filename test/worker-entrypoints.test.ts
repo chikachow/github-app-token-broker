@@ -3,17 +3,17 @@ import { testGitHubActionsTokenExchangeComposition } from "./support/worker.ts";
 import { githubActionsTokenExchangeRequestBody } from "./support/github-actions-token-exchange.ts";
 import { describe, expect, it, vi } from "vitest";
 
-import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-github-actions";
+import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/core/providers/github-actions";
 import {
   compileTokenIssuancePolicy,
   githubRepositoryResourceConstraint,
   oidcSubjectTokenConstraint,
-} from "@github-app-token-broker/token-issuance-policy";
+} from "@github-app-token-broker/core/token-issuance-policy";
 import {
   createTokenExchangeWorker,
   createGitHubAppInformationEntrypoint,
 } from "@github-app-token-broker/worker";
-import { parseOidcIssuerIdentifier } from "@github-app-token-broker/oidc/provider-registration";
+import { parseOidcIssuerIdentifier } from "@github-app-token-broker/core/oidc/provider-registration";
 import genericTokenExchangeWorker from "../workers/github-app-token-broker/dist/generic-worker.js";
 import { testGitHubActionsTokenIssuancePolicy } from "./support/github-actions-token-issuance-policy.ts";
 

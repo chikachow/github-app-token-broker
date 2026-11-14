@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   parseSubjectTokenAudience,
   type SubjectTokenAudience,
-} from "@github-app-token-broker/oidc/subject-token-audience";
+} from "@github-app-token-broker/core/oidc/subject-token-audience";
 
 describe("OIDC subject-token audience", () => {
   it.each([

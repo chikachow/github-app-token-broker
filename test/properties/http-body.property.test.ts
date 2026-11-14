@@ -2,7 +2,7 @@ import { test } from "@fast-check/vitest";
 import fc from "fast-check";
 import { describe, expect } from "vitest";
 
-import { readBodyUpTo } from "@github-app-token-broker/http/body";
+import { readBodyUpTo } from "@github-app-token-broker/core/http/body";
 
 interface BodyReadScenario {
   readonly chunks: readonly Uint8Array[];

@@ -1,4 +1,4 @@
-import type { GitHubAppInformation } from "@github-app-token-broker/github/app-information";
+import type { GitHubAppInformation } from "@github-app-token-broker/core/github/app-information";
 import { createGitHubAppInformationEntrypoint } from "@github-app-token-broker/worker";
 
 export const GitHubAppInformationEntrypoint = createGitHubAppInformationEntrypoint([

@@ -1,5 +1,5 @@
 import { githubAppTokenExchangePlugin } from "@github-app-token-broker/fastify";
-import { createGitHubAppTokenExchange } from "@github-app-token-broker/token-exchange";
+import { createGitHubAppTokenExchange } from "@github-app-token-broker/core";
 import Fastify, { type FastifyInstance } from "fastify";
 
 /** @public */

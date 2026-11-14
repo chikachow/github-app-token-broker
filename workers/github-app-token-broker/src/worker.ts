@@ -1,4 +1,4 @@
-import { jsonResponse, problemResponse } from "@github-app-token-broker/http/problem-details";
+import { jsonResponse, problemResponse } from "@github-app-token-broker/core/http/problem-details";
 import {
   compileGitHubAppTokenExchange,
   createTokenExchangeLifetime,
@@ -8,7 +8,7 @@ import {
   type TokenExchangeComposition,
   tokenExchangeInvalidRequestResponse,
   unexpectedTokenExchangeFailureResponse,
-} from "@github-app-token-broker/token-exchange";
+} from "@github-app-token-broker/core";
 import {
   observeOidcDiagnosticWithConsole,
   observeTokenExchangeWithConsole,

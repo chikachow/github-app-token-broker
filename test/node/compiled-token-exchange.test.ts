@@ -1,7 +1,7 @@
 import {
   compileGitHubAppTokenExchange,
   snapshotGitHubAppMetadata,
-} from "@github-app-token-broker/token-exchange";
+} from "@github-app-token-broker/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   fetchGitHubActionsTokenExchangeExternalTestDouble,

@@ -1,4 +1,4 @@
-import { compileTokenIssuancePolicy } from "@github-app-token-broker/token-issuance-policy";
+import { compileTokenIssuancePolicy } from "@github-app-token-broker/core/token-issuance-policy";
 
 import { createTokenExchangeWorker } from "./worker.ts";
 

@@ -1,7 +1,7 @@
 import { once } from "node:events";
 import { createServer } from "node:http";
 
-import { createOidcIdTokenAuthenticator } from "@github-app-token-broker/oidc/id-token-authenticator";
+import { createOidcIdTokenAuthenticator } from "@github-app-token-broker/core/oidc/id-token-authenticator";
 import { describe, expect, it, vi } from "vitest";
 
 import {
