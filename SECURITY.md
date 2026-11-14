@@ -28,6 +28,8 @@ github-app-token-broker accepts Client-presented OpenID Connect ID Tokens from c
 - issuer discovery and JWK Set caches may be shared across apps, but audience acceptance, target support, permission aggregation, and credential selection never cross the selected app boundary
 - for Token Exchange, only the selected GitHub App private key is resolved after authentication, policy approval, and pre-mint acknowledgement; each key remains inside the deployment secret boundary
 - GitHub API requests are restricted to `https://api.github.com` and to a broker-owned 10-second deadline spanning response headers and the complete bounded response body
+- successful GitHub response permissions must exactly match the authorized request, and any returned repository inventory must agree with its selected repository
+- cancellation or success-budget expiry prevents new mint attempts and credential release; known unreturned credentials receive one bounded revocation attempt, with no claim of recovery after lost responses or host termination
 - Installation Access Token values are treated as opaque credentials; the broker sends no temporary stateful-token override and accepts both GitHub's opaque and JWT-shaped token formats
 
 The GitHub App Information RPC is a separate privileged capability boundary:

@@ -237,7 +237,7 @@ complete observable mapping:
 
 High-level Token Exchange observations are mandatory. The broker awaits acknowledgement of
 authentication failures, authorization denials, issuance failures, a permitted issuance intent
-before any GitHub request, and issuance success before returning a token. A rejected
+before any GitHub request, and issuance success before returning a token. A rejected or timed-out
 acknowledgement replaces the otherwise applicable response with non-cacheable
 `500 {"error":"server_error"}`. The response and fallback log contain neither the observation
 failure detail nor a subject or access token.
@@ -301,6 +301,59 @@ no-matching-key classification and controlled refresh described below. A wholly
 unusable refresh cannot replace last-known-good state.
 
 Bounded last-known-good OpenID Provider Metadata or a JWK Set may be used according to documented cache controls. Responses marked [`Cache-Control: no-cache`](https://www.rfc-editor.org/rfc/rfc9111#section-5.2.2.4) require successful revalidation before reuse and are never used as stale fallback after a failed revalidation. An ID Token whose protected header names a `kid` absent from an otherwise usable JWK Set triggers one controlled refresh. If that refresh fails while the original JWK Set is still fresh and cacheable, the refresh failure remains observable in operational diagnostics but the original no-matching-key classification remains a Client-presented subject-token rejection: `400 {"error":"invalid_request"}`. A non-cacheable JWK Set cannot be reused after failed refresh. If no usable JWK Set remains, the result is provider unavailability instead.
+
+### Exchange lifetime and credential release
+
+A configured Token Exchange has a broker-owned 45-second success budget. Host
+adapters start it before their body acquisition and admission work; a directly
+invoked runtime-neutral handler starts it on entry. The existing, tighter OIDC
+and GitHub transport deadlines remain in force. Header acquisition and host
+listener/shutdown policy outside the adapter remain host-owned.
+
+Deadline expiry or client cancellation permanently forbids new mint attempts
+and successful release. Body reading, authentication waiting, secret resolution,
+and mandatory acknowledgement observe that lifetime. Cancelling one waiter
+does not cancel an issuer refresh shared by other exchanges. The Worker retains
+bounded authentication and exchange work through its execution context.
+
+An already-started mint retains only its existing GitHub transport deadline,
+without retries or extension. If its token is recovered after cancellation, the
+broker awaits one independently bounded revocation. A failure response can thus
+follow the success cutoff by up to the remaining mint deadline plus one
+revocation deadline: approximately 65 seconds in the longest planned path.
+These are asynchronous execution bounds, not guarantees against process
+termination or host suspension. A lost or late mint response can leave an
+unknown credential active until expiry; it cannot be revoked without its value.
+
+Operational lifetime expiry maps to `503 temporarily_unavailable`. A mandatory
+observation that starts but fails or times out maps to `500 server_error`,
+preserving acknowledgement failure precedence. Cancellation before an observation
+starts does not invoke that observer. Disconnected clients have no response
+delivery guarantee.
+
+A successful GitHub mint response must return exactly the Requested Permissions,
+including their levels; no implicit baseline permission is accepted. Missing,
+additional, weaker, or stronger permission evidence is invalid. If a repository
+inventory is present it must identify precisely one repository with the requested
+owner and name, compared case-insensitively. Its omission remains supported;
+other additive fields remain ignored. `repository_selection` alone is not used
+to infer the effective token scope.
+
+The credential must have at least one whole second of remaining validity after
+minting and again after mandatory acknowledgement, when constructing the success
+response. The Token Endpoint retains its discard capability until it synchronously
+checks cancellation and expiry and constructs that response. Construction commits
+release; later client delivery or promise scheduling cannot retroactively revoke
+it. Invalid expiry, contradictory successful response evidence, or an unexpected
+local failure after recovering a token and before committing release triggers one
+awaited best-effort revocation. Invalid upstream evidence maps to `502 server_error`;
+unexpected local failures retain `500 server_error`.
+
+Independent fallback observations use `installation_access_token_release_failed`
+with only configured `github_app.client_id`, `stage` (`upstream_response`,
+`observation`, `expiry`, `lifetime`, or `response`) and `revocation_outcome`
+(`succeeded` or `failed`). They never re-enter a failed mandatory observer, and
+fallback failure cannot change the selected public outcome.
 
 ### OIDC remote-document limits and caching
 

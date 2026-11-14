@@ -45,6 +45,12 @@ async function protocol(request, response) {
   assert.equal(request.headers.host, "api.github.com");
   if (request.url === "/installation/token") {
     assert.equal(request.method, "DELETE");
+    if (mode === "malformed-mint") {
+      assert.equal(request.headers.authorization, "Bearer must-not-escape");
+      server.record({ kind: "revoked" });
+      response.writeHead(204).end();
+      return;
+    }
     const otherApp = request.headers.authorization === "Bearer ghs_disposable_other_app_token";
     assert.ok(
       otherApp || request.headers.authorization === "Bearer ghs_disposable_integration_token",

@@ -1,3 +1,4 @@
+import { createExecutionContext } from "cloudflare:test";
 import { githubActionsTokenExchangeRequestBody } from "./support/github-actions-token-exchange.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -943,7 +944,7 @@ async function invokeWorker(
     throw new Error("test Worker has no fetch handler");
   }
 
-  return await handler(request as Parameters<typeof handler>[0], env, {} as ExecutionContext);
+  return await handler(request as Parameters<typeof handler>[0], env, createExecutionContext());
 }
 
 async function expectSanitizedServerError(response: Response): Promise<void> {
