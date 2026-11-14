@@ -1,6 +1,8 @@
 import { jsonResponse, problemResponse } from "@github-app-token-broker/http/problem-details";
 import {
   compileGitHubAppTokenExchange,
+  createTokenExchangeLifetime,
+  awaitTokenExchangeOperation,
   type ObserveOidcDiagnostic,
   type ObserveTokenExchange,
   type TokenExchangeComposition,
@@ -54,7 +56,7 @@ export function createTokenExchangeWorker(
   const appsByPath = new Map(githubApps.map((app) => [`/github/apps/${app.slug}/token`, app]));
 
   return {
-    async fetch(request, env) {
+    async fetch(request, env, ctx) {
       try {
         const url = new URL(request.url);
 
@@ -73,27 +75,40 @@ export function createTokenExchangeWorker(
               },
             }),
           observeOidcDiagnostic: dependencies.observeOidcDiagnostic,
+          waitUntil: (operation: Promise<void>) => ctx.waitUntil(operation),
         };
 
         if (request.method !== "POST") {
           return tokenExchangeInvalidRequestResponse(400);
         }
 
-        // Credential references belong to this request; issuer state belongs to the runtime.
-        const requestTokenExchange = tokenExchange.bindPrivateKey(
-          url.pathname,
-          githubAppConfigurationFromWorkerBinding(app, Reflect.get(env, app.privateKeyBinding)),
-        );
+        const lifetime = createTokenExchangeLifetime(request.signal);
+        try {
+          // Credential references belong to this request; issuer state belongs to the runtime.
+          const requestTokenExchange = tokenExchange.bindPrivateKey(
+            url.pathname,
+            githubAppConfigurationFromWorkerBinding(app, Reflect.get(env, app.privateKeyBinding)),
+          );
 
-        const rateLimit = await env.TOKEN_EXCHANGE_RATE_LIMIT.limit({
-          key: tokenExchangeRateLimitKey(request),
-        });
+          const rateLimit = await awaitTokenExchangeOperation(
+            env.TOKEN_EXCHANGE_RATE_LIMIT.limit({ key: tokenExchangeRateLimitKey(request) }),
+            lifetime.signal,
+          );
 
-        if (!rateLimit.success) {
-          return workerOAuthErrorResponse(429, "temporarily_unavailable");
+          if (!rateLimit.success) {
+            return workerOAuthErrorResponse(429, "temporarily_unavailable");
+          }
+
+          const exchange = requestTokenExchange(
+            new Request(request, { signal: lifetime.signal }),
+            context,
+          );
+          // Retain bounded mint recovery after disconnect, while also awaiting it before response.
+          ctx.waitUntil(exchange.then(() => undefined));
+          return await exchange;
+        } finally {
+          lifetime.dispose();
         }
-
-        return await requestTokenExchange(request, context);
       } catch (error) {
         return unexpectedTokenExchangeFailureResponse(error);
       }

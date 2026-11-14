@@ -20,7 +20,12 @@ export type InstallationAccessTokenExchangeFailureReason = [
   : never;
 
 type InstallationAccessTokenExchangeResult =
-  | { readonly expiresAt: string; readonly ok: true; readonly token: string }
+  | {
+      readonly expiresAt: string;
+      readonly ok: true;
+      readonly token: string;
+      discard(stage: "expiry" | "lifetime" | "response"): Promise<void>;
+    }
   | {
       readonly ok: false;
       readonly reason: InstallationAccessTokenExchangeFailureReason;
@@ -53,6 +58,7 @@ export function createInstallationAccessTokenExchange({
       oidcIdTokenAuthenticator,
       context.observe,
       context.observeOidcDiagnostic,
+      context.waitUntil,
     );
 
     if (!authentication.ok) {
@@ -68,6 +74,7 @@ export function createInstallationAccessTokenExchange({
       githubApp,
       installationAccessTokenRequest: tokenRequest,
       observe: context.observe,
+      signal: request.signal,
       tokenIssuancePolicy,
     });
   };

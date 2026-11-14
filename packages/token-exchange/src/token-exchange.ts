@@ -6,6 +6,12 @@ import type {
   InstallationAccessTokenExchangeFailureReason,
 } from "./installation-access-token-exchange.ts";
 import type { TokenExchangeRequestContext } from "./events.ts";
+import {
+  createTokenExchangeLifetime,
+  assertTokenExchangeActive,
+  observeWithinTokenExchangeLifetime,
+  TokenExchangeUnavailableError,
+} from "./lifetime.ts";
 
 /** @public */
 export const maxTokenExchangeBodyBytes = 64 * 1024;
@@ -52,16 +58,29 @@ export function createTokenExchangeEndpoint(
   runtime: TokenExchangeEndpointRuntime,
 ): (request: Request, context: TokenExchangeRequestContext) => Promise<Response> {
   return async (request, context) => {
+    const lifetime = createTokenExchangeLifetime(request.signal);
     try {
-      return await handleTokenExchangeRequestCore(request, runtime, context);
+      return await handleTokenExchangeRequestCore(
+        new Request(request, { signal: lifetime.signal }),
+        runtime,
+        {
+          ...context,
+          observe: observeWithinTokenExchangeLifetime(context.observe, lifetime.signal),
+        },
+      );
     } catch (error) {
       return unexpectedTokenExchangeFailureResponse(error);
+    } finally {
+      lifetime.dispose();
     }
   };
 }
 
 /** @public */
 export function unexpectedTokenExchangeFailureResponse(error: unknown): Response {
+  if (error instanceof TokenExchangeUnavailableError) {
+    return tokenExchangeUnavailableResponse();
+  }
   try {
     console.error({
       error: { name: error instanceof Error ? "Error" : typeof error },
@@ -72,6 +91,11 @@ export function unexpectedTokenExchangeFailureResponse(error: unknown): Response
   }
 
   return oauthErrorResponse(500, "server_error");
+}
+
+/** @public */
+export function tokenExchangeUnavailableResponse(): Response {
+  return oauthErrorResponse(503, "temporarily_unavailable");
 }
 
 async function handleTokenExchangeRequestCore(
@@ -154,14 +178,36 @@ async function handleTokenExchangeRequestCore(
     return oauthErrorResponse(failure.status, failure.error);
   }
 
-  return oauthTokenResponse({
-    access_token: result.token,
-    expires_in: expiresInSeconds(result.expiresAt, runtime.now()),
-    issued_token_type: requestedTokenType,
-    scope: tokenRequest.tokenRequest.scope,
-    token_type: "Bearer",
-  });
+  let stage: "lifetime" | "expiry" | "response" = "lifetime";
+  try {
+    assertTokenExchangeActive(request.signal);
+    stage = "expiry";
+    const expiresInSeconds = Math.floor(
+      (Date.parse(result.expiresAt) - runtime.now().getTime()) / 1000,
+    );
+    if (!(expiresInSeconds >= 1)) {
+      throw new InvalidIssuedTokenExpiryError();
+    }
+    stage = "lifetime";
+    assertTokenExchangeActive(request.signal);
+    stage = "response";
+    // Response construction commits release synchronously; no asynchronous work follows it.
+    return oauthTokenResponse({
+      access_token: result.token,
+      expires_in: expiresInSeconds,
+      issued_token_type: requestedTokenType,
+      scope: tokenRequest.tokenRequest.scope,
+      token_type: "Bearer",
+    });
+  } catch (error) {
+    await result.discard(stage);
+    if (error instanceof InvalidIssuedTokenExpiryError)
+      return oauthErrorResponse(502, "server_error");
+    throw error;
+  }
 }
+
+class InvalidIssuedTokenExpiryError extends Error {}
 
 function isFormUrlEncodedContentType(contentType: string | null): boolean {
   if (contentType === null) {
@@ -313,14 +359,4 @@ function oauthErrorResponse(status: number, error: string, headers?: HeadersInit
       status,
     },
   );
-}
-
-function expiresInSeconds(expiresAt: string, now: Date): number {
-  const expiresAtMs = Date.parse(expiresAt);
-
-  if (Number.isNaN(expiresAtMs)) {
-    return 0;
-  }
-
-  return Math.max(0, Math.floor((expiresAtMs - now.getTime()) / 1000));
 }

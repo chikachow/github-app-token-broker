@@ -3,11 +3,14 @@ import assert from "node:assert/strict";
 import * as tokenExchange from "../dist/index.js";
 
 assert.deepEqual(Object.keys(tokenExchange).sort(), [
+  "awaitTokenExchangeOperation",
   "compileGitHubAppTokenExchange",
   "createGitHubAppTokenExchange",
+  "createTokenExchangeLifetime",
   "maxTokenExchangeBodyBytes",
   "snapshotGitHubAppMetadata",
   "tokenExchangeInvalidRequestResponse",
+  "tokenExchangeUnavailableResponse",
   "unexpectedTokenExchangeFailureResponse",
 ]);
 assert.equal(tokenExchange.maxTokenExchangeBodyBytes, 64 * 1024);

@@ -1,3 +1,4 @@
+import { createExecutionContext } from "cloudflare:test";
 import { testGitHubActionsTokenExchangeComposition } from "./support/worker.ts";
 import { githubActionsTokenExchangeRequestBody } from "./support/github-actions-token-exchange.ts";
 import { describe, expect, it, vi } from "vitest";
@@ -111,7 +112,7 @@ describe("worker entrypoint shapes", () => {
           {
             TOKEN_EXCHANGE_RATE_LIMIT: { limit: async () => ({ success: true }) },
           },
-          {} as ExecutionContext,
+          createExecutionContext(),
         ),
       );
 

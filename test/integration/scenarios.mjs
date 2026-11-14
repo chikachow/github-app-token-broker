@@ -717,14 +717,16 @@ void describe(host === "worker" ? "Workerd" : "Fastify", { concurrency: false },
         failure(await githubActionsExchange(), status, error);
         const [, events] = await evidence();
         assert.equal(events.filter((event) => event.kind === "mint").length, mint ? 1 : 0);
+        const expectedPaths = ["/repos/integration-owner/target/installation"];
+        if (mint) expectedPaths.push("/app/installations/12345/access_tokens");
+        if (mode === "malformed-mint") expectedPaths.push("/installation/token");
         assert.deepEqual(
           events.filter((event) => event.method).map((event) => event.path),
-          mint
-            ? [
-                "/repos/integration-owner/target/installation",
-                "/app/installations/12345/access_tokens",
-              ]
-            : ["/repos/integration-owner/target/installation"],
+          expectedPaths,
+        );
+        assert.equal(
+          events.filter((event) => event.kind === "revoked").length,
+          mode === "malformed-mint" ? 1 : 0,
         );
       });
     void it(

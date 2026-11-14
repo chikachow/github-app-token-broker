@@ -28,7 +28,7 @@ export async function readRequestBodyUpTo(
     }
   }
 
-  const result = await readBodyUpTo(request.body, maxBytes);
+  const result = await readBodyUpTo(request.body, maxBytes, request.signal);
 
   return result.ok ? result : { ok: false, status: 413 };
 }
