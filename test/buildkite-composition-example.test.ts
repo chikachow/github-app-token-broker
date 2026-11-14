@@ -1,10 +1,10 @@
-import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-github-actions";
-import { createOidcIdTokenAuthenticator } from "@github-app-token-broker/oidc/id-token-authenticator";
-import { parseSubjectTokenAudience } from "@github-app-token-broker/oidc/subject-token-audience";
+import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/core/providers/github-actions";
+import { createOidcIdTokenAuthenticator } from "@github-app-token-broker/core/oidc/id-token-authenticator";
+import { parseSubjectTokenAudience } from "@github-app-token-broker/core/oidc/subject-token-audience";
 import {
   createGitHubAppTokenExchange,
   type TokenExchangeComposition,
-} from "@github-app-token-broker/token-exchange";
+} from "@github-app-token-broker/core";
 import type { JWTPayload } from "jose";
 import { describe, expect, it } from "vitest";
 

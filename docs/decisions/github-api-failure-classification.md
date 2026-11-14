@@ -27,7 +27,7 @@ succeed.
 
 The issuance boundary classifies failures by ownership and retryability rather
 than inferring OAuth target validity from a GitHub response status.
-`packages/github` owns the mapping from raw GitHub transport outcomes to an
+`packages/core/src/github` owns the mapping from raw GitHub transport outcomes to an
 explicit issuance result containing one of the internal reasons below and
 sanitized operational evidence. Token Exchange owns the separate mapping from
 that reason to its stable OAuth response and never inspects a raw GitHub error.

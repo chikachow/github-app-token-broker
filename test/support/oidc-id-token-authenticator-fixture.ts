@@ -1,8 +1,8 @@
 import { importPKCS8, SignJWT } from "jose";
 
-import type { OidcIdTokenAuthenticationResult } from "@github-app-token-broker/oidc/id-token-authenticator";
-import { createOidcProviderRegistration } from "@github-app-token-broker/oidc/provider-registration";
-import { parseSubjectTokenAudience } from "@github-app-token-broker/oidc/subject-token-audience";
+import type { OidcIdTokenAuthenticationResult } from "@github-app-token-broker/core/oidc/id-token-authenticator";
+import { createOidcProviderRegistration } from "@github-app-token-broker/core/oidc/provider-registration";
+import { parseSubjectTokenAudience } from "@github-app-token-broker/core/oidc/subject-token-audience";
 
 import { testPrivateKeyPem, testPublicJwk } from "./rsa-test-key-pair.ts";
 

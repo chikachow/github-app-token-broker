@@ -3,13 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   createOidcProviderRegistration,
   parseOidcIssuerIdentifier,
-} from "@github-app-token-broker/oidc/provider-registration";
+} from "@github-app-token-broker/core/oidc/provider-registration";
 import {
   createInstallationAccessTokenRequest,
   createGitHubRepositoryResource,
   type GitHubInstallationPermissions,
   type InstallationAccessTokenRequest,
-} from "@github-app-token-broker/github/installation-access-token-request";
+} from "@github-app-token-broker/core/github/installation-access-token-request";
 import {
   claimEquals,
   claimOneOf,
@@ -21,8 +21,8 @@ import {
   assertTokenIssuancePolicyIssuersAreRegistered,
   type ClaimPredicateDefinition,
   type PermitStatementDefinition,
-} from "@github-app-token-broker/token-issuance-policy";
-import type { VerifiedSubjectToken } from "@github-app-token-broker/oidc/id-token-authenticator";
+} from "@github-app-token-broker/core/token-issuance-policy";
+import type { VerifiedSubjectToken } from "@github-app-token-broker/core/oidc/id-token-authenticator";
 
 const parsedIssuer = parseOidcIssuerIdentifier("https://issuer.example");
 

@@ -5,7 +5,7 @@ import {
   parseOidcIssuerIdentifier,
   snapshotOidcProviderRegistrations,
   type OidcIdTokenSigningAlgorithm,
-} from "@github-app-token-broker/oidc/provider-registration";
+} from "@github-app-token-broker/core/oidc/provider-registration";
 
 describe("OIDC Provider Registration", () => {
   it.each(["https://issuer.example", "https://issuer.example/", "https://issuer.example/tenant"])(

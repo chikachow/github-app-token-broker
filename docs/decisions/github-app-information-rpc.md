@@ -39,7 +39,7 @@ HTTP endpoint. The entrypoint exposes only read-only methods and uses the
 deployment's one configured GitHub App ID and private key to create an App JWT.
 
 The runtime-neutral implementation lives in
-`packages/github/src/app-information.ts`. The Worker entrypoint is a thin
+`packages/core/src/github/app-information.ts`. The Worker entrypoint is a thin
 adapter around that implementation. The v1 interface is:
 
 ```ts

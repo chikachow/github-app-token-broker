@@ -1,13 +1,13 @@
 import { generateKeyPairSync } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
-import { buildkiteOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-buildkite";
-import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-github-actions";
-import { createFlyOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-fly";
-import { googleServiceAccountOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-google-service-account";
-import { createOidcIdTokenAuthenticator } from "@github-app-token-broker/oidc/id-token-authenticator";
-import type { OidcProviderRegistration } from "@github-app-token-broker/oidc/provider-registration";
-import { parseSubjectTokenAudience } from "@github-app-token-broker/oidc/subject-token-audience";
+import { buildkiteOidcProviderRegistration } from "@github-app-token-broker/core/providers/buildkite";
+import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/core/providers/github-actions";
+import { createFlyOidcProviderRegistration } from "@github-app-token-broker/core/providers/fly";
+import { googleServiceAccountOidcProviderRegistration } from "@github-app-token-broker/core/providers/google-service-account";
+import { createOidcIdTokenAuthenticator } from "@github-app-token-broker/core/oidc/id-token-authenticator";
+import type { OidcProviderRegistration } from "@github-app-token-broker/core/oidc/provider-registration";
+import { parseSubjectTokenAudience } from "@github-app-token-broker/core/oidc/subject-token-audience";
 import { signRs256Jwt } from "./support/jwt.ts";
 import { testNow } from "./support/constants.ts";
 

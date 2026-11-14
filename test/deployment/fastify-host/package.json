@@ -12,8 +12,8 @@
     "build": "tsdown --config tsdown.config.ts"
   },
   "dependencies": {
+    "@github-app-token-broker/core": "workspace:*",
     "@github-app-token-broker/fastify": "workspace:*",
-    "@github-app-token-broker/token-exchange": "workspace:*",
     "fastify": "catalog:"
   },
   "devDependencies": {

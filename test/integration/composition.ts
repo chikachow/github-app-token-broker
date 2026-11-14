@@ -1,13 +1,13 @@
-import { googleServiceAccountOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-google-service-account";
-import { createFlyOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-fly";
-import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-github-actions";
-import { buildkiteOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-buildkite";
+import { googleServiceAccountOidcProviderRegistration } from "@github-app-token-broker/core/providers/google-service-account";
+import { createFlyOidcProviderRegistration } from "@github-app-token-broker/core/providers/fly";
+import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/core/providers/github-actions";
+import { buildkiteOidcProviderRegistration } from "@github-app-token-broker/core/providers/buildkite";
 import {
   claimEquals,
   compileTokenIssuancePolicy,
   githubRepositoryResourceConstraint,
   oidcSubjectTokenConstraint,
-} from "@github-app-token-broker/token-issuance-policy";
+} from "@github-app-token-broker/core/token-issuance-policy";
 
 const flyRegistration = createFlyOidcProviderRegistration("example-org");
 

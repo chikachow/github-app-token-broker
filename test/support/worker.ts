@@ -16,7 +16,7 @@ import { testEnv } from "./worker-env.ts";
 export { testEnv };
 
 type TestEnv = TokenExchangeWorkerEnv & {
-  readonly GITHUB_APP_PRIVATE_KEY: import("@github-app-token-broker/github/secrets").SecretTextBinding;
+  readonly GITHUB_APP_PRIVATE_KEY: import("@github-app-token-broker/core/github/secrets").SecretTextBinding;
 };
 
 export const testGitHubActionsTokenExchangeComposition = {

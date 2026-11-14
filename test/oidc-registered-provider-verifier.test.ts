@@ -6,13 +6,13 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createOidcIdTokenAuthenticator,
   type OidcDiagnosticEvent,
-} from "@github-app-token-broker/oidc/id-token-authenticator";
+} from "@github-app-token-broker/core/oidc/id-token-authenticator";
 import {
   createOidcProviderRegistration,
   type OidcProviderRegistration,
-} from "@github-app-token-broker/oidc/provider-registration";
+} from "@github-app-token-broker/core/oidc/provider-registration";
 
-import { createRegisteredOidcProviderVerifier } from "../packages/oidc/dist/registered-provider-verifier.js";
+import { createRegisteredOidcProviderVerifier } from "../packages/core/dist/oidc/registered-provider-verifier.js";
 import {
   authenticationTestNow,
   expectedFailure,

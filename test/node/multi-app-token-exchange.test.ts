@@ -2,8 +2,8 @@ import {
   createGitHubAppTokenExchange,
   type GitHubAppTokenExchangeConfiguration,
   type TokenExchangeObservation,
-} from "@github-app-token-broker/token-exchange";
-import { compileTokenIssuancePolicy } from "@github-app-token-broker/token-issuance-policy";
+} from "@github-app-token-broker/core";
+import { compileTokenIssuancePolicy } from "@github-app-token-broker/core/token-issuance-policy";
 import { decodeJwt, exportPKCS8, generateKeyPair, importJWK, jwtVerify } from "jose";
 import { describe, expect, it, vi } from "vitest";
 

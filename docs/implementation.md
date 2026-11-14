@@ -2,29 +2,29 @@
 
 ## Workspace layout
 
+- `packages/core`: the runtime-neutral broker, package `@github-app-token-broker/core`, with explicit exports for Token Exchange, deployment composition, OIDC, and GitHub capabilities
+- `packages/core/src/token-exchange`: protocol validation, authentication orchestration, policy-controlled issuance, observations, and OAuth response mapping
+- `packages/core/src/oidc`: exact-registration ID Token authentication, provider metadata/JWK Set retrieval, validation, caching, and diagnostics
+- `packages/core/src/providers`: reviewed GitHub Actions, Google service-account, Fly, and Buildkite OIDC Provider Registrations; importing a registration does not configure trust or authorize issuance
+- `packages/core/src/github`: Installation Access Token Request normalization, GitHub App authentication, owner binding, token issuance, and GitHub App Information queries
+- `packages/core/src/token-issuance-policy.ts`: structural Permit Statement compilation, validation, and evaluation
+- `packages/core/src/http`: abort-aware asynchronous waiting, bounded body readers, and HTTP/problem-response helpers
 - `workers/github-app-token-broker`: the Cloudflare adapter, package `@github-app-token-broker/worker`, and the public Token Exchange route pattern (`POST /github/apps/{app_slug}/token`)
-- `packages/oidc`: exact-registration ID Token authentication, provider metadata/JWK Set retrieval, validation, caching, and diagnostics
-- `packages/oidc-provider-fly`: source-supported exact Fly organization-scoped OIDC Provider Registration construction with an explicit null OIDC ID Token Profile
-- `packages/oidc-provider-github-actions`: GitHub Actions OIDC Provider Registration and ID Token profile
-- `packages/oidc-provider-google-service-account`: Google service-account OIDC Provider Registration and ID Token profile
-- `packages/oidc-provider-buildkite`: Buildkite OIDC Provider Registration with an explicit null ID Token profile
-- `examples/buildkite`: tested composition recipe, deployment wiring, and a request-only job snippet
-- `packages/github`: Installation Access Token Request normalization, the Repository Resource-oriented issuance capability, GitHub App JWT authentication, owner binding, installation-token minting, and GitHub App Information queries
-- `packages/token-issuance-policy`: structural Permit Statement compilation, validation, and evaluation
-- `packages/http`: abort-aware asynchronous waiting, bounded body readers, and HTTP/problem-response helpers
-- `packages/token-exchange`: the runtime-neutral deep module behind the Token Endpoint, including protocol validation, authentication orchestration, policy-controlled issuance, observations, and OAuth response mapping
 - `packages/fastify`: the Node 24/Fastify 5 adapter for mounting a prebuilt runtime-neutral handler
-- `test`: behavioral unit tests for the Token Endpoint, Fastify adapter, and domain packages; production-pruned Fastify fixtures; container HTTP integration against built Fastify and Worker deployments; and a real Workerd integration project for the GitHub App Information RPC entrypoint
+- `examples/buildkite`: tested composition recipe, deployment wiring, and a request-only job snippet
+- `test`: behavioral tests for the Token Endpoint, host adapters, and domain modules; production-pruned Fastify fixtures; container HTTP integration against built Fastify and Worker deployments; and a real Workerd integration project for GitHub App Information RPC
 
 There is no webhook runtime, deployment endpoint, or dynamic issuer registry. App selection is limited to the reviewed catalogue.
 
-All library packages, including the Worker adapter, export compiled ESM and
-declarations from `dist`. Libraries preserve package imports; deployment builds
-own dependency bundling.
+All three packages export compiled ESM and declarations from `dist`. Core modules
+use relative internal imports; host adapters depend on core through its explicit
+exports. Deployment builds own dependency bundling. The
+[core package decision](decisions/core-package.md) owns the package import
+migration and its consumer compatibility consequences.
 
 ## GitHub App Information RPC
 
-`packages/github/src/app-information.ts` is the runtime-neutral read-only
+`packages/core/src/github/app-information.ts` is the runtime-neutral read-only
 module behind the Worker's named `GitHubAppInformationEntrypoint`. The
 Cloudflare factory `createGitHubAppInformationEntrypoint(githubApps)` captures
 the reviewed catalogue. Each binding selects one record through
@@ -127,13 +127,13 @@ App private keys remain separate Worker secrets or Secrets Store bindings. The r
 1. `worker.ts` derives its route map from the immutable compiled App catalogue and rejects every path except the configured `/github/apps/{app_slug}/token` routes and every method except `POST`; the Token Endpoint applies the deployment rate limit with `CF-Connecting-IP` as its only request-derived key and uses `unknown` when that header is absent.
 2. `token-exchange.ts` enforces OAuth media type, bounded body size, form multiplicity, unsupported fields, and RFC 8693 identifiers; `installation-access-token-request.ts` requires explicit resource and scope values and normalizes their canonical domain forms without permission defaults.
 3. `authentication.ts` passes the serialized ID Token to the selected app's bound OIDC authenticator and exposes only the immutable verified Claims snapshot and verification evidence.
-4. `packages/token-issuance-policy` evaluates immutable, independently complete Permit Statements for the selected client ID once and returns one of `permitted`, `target_unsupported`, `requested_permissions_unsupported`, or `subject_token_unacceptable`.
+4. `packages/core/src/token-issuance-policy.ts` evaluates immutable, independently complete Permit Statements for the selected client ID once and returns one of `permitted`, `target_unsupported`, `requested_permissions_unsupported`, or `subject_token_unacceptable`.
 5. `installation-access-token-issuance.ts` includes `github_app.client_id`, maps that single evaluation result and awaits a token-free `installation_access_token_issuance_started` observation before any GitHub request.
-6. `packages/github` accepts the normalized Installation Access Token Request at one issuance boundary, resolves App authentication once for the exchange, resolves the requested repository installation, validates the returned installation owner, and mints a token limited to the repository and Requested Permissions. It returns either the token with its bound revocation capability or a classified failure with sanitized operational evidence; raw GitHub HTTP errors do not cross into Token Exchange.
+6. `packages/core/src/github` accepts the normalized Installation Access Token Request at one issuance boundary, resolves App authentication once for the exchange, resolves the requested repository installation, validates the returned installation owner, and mints a token limited to the repository and Requested Permissions. It returns either the token with its bound revocation capability or a classified failure with sanitized operational evidence; raw GitHub HTTP errors do not cross into Token Exchange.
 7. The issuance module awaits `installation_access_token_issuance_succeeded`. Rejection or timeout triggers one awaited best-effort revocation and never re-enters the failed observer. After acknowledgement the endpoint retains a bound discard capability, rechecks cancellation and expiry, and synchronously constructs the response to commit release.
 8. The Token Endpoint maps authentication, policy, and issuance failure reasons directly to stable OAuth errors and sanitizes every otherwise unexpected failure to non-cacheable `500 {"error":"server_error"}` without logging raw tokens.
 
-The endpoint, compiled dispatcher, and Worker use the Token Exchange package's
+The endpoint, compiled dispatcher, and Worker use the core package's
 exported `unexpectedTokenExchangeFailureResponse` for terminal failure logging
 and response construction. Each retains its catch boundary around the operations
 it owns.
@@ -161,7 +161,7 @@ every structurally valid key so verification still detects ambiguous matches.
 
 The source supports constructing a Fly registration for one canonical organization slug and the exact issuer `https://oidc.fly.io/{organization-slug}`. That registration accepts only RS256 and has an explicit null OIDC ID Token Profile, so central ID Token validation authenticates its signed Machine identity Claims without imposing relationships among Fly contextual Claims. A deployment selecting it must register the exact organization issuer and independently add Permit Statements selecting every material Claim. Fly documents [the issuer and Machine identity Claim model](https://fly.io/docs/security/openid-connect/) and [Machine token acquisition with an explicit audience](https://fly.io/docs/machines/api/tokens-resource/).
 
-Provider packages similarly export reviewed GitHub Actions and Google service-account registrations. Package availability is capability, not configured trust or authorization. Each deployment's entrypoint and tests are authoritative for the inventory compiled into its artifact.
+Provider modules similarly export reviewed GitHub Actions and Google service-account registrations. Module availability is capability, not configured trust or authorization. Each deployment's entrypoint and tests are authoritative for the inventory compiled into its artifact.
 
 The Buildkite registration likewise uses central OIDC validation without a
 provider-specific profile. Its [composition recipe](../examples/buildkite/README.md)
@@ -232,7 +232,7 @@ Peer validation reads the lockfile with `pnpm peers check`; it does not rely on
 a frozen install to revisit peer requirements. The
 [contributing guide](../CONTRIBUTING.md) owns the dependency-update policy.
 
-The built Token Exchange artifact and Node production-consumer checks both validate
+The built core artifact and Node production-consumer checks both validate
 imported declaration files with `skipLibCheck: false`.
 
 New PR CI runs cancel older runs for the same PR. Main-branch runs have separate
@@ -268,7 +268,7 @@ unknown selectors must preserve the configuration error without GitHub I/O.
 The fixture consumes RPC inside a Worker; that separately launched process is
 outside Vitest coverage collection, as are the separate Compose deployments.
 
-The aggregate check builds once, then reuses the artifacts for subsequent checks. Standalone checks that consume artifacts build their prerequisites first; `:built` commands reuse existing output. Workspace dependencies use links, and pnpm 12 deploy packages their built files without injected-package synchronization. Standalone commands also work after a frozen clean install with no pre-existing `dist`. The artifact check imports the built Token Exchange ESM directly under Node and typechecks a self-importing consumer through the package's exports and declarations; no source alias participates. The Node deployment check production-deploys a Fastify host fixture, imports the deployed package roots, typechecks the public adapter options, and exercises a real loopback listener with GET and form POST requests. The POST reaches the built Token Exchange handler and checks its `unsupported_grant_type` response. Both Fastify fixtures explicitly bundle workspace packages with `alwaysBundle`. Their `onlyBundle` guard permits `jose` and `zod` when tsdown encounters third-party modules under `node_modules`; other such bundled dependencies fail the build. Linked workspace source paths are outside that guard. The root Wrangler file is a unit-test harness. It intentionally repeats the package Worker's compatibility flags and binding shapes; `env-types:check`, the GitHub App Information Workerd integration project, and the package dry-run validate the deployable config. The package Wrangler file is a public-safe dry-run template; deployment-owned identifiers and routes are supplied by the external deployment system.
+The aggregate check builds once, then reuses the artifacts for subsequent checks. Standalone checks that consume artifacts build their prerequisites first; `:built` commands reuse existing output. Workspace dependencies use links, and pnpm 12 deploy packages their built files without injected-package synchronization. Standalone commands also work after a frozen clean install with no pre-existing `dist`. The artifact check imports built core ESM through the package export under Node and typechecks a self-importing consumer through the public declarations, including deployment composition, provider, policy, and GitHub App Information subpaths; no source alias participates. The Node deployment check production-deploys a Fastify host fixture, imports the deployed package roots, typechecks the public adapter options, and exercises a real loopback listener with GET and form POST requests. The POST reaches the built Token Exchange handler and checks its `unsupported_grant_type` response. Both Fastify fixtures explicitly bundle workspace packages with `alwaysBundle`. Their `onlyBundle` guard permits `jose` and `zod` when tsdown encounters third-party modules under `node_modules`; other such bundled dependencies fail the build. Linked workspace source paths are outside that guard. The root Wrangler file is a unit-test harness. It intentionally repeats the package Worker's compatibility flags and binding shapes; `env-types:check`, the GitHub App Information Workerd integration project, and the package dry-run validate the deployable config. The package Wrangler file is a public-safe dry-run template; deployment-owned identifiers and routes are supplied by the external deployment system.
 
 OIDC verification evidence exposes the verified token header's optional `kid` as
 `idTokenHeaderKeyId`; Token Exchange observations serialize it as
@@ -284,7 +284,7 @@ same protocol matrix for each provider:
 
 | Concern                                                                                                                                                                                                  | Owning coverage                                                                                                                      |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Exact registrations, provider profile mappings, Fly slug validation                                                                                                                                      | Provider package tests                                                                                                               |
+| Exact registrations, provider profile mappings, Fly slug validation                                                                                                                                      | `packages/core/test/providers`                                                                                                       |
 | Signed registration/profile wiring, exact Claims, discovery/JWKS routing, issuer-scoped caches                                                                                                           | `test/oidc-provider-conformance.test.ts`, with all four providers and two Fly organizations using distinct keys with the same key ID |
 | Cryptographic validation, scalar audience, expiry, remote-document failures, refresh and cache transitions                                                                                               | Synthetic-issuer authenticator and verifier suites                                                                                   |
 | Built-host issuance and denial of Installation Access Token Issuance when selected Claims do not match policy for each provider, profile rejection, path-scoped Fly discovery and Google cross-host JWKS | Both container integration hosts                                                                                                     |

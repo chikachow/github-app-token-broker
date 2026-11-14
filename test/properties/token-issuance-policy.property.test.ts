@@ -6,12 +6,12 @@ import {
   createInstallationAccessTokenRequest,
   type GitHubInstallationPermissionLevel,
   type GitHubInstallationPermissions,
-} from "@github-app-token-broker/github/installation-access-token-request";
-import type { VerifiedSubjectToken } from "@github-app-token-broker/oidc/id-token-authenticator";
+} from "@github-app-token-broker/core/github/installation-access-token-request";
+import type { VerifiedSubjectToken } from "@github-app-token-broker/core/oidc/id-token-authenticator";
 import {
   parseOidcIssuerIdentifier,
   type OidcIssuerIdentifier,
-} from "@github-app-token-broker/oidc/provider-registration";
+} from "@github-app-token-broker/core/oidc/provider-registration";
 import {
   claimEquals,
   claimOneOf,
@@ -22,7 +22,7 @@ import {
   oidcSubjectTokenConstraint,
   type ClaimPredicateDefinition,
   type PermitStatementDefinition,
-} from "@github-app-token-broker/token-issuance-policy";
+} from "@github-app-token-broker/core/token-issuance-policy";
 
 interface PolicyScenario {
   readonly githubAppClientId: string;

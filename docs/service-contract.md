@@ -394,7 +394,7 @@ fresh; it does not extend freshness or stale eligibility.
 | Google service account ID Tokens | `https://accounts.google.com`                 | validates that `azp` equals `sub`                              |
 | Buildkite                        | `https://agent.buildkite.com`                 | explicit null profile; central OIDC validation is sufficient   |
 
-Provider packages expose these reviewed registrations for deployment composition. Their availability does not register them in an artifact or create a Permit Statement. Every request still requires the Client to supply an explicit repository `resource`.
+Provider modules expose these reviewed registrations for deployment composition. Their availability does not register them in an artifact or create a Permit Statement. Every request still requires the Client to supply an explicit repository `resource`.
 
 #### GitHub Actions
 
@@ -408,7 +408,7 @@ Google Clients must provide an explicit repository `resource`; omission or `reso
 
 #### Source-supported Fly OIDC registration
 
-The source-supported Fly provider package constructs a reviewed registration for one exact issuer in the form `https://oidc.fly.io/{organization-slug}`. The constructor accepts a canonical lowercase organization slug, restricts ID Token signatures to RS256, and selects an explicit null OIDC ID Token Profile. Central ID Token validation therefore authenticates the signed Fly Machine Identity Claims without imposing provider-specific relationships among `org_name`, `app_name`, `machine_name`, and `sub`.
+The source-supported Fly provider module constructs a reviewed registration for one exact issuer in the form `https://oidc.fly.io/{organization-slug}`. The constructor accepts a canonical lowercase organization slug, restricts ID Token signatures to RS256, and selects an explicit null OIDC ID Token Profile. Central ID Token validation therefore authenticates the signed Fly Machine Identity Claims without imposing provider-specific relationships among `org_name`, `app_name`, `machine_name`, and `sub`.
 
 A deployment composition may register that exact issuer and must independently add Permit Statements selecting every Fly Claim material to authorization. An already-built deployment artifact cannot add the registration or policy at runtime. Fly documents both its [organization-specific OpenID Connect issuers and Machine identity Claims](https://fly.io/docs/security/openid-connect/) and [Machine token acquisition with a caller-selected audience](https://fly.io/docs/machines/api/tokens-resource/).
 
@@ -425,7 +425,7 @@ Fly returns the serialized ID Token as the response body. The workload sends tha
 
 #### Source-supported Buildkite OIDC registration
 
-The Buildkite provider package exports `buildkiteOidcProviderRegistration` for
+The Buildkite provider module exports `buildkiteOidcProviderRegistration` for
 `https://agent.buildkite.com`, accepting RS256 with an explicit null OIDC ID Token
 Profile. It uses the same validated discovery, signature, audience, and time
 checks as other registrations. The broker treats `sub` as opaque and imposes no

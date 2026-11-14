@@ -16,8 +16,7 @@
     "build": "node ../../scripts/build-package.mjs"
   },
   "dependencies": {
-    "@github-app-token-broker/http": "workspace:*",
-    "@github-app-token-broker/token-exchange": "workspace:*"
+    "@github-app-token-broker/core": "workspace:*"
   },
   "peerDependencies": {
     "fastify": "^5.0.0"

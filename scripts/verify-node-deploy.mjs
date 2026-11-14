@@ -34,7 +34,7 @@ try {
   writeFileSync(
     runtimeConsumerPath,
     `import * as fastifyAdapter from "@github-app-token-broker/fastify";
-import { createGitHubAppTokenExchange } from "@github-app-token-broker/token-exchange";
+import { createGitHubAppTokenExchange } from "@github-app-token-broker/core";
 
 const exports = Object.keys(fastifyAdapter).sort();
 if (JSON.stringify(exports) !== JSON.stringify(["githubAppTokenExchangePlugin"])) {
@@ -87,7 +87,7 @@ if (typeof createGitHubAppTokenExchange !== "function") {
   githubAppTokenExchangePlugin,
   type GitHubAppTokenExchangePluginOptions,
 } from "@github-app-token-broker/fastify";
-import type { GitHubAppTokenExchangeHandler } from "@github-app-token-broker/token-exchange";
+import type { GitHubAppTokenExchangeHandler } from "@github-app-token-broker/core";
 import Fastify from "fastify";
 
 declare const tokenExchange: GitHubAppTokenExchangeHandler;

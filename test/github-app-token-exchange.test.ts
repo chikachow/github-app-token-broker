@@ -1,14 +1,14 @@
-import { createOidcProviderRegistration } from "@github-app-token-broker/oidc/provider-registration";
+import { createOidcProviderRegistration } from "@github-app-token-broker/core/oidc/provider-registration";
 import { tokenExchangeRequestContext as requestContext } from "./support/token-exchange-request.ts";
-import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-github-actions";
+import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/core/providers/github-actions";
 import {
   createGitHubAppTokenExchange,
   type TokenExchangeHandler,
   type TokenExchangeObservation,
   type TokenExchangeRuntimeDependencies,
-} from "@github-app-token-broker/token-exchange";
+} from "@github-app-token-broker/core";
 import { decodeJwt, errors } from "jose";
-import { OidcProviderMetadataValidationError } from "@github-app-token-broker/oidc/provider-metadata";
+import { OidcProviderMetadataValidationError } from "@github-app-token-broker/core/oidc/provider-metadata";
 import { describe, expect, it, vi } from "vitest";
 
 import {

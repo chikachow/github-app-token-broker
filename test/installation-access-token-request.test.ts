@@ -9,7 +9,7 @@ import {
   isGitHubRepositoryResourcePathSegment,
   normalizeInstallationAccessTokenRequest,
   parseGitHubRepositoryResource,
-} from "@github-app-token-broker/github/installation-access-token-request";
+} from "@github-app-token-broker/core/github/installation-access-token-request";
 import {
   fixtureSourceResource,
   fixtureTargetResource,

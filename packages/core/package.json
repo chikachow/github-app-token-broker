@@ -1,0 +1,95 @@
+{
+  "name": "@github-app-token-broker/core",
+  "version": "0.0.1",
+  "private": true,
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./github/app": {
+      "types": "./dist/github/app.d.ts",
+      "import": "./dist/github/app.js"
+    },
+    "./github/app-information": {
+      "types": "./dist/github/app-information.d.ts",
+      "import": "./dist/github/app-information.js"
+    },
+    "./github/installation-access-token-request": {
+      "types": "./dist/github/installation-access-token-request.d.ts",
+      "import": "./dist/github/installation-access-token-request.js"
+    },
+    "./github/secrets": {
+      "types": "./dist/github/secrets.d.ts",
+      "import": "./dist/github/secrets.js"
+    },
+    "./http/abort": {
+      "types": "./dist/http/abort.d.ts",
+      "import": "./dist/http/abort.js"
+    },
+    "./http/body": {
+      "types": "./dist/http/body.d.ts",
+      "import": "./dist/http/body.js"
+    },
+    "./http/problem-details": {
+      "types": "./dist/http/problem-details.d.ts",
+      "import": "./dist/http/problem-details.js"
+    },
+    "./http/request-body": {
+      "types": "./dist/http/request-body.d.ts",
+      "import": "./dist/http/request-body.js"
+    },
+    "./oidc/id-token-authenticator": {
+      "types": "./dist/oidc/id-token-authenticator.d.ts",
+      "import": "./dist/oidc/id-token-authenticator.js"
+    },
+    "./oidc/provider-metadata": {
+      "types": "./dist/oidc/provider-metadata.d.ts",
+      "import": "./dist/oidc/provider-metadata.js"
+    },
+    "./oidc/provider-registration": {
+      "types": "./dist/oidc/provider-registration.d.ts",
+      "import": "./dist/oidc/provider-registration.js"
+    },
+    "./oidc/subject-token-audience": {
+      "types": "./dist/oidc/subject-token-audience.d.ts",
+      "import": "./dist/oidc/subject-token-audience.js"
+    },
+    "./oidc/verified-id-token": {
+      "types": "./dist/oidc/verified-id-token.d.ts",
+      "import": "./dist/oidc/verified-id-token.js"
+    },
+    "./token-issuance-policy": {
+      "types": "./dist/token-issuance-policy.d.ts",
+      "import": "./dist/token-issuance-policy.js"
+    },
+    "./providers/buildkite": {
+      "types": "./dist/providers/buildkite.d.ts",
+      "import": "./dist/providers/buildkite.js"
+    },
+    "./providers/fly": {
+      "types": "./dist/providers/fly.d.ts",
+      "import": "./dist/providers/fly.js"
+    },
+    "./providers/github-actions": {
+      "types": "./dist/providers/github-actions.d.ts",
+      "import": "./dist/providers/github-actions.js"
+    },
+    "./providers/google-service-account": {
+      "types": "./dist/providers/google-service-account.d.ts",
+      "import": "./dist/providers/google-service-account.js"
+    }
+  },
+  "scripts": {
+    "artifact:check": "node artifact/runtime-smoke.mjs && tsc --project artifact/tsconfig.json",
+    "build": "node ../../scripts/build-package.mjs"
+  },
+  "dependencies": {
+    "jose": "catalog:",
+    "zod": "catalog:"
+  }
+}

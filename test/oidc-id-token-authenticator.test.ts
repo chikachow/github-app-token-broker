@@ -7,13 +7,13 @@ import {
   type OidcDiagnosticEvent,
   type OidcVerificationEvidence,
   type VerifiedSubjectToken,
-} from "@github-app-token-broker/oidc/id-token-authenticator";
+} from "@github-app-token-broker/core/oidc/id-token-authenticator";
 import {
   createOidcProviderRegistration,
   type OidcIdTokenSigningAlgorithm,
-} from "@github-app-token-broker/oidc/provider-registration";
+} from "@github-app-token-broker/core/oidc/provider-registration";
 
-import { OidcProviderMetadataValidationError } from "@github-app-token-broker/oidc/provider-metadata";
+import { OidcProviderMetadataValidationError } from "@github-app-token-broker/core/oidc/provider-metadata";
 
 import {
   authenticationTestNow,

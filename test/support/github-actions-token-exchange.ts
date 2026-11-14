@@ -1,5 +1,5 @@
-import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-github-actions";
-import type { GitHubAppTokenExchangeConfiguration } from "@github-app-token-broker/token-exchange";
+import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/core/providers/github-actions";
+import type { GitHubAppTokenExchangeConfiguration } from "@github-app-token-broker/core";
 
 import { fetchGitHubTestDouble } from "./github-api.ts";
 import { fetchGitHubActionsOidcRemoteDocumentTestDouble } from "./github-actions-oidc.ts";

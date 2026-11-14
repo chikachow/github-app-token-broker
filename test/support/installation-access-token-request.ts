@@ -1,7 +1,7 @@
 import {
   normalizeInstallationAccessTokenRequest,
   type InstallationAccessTokenRequest,
-} from "@github-app-token-broker/github/installation-access-token-request";
+} from "@github-app-token-broker/core/github/installation-access-token-request";
 
 const fixtureSourceRepository = "fixture-owner/fixture-source-repository";
 export const fixtureSourceResource = `https://api.github.com/repos/${fixtureSourceRepository}`;

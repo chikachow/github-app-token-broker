@@ -1,10 +1,10 @@
-const bodySource = "packages/http/src/body.ts";
+const bodySource = "packages/core/src/http/body.ts";
 const bodyPropertyTest = "test/properties/http-body.property.test.ts";
-const githubSource = "packages/github/src/installation-access-token-request.ts";
+const githubSource = "packages/core/src/github/installation-access-token-request.ts";
 const githubPropertyTest = "test/properties/installation-access-token-request.property.test.ts";
-const policySource = "packages/token-issuance-policy/src/token-issuance-policy.ts";
+const policySource = "packages/core/src/token-issuance-policy.ts";
 const policyPropertyTest = "test/properties/token-issuance-policy.property.test.ts";
-const tokenExchangeSource = "packages/token-exchange/src/token-exchange.ts";
+const tokenExchangeSource = "packages/core/src/token-exchange/token-exchange.ts";
 const tokenExchangePropertyTest = "test/properties/token-exchange-form.property.test.ts";
 const ordinaryTestSuite = lane([], ["!property"]);
 

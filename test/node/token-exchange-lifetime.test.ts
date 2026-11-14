@@ -1,5 +1,5 @@
-import { createGitHubAppTokenExchange } from "@github-app-token-broker/token-exchange";
-import { readRequestBodyUpTo } from "@github-app-token-broker/http/request-body";
+import { createGitHubAppTokenExchange } from "@github-app-token-broker/core";
+import { readRequestBodyUpTo } from "@github-app-token-broker/core/http/request-body";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   fetchGitHubActionsTokenExchangeExternalTestDouble,
