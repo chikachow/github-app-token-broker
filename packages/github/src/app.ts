@@ -1,4 +1,4 @@
-import { importPKCS8, SignJWT, type CryptoKey } from "jose";
+import { importPKCS8, SignJWT } from "jose";
 import * as z from "zod";
 
 import {
@@ -15,13 +15,6 @@ import type { InstallationAccessTokenRequest } from "./installation-access-token
 import { resolveSecretText, type SecretTextBinding } from "./secrets.ts";
 
 const githubAppJwtExpirationOffsetSeconds = 9 * 60;
-
-let cachedPrivateKey:
-  | {
-      readonly fingerprint: string;
-      readonly imported: Promise<CryptoKey>;
-    }
-  | undefined;
 
 export type GitHubInstallationAccessTokenIssuanceFailureReason =
   | "internal_failure"
@@ -233,9 +226,10 @@ async function createGitHubAppJwt(
   privateKeyBinding: SecretTextBinding,
   now: () => Date,
 ): Promise<string> {
-  const privateKey = await importedGitHubAppPrivateKey(
-    await githubAppPrivateKeyPem(privateKeyBinding),
-  );
+  const privateKeyPem = await githubAppPrivateKeyPem(privateKeyBinding);
+  const privateKey = await importPKCS8(privateKeyPem, "RS256").catch(() => {
+    throw new GitHubAppConfigurationError();
+  });
   const nowSeconds = Math.floor(now().getTime() / 1000);
 
   return new SignJWT({})
@@ -244,22 +238,6 @@ async function createGitHubAppJwt(
     .setExpirationTime(nowSeconds + githubAppJwtExpirationOffsetSeconds)
     .setIssuer(clientId)
     .sign(privateKey);
-}
-
-async function importedGitHubAppPrivateKey(privateKeyPem: string): Promise<CryptoKey> {
-  const fingerprint = await privateKeyFingerprint(privateKeyPem);
-  const cached = cachedPrivateKey;
-
-  if (cached?.fingerprint === fingerprint) {
-    return cached.imported;
-  }
-
-  const imported = importPKCS8(privateKeyPem, "RS256").catch(() => {
-    throw new GitHubAppConfigurationError();
-  });
-  cachedPrivateKey = { fingerprint, imported };
-
-  return imported;
 }
 
 async function githubAppPrivateKeyPem(binding: SecretTextBinding): Promise<string> {
@@ -277,10 +255,4 @@ async function githubAppPrivateKeyPem(binding: SecretTextBinding): Promise<strin
   }
 
   throw new GitHubAppConfigurationError();
-}
-
-async function privateKeyFingerprint(privateKeyPem: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(privateKeyPem));
-
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
