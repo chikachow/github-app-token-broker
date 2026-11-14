@@ -1,4 +1,4 @@
-import { createGitHubAppTokenExchange } from "@github-app-token-broker/token-exchange";
+import { createGitHubAppTokenExchange } from "@github-app-token-broker/core";
 import { describe, expect, it, vi } from "vitest";
 import { testGitHubActionsTokenExchangeConfiguration } from "../support/github-actions-token-exchange.ts";
 

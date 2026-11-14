@@ -4,11 +4,11 @@ import {
   deriveOidcProviderConfigurationUrl,
   OidcProviderMetadataValidationError,
   parseOidcProviderMetadata,
-} from "@github-app-token-broker/oidc/provider-metadata";
+} from "@github-app-token-broker/core/oidc/provider-metadata";
 import {
   createOidcProviderRegistration,
   parseOidcIssuerIdentifier,
-} from "@github-app-token-broker/oidc/provider-registration";
+} from "@github-app-token-broker/core/oidc/provider-registration";
 
 const issuer = "https://issuer.example/tenant";
 const jwksUri = "https://keys.example/tenant/jwks";

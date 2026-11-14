@@ -1,11 +1,11 @@
 import {
   GitHubAppConfigurationError,
   type GitHubAppConfiguration,
-} from "@github-app-token-broker/github/app";
+} from "@github-app-token-broker/core/github/app";
 import {
   snapshotGitHubAppMetadata,
   type TokenExchangeGitHubAppMetadata,
-} from "@github-app-token-broker/token-exchange";
+} from "@github-app-token-broker/core";
 
 export interface GitHubAppWorkerConfiguration extends TokenExchangeGitHubAppMetadata {
   readonly privateKeyBinding: string;

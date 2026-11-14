@@ -2,7 +2,7 @@ import { tokenExchangeRequestContext as requestContext } from "./support/token-e
 import {
   createGitHubAppTokenExchange,
   type TokenExchangeObservation,
-} from "@github-app-token-broker/token-exchange";
+} from "@github-app-token-broker/core";
 import { describe, expect, it, vi } from "vitest";
 
 import {

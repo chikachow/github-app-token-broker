@@ -5,8 +5,8 @@ import {
   issueInstallationAccessToken,
   githubAppAuthenticationHeaders,
   type GitHubAppConfiguration,
-} from "../packages/github/dist/app.js";
-import { createInstallationAccessTokenRequest } from "@github-app-token-broker/github/installation-access-token-request";
+} from "../packages/core/dist/github/app.js";
+import { createInstallationAccessTokenRequest } from "@github-app-token-broker/core/github/installation-access-token-request";
 import { testInstallationId, testRepository } from "./support/constants.ts";
 import { githubInstallationResponse } from "./support/github-api.ts";
 import { testPrivateKeyPem, testPublicJwk } from "./support/rsa-test-key-pair.ts";

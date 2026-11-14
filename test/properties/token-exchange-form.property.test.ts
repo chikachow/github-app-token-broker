@@ -1,10 +1,10 @@
 import { githubActionsTokenExchangeRequestBody } from "../support/github-actions-token-exchange.ts";
 import { test } from "@fast-check/vitest";
-import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-github-actions";
+import { githubActionsOidcProviderRegistration } from "@github-app-token-broker/core/providers/github-actions";
 import {
   createGitHubAppTokenExchange,
   type TokenExchangeObservation,
-} from "@github-app-token-broker/token-exchange";
+} from "@github-app-token-broker/core";
 import fc from "fast-check";
 import { describe, expect } from "vitest";
 

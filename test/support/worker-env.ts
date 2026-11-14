@@ -3,7 +3,7 @@ import { env } from "cloudflare:workers";
 import { testPrivateKeyPem } from "./rsa-test-key-pair.ts";
 
 type TestEnv = TokenExchangeEnv & {
-  readonly GITHUB_APP_PRIVATE_KEY: import("@github-app-token-broker/github/secrets").SecretTextBinding;
+  readonly GITHUB_APP_PRIVATE_KEY: import("@github-app-token-broker/core/github/secrets").SecretTextBinding;
 };
 
 const workerEnv = env as unknown as TestEnv;

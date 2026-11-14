@@ -2,7 +2,7 @@ import type {
   ObserveOidcDiagnostic,
   ObserveTokenExchange,
   TokenExchangeObservation,
-} from "@github-app-token-broker/token-exchange";
+} from "@github-app-token-broker/core";
 
 export type { ObserveOidcDiagnostic, ObserveTokenExchange };
 

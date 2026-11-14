@@ -1,5 +1,5 @@
-import { issueInstallationAccessToken } from "@github-app-token-broker/github/app";
-import { createInstallationAccessTokenRequest } from "@github-app-token-broker/github/installation-access-token-request";
+import { issueInstallationAccessToken } from "@github-app-token-broker/core/github/app";
+import { createInstallationAccessTokenRequest } from "@github-app-token-broker/core/github/installation-access-token-request";
 import { describe, expect, it } from "vitest";
 
 import { testPrivateKeyPem } from "../support/rsa-test-key-pair.ts";

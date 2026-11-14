@@ -2,7 +2,7 @@ import { request as httpRequest } from "node:http";
 import { setTimeout as delay } from "node:timers/promises";
 import Fastify from "fastify";
 import { githubAppTokenExchangePlugin } from "@github-app-token-broker/fastify";
-import type { GitHubAppTokenExchangeHandler } from "@github-app-token-broker/token-exchange";
+import type { GitHubAppTokenExchangeHandler } from "@github-app-token-broker/core";
 import { describe, expect, it, vi } from "vitest";
 
 const path = "/github/apps/fixture-app/token";

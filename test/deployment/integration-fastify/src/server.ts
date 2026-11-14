@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { githubAppTokenExchangePlugin } from "@github-app-token-broker/fastify";
-import { createGitHubAppTokenExchange } from "@github-app-token-broker/token-exchange";
+import { createGitHubAppTokenExchange } from "@github-app-token-broker/core";
 import Fastify, { type FastifyServerOptions } from "fastify";
 import { composition } from "../../../integration/composition.ts";
 

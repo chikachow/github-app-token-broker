@@ -9,7 +9,7 @@ import {
   type GitHubInstallationPermissions,
   normalizeInstallationAccessTokenRequest,
   parseGitHubRepositoryResource,
-} from "@github-app-token-broker/github/installation-access-token-request";
+} from "@github-app-token-broker/core/github/installation-access-token-request";
 
 const generatedRunBudget = 1_000;
 const repositoryResource = "https://api.github.com/repos/property-owner/property-repository";

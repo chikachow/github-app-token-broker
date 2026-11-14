@@ -13,8 +13,8 @@
     "fastify": "catalog:"
   },
   "devDependencies": {
+    "@github-app-token-broker/core": "workspace:*",
     "@github-app-token-broker/fastify": "workspace:*",
-    "@github-app-token-broker/token-exchange": "workspace:*",
     "@types/node": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:"

@@ -49,36 +49,12 @@ importers:
       '@fast-check/vitest':
         specifier: 0.5.0
         version: 0.5.0(vitest@5.1.0)
+      '@github-app-token-broker/core':
+        specifier: workspace:*
+        version: link:packages/core
       '@github-app-token-broker/fastify':
         specifier: workspace:*
         version: link:packages/fastify
-      '@github-app-token-broker/github':
-        specifier: workspace:*
-        version: link:packages/github
-      '@github-app-token-broker/http':
-        specifier: workspace:*
-        version: link:packages/http
-      '@github-app-token-broker/oidc':
-        specifier: workspace:*
-        version: link:packages/oidc
-      '@github-app-token-broker/oidc-provider-buildkite':
-        specifier: workspace:*
-        version: link:packages/oidc-provider-buildkite
-      '@github-app-token-broker/oidc-provider-fly':
-        specifier: workspace:*
-        version: link:packages/oidc-provider-fly
-      '@github-app-token-broker/oidc-provider-github-actions':
-        specifier: workspace:*
-        version: link:packages/oidc-provider-github-actions
-      '@github-app-token-broker/oidc-provider-google-service-account':
-        specifier: workspace:*
-        version: link:packages/oidc-provider-google-service-account
-      '@github-app-token-broker/token-exchange':
-        specifier: workspace:*
-        version: link:packages/token-exchange
-      '@github-app-token-broker/token-issuance-policy':
-        specifier: workspace:*
-        version: link:packages/token-issuance-policy
       '@github-app-token-broker/worker':
         specifier: workspace:*
         version: link:workers/github-app-token-broker
@@ -122,97 +98,29 @@ importers:
         specifier: 4.158.0
         version: 4.158.0(@cloudflare/workers-types@5.20261104.1)(@types/node@24.19.2)
 
+  packages/core:
+    dependencies:
+      jose:
+        specifier: 'catalog:'
+        version: 6.2.15
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.7
+
   packages/fastify:
     dependencies:
-      '@github-app-token-broker/http':
+      '@github-app-token-broker/core':
         specifier: workspace:*
-        version: link:../http
-      '@github-app-token-broker/token-exchange':
-        specifier: workspace:*
-        version: link:../token-exchange
-
-  packages/github:
-    dependencies:
-      '@github-app-token-broker/http':
-        specifier: workspace:*
-        version: link:../http
-      jose:
-        specifier: 'catalog:'
-        version: 6.2.15
-      zod:
-        specifier: 'catalog:'
-        version: 4.6.7
-
-  packages/http: {}
-
-  packages/oidc:
-    dependencies:
-      '@github-app-token-broker/http':
-        specifier: workspace:*
-        version: link:../http
-      jose:
-        specifier: 'catalog:'
-        version: 6.2.15
-      zod:
-        specifier: 'catalog:'
-        version: 4.6.7
-
-  packages/oidc-provider-buildkite:
-    dependencies:
-      '@github-app-token-broker/oidc':
-        specifier: workspace:*
-        version: link:../oidc
-
-  packages/oidc-provider-fly:
-    dependencies:
-      '@github-app-token-broker/oidc':
-        specifier: workspace:*
-        version: link:../oidc
-
-  packages/oidc-provider-github-actions:
-    dependencies:
-      '@github-app-token-broker/oidc':
-        specifier: workspace:*
-        version: link:../oidc
-
-  packages/oidc-provider-google-service-account:
-    dependencies:
-      '@github-app-token-broker/oidc':
-        specifier: workspace:*
-        version: link:../oidc
-
-  packages/token-exchange:
-    dependencies:
-      '@github-app-token-broker/github':
-        specifier: workspace:*
-        version: link:../github
-      '@github-app-token-broker/http':
-        specifier: workspace:*
-        version: link:../http
-      '@github-app-token-broker/oidc':
-        specifier: workspace:*
-        version: link:../oidc
-      '@github-app-token-broker/token-issuance-policy':
-        specifier: workspace:*
-        version: link:../token-issuance-policy
-
-  packages/token-issuance-policy:
-    dependencies:
-      '@github-app-token-broker/github':
-        specifier: workspace:*
-        version: link:../github
-      '@github-app-token-broker/oidc':
-        specifier: workspace:*
-        version: link:../oidc
+        version: link:../core
 
   test/deployment/fastify-host:
     dependencies:
+      '@github-app-token-broker/core':
+        specifier: workspace:*
+        version: link:../../../packages/core
       '@github-app-token-broker/fastify':
         specifier: workspace:*
         version: link:../../../packages/fastify
-      '@github-app-token-broker/token-exchange':
-        specifier: workspace:*
-        version: link:../../../packages/token-exchange
       fastify:
         specifier: 'catalog:'
         version: 5.12.8
@@ -233,12 +141,12 @@ importers:
         specifier: 'catalog:'
         version: 5.12.8
     devDependencies:
+      '@github-app-token-broker/core':
+        specifier: workspace:*
+        version: link:../../../packages/core
       '@github-app-token-broker/fastify':
         specifier: workspace:*
         version: link:../../../packages/fastify
-      '@github-app-token-broker/token-exchange':
-        specifier: workspace:*
-        version: link:../../../packages/token-exchange
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2
@@ -251,18 +159,9 @@ importers:
 
   workers/github-app-token-broker:
     dependencies:
-      '@github-app-token-broker/github':
+      '@github-app-token-broker/core':
         specifier: workspace:*
-        version: link:../../packages/github
-      '@github-app-token-broker/http':
-        specifier: workspace:*
-        version: link:../../packages/http
-      '@github-app-token-broker/token-exchange':
-        specifier: workspace:*
-        version: link:../../packages/token-exchange
-      '@github-app-token-broker/token-issuance-policy':
-        specifier: workspace:*
-        version: link:../../packages/token-issuance-policy
+        version: link:../../packages/core
 
 packages:
 

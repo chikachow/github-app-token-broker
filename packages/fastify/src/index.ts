@@ -1,7 +1,7 @@
 // oxlint-disable-next-line import/no-nodejs-modules -- This package intentionally targets Node.js.
 import { Buffer } from "node:buffer";
 
-import { problemResponse } from "@github-app-token-broker/http/problem-details";
+import { problemResponse } from "@github-app-token-broker/core/http/problem-details";
 import {
   maxTokenExchangeBodyBytes,
   createTokenExchangeLifetime,
@@ -10,7 +10,7 @@ import {
   type GitHubAppTokenExchangeHandler,
   type TokenExchangeRequestContext,
   type TokenExchangeObservation,
-} from "@github-app-token-broker/token-exchange";
+} from "@github-app-token-broker/core";
 import type { FastifyError, FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 
 export interface GitHubAppTokenExchangePluginOptions {

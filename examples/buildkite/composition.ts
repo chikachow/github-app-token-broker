@@ -1,11 +1,11 @@
-import { buildkiteOidcProviderRegistration } from "@github-app-token-broker/oidc-provider-buildkite";
-import type { TokenExchangeComposition } from "@github-app-token-broker/token-exchange";
+import { buildkiteOidcProviderRegistration } from "@github-app-token-broker/core/providers/buildkite";
+import type { TokenExchangeComposition } from "@github-app-token-broker/core";
 import {
   claimEquals,
   compileTokenIssuancePolicy,
   githubRepositoryResourceConstraint,
   oidcSubjectTokenConstraint,
-} from "@github-app-token-broker/token-issuance-policy";
+} from "@github-app-token-broker/core/token-issuance-policy";
 
 // Synthetic composition recipe: the deployment must already trust pipeline editing, build
 // creation, fork handling, and agent execution. Branch and step Claims narrow

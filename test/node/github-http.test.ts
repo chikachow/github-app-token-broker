@@ -5,7 +5,7 @@ import {
   createGitHubAppInformation,
   GitHubAppUnavailableError,
   GitHubAppUpstreamError,
-} from "@github-app-token-broker/github/app-information";
+} from "@github-app-token-broker/core/github/app-information";
 import { describe, expect, it, vi } from "vitest";
 
 import { testPrivateKeyPem } from "../support/rsa-test-key-pair.ts";

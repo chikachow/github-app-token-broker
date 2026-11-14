@@ -1,4 +1,4 @@
-import { GitHubAppConfigurationError } from "@github-app-token-broker/github/app";
+import { GitHubAppConfigurationError } from "@github-app-token-broker/core/github/app";
 import { WorkerEntrypoint } from "cloudflare:workers";
 import {
   createGitHubAppInformation,
@@ -8,7 +8,7 @@ import {
   type GitHubAppInstallationInput,
   type GitHubAppListInstallationsInput,
   type GitHubAppRepositoryInstallationInput,
-} from "@github-app-token-broker/github/app-information";
+} from "@github-app-token-broker/core/github/app-information";
 import {
   githubAppConfigurationFromWorkerBinding,
   snapshotGitHubAppWorkerConfigurations,
