@@ -323,7 +323,7 @@ describe("GitHub App Token Exchange public interface", () => {
             return Response.json(
               {
                 expires_at: "2030-01-01T00:00:00Z",
-                permissions: { contents: "write", metadata: "read", pull_requests: "write" },
+                permissions: { contents: "write", pull_requests: "write" },
                 token: "ghs_test_token",
               },
               { status: 201 },
@@ -365,7 +365,7 @@ describe("GitHub App Token Exchange public interface", () => {
             repository: testRepository,
           },
           installation_access_token: {
-            permissions: { contents: "write", metadata: "read", pull_requests: "write" },
+            permissions: { contents: "write", pull_requests: "write" },
           },
         },
         level: "info",

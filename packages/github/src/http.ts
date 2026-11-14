@@ -51,22 +51,37 @@ export class GitHubApiTransportError extends Error {
   }
 }
 
+interface GitHubApiJsonRequest {
+  headers: HeadersInit;
+  init?: RequestInit;
+  maxResponseBodyBytes?: number;
+  path: string;
+}
+
 export async function fetchGitHubApiJson<Schema extends z.ZodType>(
+  dependencies: GitHubApiDependencies,
+  { responseSchema, ...request }: GitHubApiJsonRequest & { responseSchema: Schema },
+): Promise<z.output<Schema>> {
+  const response = await fetchGitHubApiJsonResponse(dependencies, request);
+  const parsed = responseSchema.safeParse(response.body);
+
+  if (!parsed.success) {
+    throw invalidGitHubApiResponse(request.path, response.status);
+  }
+
+  return parsed.data;
+}
+
+/** Retains decoded credential evidence when consumed response fields are invalid. */
+export async function fetchGitHubApiJsonResponse(
   dependencies: GitHubApiDependencies,
   {
     headers,
     init,
     maxResponseBodyBytes = defaultMaxGitHubSuccessfulBodyBytes,
     path,
-    responseSchema,
-  }: {
-    headers: HeadersInit;
-    init?: RequestInit;
-    maxResponseBodyBytes?: number;
-    path: string;
-    responseSchema: Schema;
-  },
-): Promise<z.output<Schema>> {
+  }: GitHubApiJsonRequest,
+): Promise<{ readonly body: unknown; readonly status: number }> {
   return requestGitHubApi(dependencies, {
     headers,
     ...(init === undefined ? {} : { init }),
@@ -88,13 +103,7 @@ export async function fetchGitHubApiJson<Schema extends z.ZodType>(
         throw invalidGitHubApiResponse(path, response.status);
       }
 
-      const parsed = responseSchema.safeParse(responseBody);
-
-      if (!parsed.success) {
-        throw invalidGitHubApiResponse(path, response.status);
-      }
-
-      return parsed.data;
+      return { body: responseBody, status: response.status };
     },
   });
 }

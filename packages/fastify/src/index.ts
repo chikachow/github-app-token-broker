@@ -4,7 +4,9 @@ import { Buffer } from "node:buffer";
 import { problemResponse } from "@github-app-token-broker/http/problem-details";
 import {
   maxTokenExchangeBodyBytes,
+  createTokenExchangeLifetime,
   tokenExchangeInvalidRequestResponse,
+  tokenExchangeUnavailableResponse,
   type GitHubAppTokenExchangeHandler,
   type TokenExchangeRequestContext,
   type TokenExchangeObservation,
@@ -19,6 +21,7 @@ export const githubAppTokenExchangePlugin: FastifyPluginAsync<
   GitHubAppTokenExchangePluginOptions
 > = async (fastify, options) => {
   const tokenEndpointPaths = new Set(options.tokenExchange.tokenEndpointPaths);
+  const lifetimes = new WeakMap<FastifyRequest, FastifyTokenExchangeLifetime>();
   fastify.removeAllContentTypeParsers();
   fastify.addContentTypeParser(
     "application/x-www-form-urlencoded",
@@ -26,7 +29,17 @@ export const githubAppTokenExchangePlugin: FastifyPluginAsync<
     (_request, body, done) => done(null, body),
   );
 
-  fastify.setErrorHandler<FastifyError>(async (error, _request, reply) => {
+  fastify.setErrorHandler<FastifyError>(async (error, request, reply) => {
+    const lifetime = lifetimes.get(request);
+    if (lifetime?.responseStarted === true || reply.sent || reply.raw.destroyed) return;
+    if (lifetime !== undefined) {
+      lifetime.responseStarted = true;
+      lifetime.dispose();
+    }
+    if (lifetime?.signal.aborted === true) {
+      await sendWebResponse(reply, tokenExchangeUnavailableResponse());
+      return;
+    }
     const code =
       typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
 
@@ -56,26 +69,106 @@ export const githubAppTokenExchangePlugin: FastifyPluginAsync<
         }
         if (fastifyRequestToWebRequest(request, url) === null) {
           await sendWebResponse(reply, tokenExchangeInvalidRequestResponse(400));
+          return;
         }
+        lifetimes.set(request, startFastifyTokenExchangeLifetime(request, reply));
       },
     },
     async (request, reply) => {
-      const webRequest = fastifyRequestToWebRequest(
-        request,
-        tokenExchangeRequestUrl(request, fastify.prefix),
-      );
+      const lifetime = lifetimes.get(request);
+      if (lifetime?.responseStarted === true || reply.sent || reply.raw.destroyed) return;
+      if (lifetime !== undefined) lifetime.handlerStarted = true;
+      try {
+        if (lifetime?.signal.aborted === true) {
+          await sendWebResponse(reply, tokenExchangeUnavailableResponse());
+          return;
+        }
+        const webRequest = fastifyRequestToWebRequest(
+          request,
+          tokenExchangeRequestUrl(request, fastify.prefix),
+          lifetime?.signal,
+        );
 
-      if (webRequest === null) {
-        await sendWebResponse(reply, tokenExchangeInvalidRequestResponse(400));
-        return;
+        if (webRequest === null) {
+          await sendWebResponse(reply, tokenExchangeInvalidRequestResponse(400));
+          return;
+        }
+
+        const response = await options.tokenExchange(webRequest, tokenExchangeContext(request));
+
+        if (!reply.raw.destroyed) await sendWebResponse(reply, response);
+      } finally {
+        lifetime?.dispose();
+        lifetimes.delete(request);
       }
-
-      const response = await options.tokenExchange(webRequest, tokenExchangeContext(request));
-
-      await sendWebResponse(reply, response);
     },
   );
 };
+
+interface FastifyTokenExchangeLifetime {
+  readonly signal: AbortSignal;
+  handlerStarted: boolean;
+  responseStarted: boolean;
+  dispose(): void;
+}
+
+function startFastifyTokenExchangeLifetime(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): FastifyTokenExchangeLifetime {
+  const disconnect = new AbortController();
+  const lifetime = createTokenExchangeLifetime(disconnect.signal);
+  let disconnected = false;
+  let disposed = false;
+  const onFinished = () => {
+    if (state.responseStarted && !request.raw.complete) request.raw.destroy();
+    state.dispose();
+  };
+  const onDisconnect = () => {
+    disconnected = true;
+    disconnect.abort();
+  };
+  const onClose = () => {
+    // IncomingMessage close also occurs on healthy request completion; response close does not.
+    if (!reply.raw.writableFinished) onDisconnect();
+    state.dispose();
+  };
+  const onCancelled = () => {
+    if (
+      state.handlerStarted ||
+      state.responseStarted ||
+      disconnected ||
+      reply.sent ||
+      reply.raw.destroyed
+    )
+      return;
+    state.responseStarted = true;
+    reply.header("connection", "close");
+    void sendWebResponse(reply, tokenExchangeUnavailableResponse()).catch(() =>
+      reply.raw.destroy(),
+    );
+  };
+  const state: FastifyTokenExchangeLifetime = {
+    signal: lifetime.signal,
+    handlerStarted: false,
+    responseStarted: false,
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      lifetime.dispose();
+      request.raw.removeListener("aborted", onDisconnect);
+      reply.raw.removeListener("close", onClose);
+      reply.raw.removeListener("finish", onFinished);
+      lifetime.signal.removeEventListener("abort", onCancelled);
+    },
+  };
+  request.raw.once("aborted", onDisconnect);
+  reply.raw.once("close", onClose);
+  reply.raw.once("finish", onFinished);
+  lifetime.signal.addEventListener("abort", onCancelled, { once: true });
+  if (request.raw.aborted || reply.raw.destroyed) onDisconnect();
+  return state;
+}
 
 function tokenExchangeContext(request: FastifyRequest): TokenExchangeRequestContext {
   return {
@@ -116,7 +209,11 @@ function tokenExchangeRequestUrl(request: FastifyRequest, prefix: string): URL |
   }
 }
 
-function fastifyRequestToWebRequest(request: FastifyRequest, url: URL | null): Request | null {
+function fastifyRequestToWebRequest(
+  request: FastifyRequest,
+  url: URL | null,
+  signal?: AbortSignal,
+): Request | null {
   if (url === null) return null;
 
   try {
@@ -139,6 +236,7 @@ function fastifyRequestToWebRequest(request: FastifyRequest, url: URL | null): R
       ...(body === undefined ? {} : { body }),
       headers,
       method: request.method,
+      ...(signal === undefined ? {} : { signal }),
     });
   } catch {
     return null;

@@ -9,6 +9,11 @@ import type { InstallationAccessTokenRequest } from "@github-app-token-broker/gi
 import type { TokenIssuancePolicy } from "@github-app-token-broker/token-issuance-policy";
 import { evaluateTokenIssuancePolicy } from "@github-app-token-broker/token-issuance-policy";
 import type { ObserveTokenExchange } from "./events.ts";
+import {
+  assertTokenExchangeActive,
+  MandatoryObservationError,
+  TokenExchangeUnavailableError,
+} from "./lifetime.ts";
 
 export type InstallationAccessTokenIssuanceFailureReason =
   | GitHubInstallationAccessTokenIssuanceFailureReason
@@ -17,7 +22,12 @@ export type InstallationAccessTokenIssuanceFailureReason =
   | "target_unsupported";
 
 export type InstallationAccessTokenIssuanceResult =
-  | { expiresAt: string; ok: true; token: string }
+  | {
+      expiresAt: string;
+      ok: true;
+      token: string;
+      discard(stage: "expiry" | "lifetime" | "response"): Promise<void>;
+    }
   | { ok: false; reason: InstallationAccessTokenIssuanceFailureReason };
 
 interface InstallationAccessTokenIssuanceInput {
@@ -26,6 +36,7 @@ interface InstallationAccessTokenIssuanceInput {
   readonly githubApp: GitHubAppConfiguration;
   readonly installationAccessTokenRequest: InstallationAccessTokenRequest;
   readonly observe: ObserveTokenExchange;
+  readonly signal: AbortSignal;
   readonly tokenIssuancePolicy: TokenIssuancePolicy;
 }
 
@@ -38,9 +49,11 @@ export async function issueInstallationAccessTokenForContext(
     githubApp,
     installationAccessTokenRequest,
     observe,
+    signal,
     tokenIssuancePolicy,
   } = input;
   const { verifiedSubjectToken } = authenticationContext;
+  assertTokenExchangeActive(signal);
   const policyEvaluation = evaluateTokenIssuancePolicy(
     tokenIssuancePolicy,
     verifiedSubjectToken,
@@ -99,9 +112,14 @@ export async function issueInstallationAccessTokenForContext(
     githubApp,
     installationAccessTokenRequest,
     dependencies,
+    signal,
   );
 
   if (!issuance.ok) {
+    if (issuance.revocationOutcome !== undefined) {
+      observeReleaseFailure(githubApp.clientId, "upstream_response", issuance.revocationOutcome);
+    }
+    assertTokenExchangeActive(signal);
     await observe({
       fields: {
         error: {
@@ -123,6 +141,7 @@ export async function issueInstallationAccessTokenForContext(
   }
 
   try {
+    assertTokenExchangeActive(signal);
     await observe({
       fields: {
         event: "installation_access_token_issuance_succeeded",
@@ -138,21 +157,54 @@ export async function issueInstallationAccessTokenForContext(
       },
       level: "info",
     });
-  } catch {
-    try {
-      await issuance.revoke();
-    } catch {
-      // Revocation is best effort; the minted token must never be returned either way.
-    }
-
-    throw new Error("mandatory Token Exchange observation was not acknowledged");
+    assertTokenExchangeActive(signal);
+  } catch (error) {
+    await discardIssuedToken(
+      issuance,
+      githubApp.clientId,
+      error instanceof MandatoryObservationError ? "observation" : "lifetime",
+    );
+    if (error instanceof TokenExchangeUnavailableError) throw error;
+    throw new MandatoryObservationError();
   }
 
   return {
     expiresAt: issuance.expiresAt,
     ok: true,
     token: issuance.token,
+    discard: (stage) => discardIssuedToken(issuance, githubApp.clientId, stage),
   };
+}
+
+async function discardIssuedToken(
+  issuance: { revoke(): Promise<void> },
+  clientId: string,
+  stage: "observation" | "expiry" | "lifetime" | "response",
+): Promise<void> {
+  let outcome: "succeeded" | "failed" = "succeeded";
+  try {
+    await issuance.revoke();
+  } catch {
+    outcome = "failed";
+  }
+  observeReleaseFailure(clientId, stage, outcome);
+}
+
+function observeReleaseFailure(
+  clientId: string,
+  stage: "observation" | "expiry" | "lifetime" | "upstream_response" | "response",
+  revocationOutcome: "succeeded" | "failed",
+): void {
+  try {
+    console.error({
+      event: "installation_access_token_release_failed",
+      github_app: { client_id: clientId },
+      stage,
+      revocation_outcome: revocationOutcome,
+    });
+  } catch {
+    // Independent fallback reporting cannot change the terminal outcome.
+  }
 }
 
 function subjectTokenLogFields(

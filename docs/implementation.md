@@ -101,10 +101,10 @@ headers, copies Fetch response metadata and bytes into the Fastify reply, and pr
 The Fastify request logger receives mandatory and optional observations at their declared levels.
 Mandatory logging is Promise-based and a synchronous logger failure propagates to the deep
 handler; optional diagnostic logger failures are contained. The plugin does not configure
-credentials, admission, listener lifecycle, or proxy trust. It does not emulate client-disconnect
-cancellation: early Fastify 5 versions have no uniform request signal, and the current deep
-handler's outbound operations use their own broker-owned deadlines rather than its input Request
-signal.
+credentials, admission, listener lifecycle, or proxy trust. It starts the broker lifetime before body acquisition and derives cancellation from
+incomplete incoming requests and premature outgoing-response closure. Normal completion
+of the incoming message does not cancel an exchange. It passes the lifetime signal
+to the Fetch request and awaits runtime-neutral finalization before sending its response.
 
 The compiled policy snapshot is a public structural Interface. Its
 `permitStatements[].githubAppClientId` identifies the app;
@@ -114,7 +114,7 @@ consumers discriminate owner-wide constraints with `repository === null`.
 
 An external deployment owns the TypeScript entrypoint that supplies the catalogue, registrations, and policy. The source package root has named exports only. `generic-worker.ts` is the public-safe Wrangler entrypoint and deliberately composes an empty app catalogue and registrations with an empty, deny-all Token Issuance Policy. It exposes no configured Token Exchange routes. A built artifact cannot replace its composition through bindings or requests.
 
-The runtime-neutral handler accepts a request context with mandatory `observe` and separately named optional `observeOidcDiagnostic` callbacks. `observe` returns `Promise<void>` and is awaited; fulfillment acknowledges the observation but does not itself prove durable persistence. `observeOidcDiagnostic` is synchronous and returns exactly `undefined`. It is never wired to the mandatory observer, and diagnostic callback failures are contained. The Worker adapter supplies these callbacks from `TokenExchangeWorkerRuntimeDependencies`; its request-scoped mandatory-observer wrapper enriches fields with the Cloudflare Ray ID and returns the underlying observer promise so failures remain fail closed. The runtime-neutral module does not inspect Cloudflare headers. The default Worker adapters write both event classes to the console; the Fastify adapter uses its request logger. Fetch and time remain construction/test seams. These dependencies are not trust or authorization configuration surfaces, although mandatory observation availability deliberately controls whether the endpoint can return a token.
+The runtime-neutral handler accepts a request context with mandatory `observe`, separately named optional `observeOidcDiagnostic`, and optional host `waitUntil` callbacks. `waitUntil` retains bounded issuer-owned work when an individual request stops waiting; it does not receive credentials or authorization controls. `observe` returns `Promise<void>` and is awaited; fulfillment acknowledges the observation but does not itself prove durable persistence. `observeOidcDiagnostic` is synchronous and returns exactly `undefined`. It is never wired to the mandatory observer, and diagnostic callback failures are contained. The Worker adapter supplies these callbacks from `TokenExchangeWorkerRuntimeDependencies`; its request-scoped mandatory-observer wrapper enriches fields with the Cloudflare Ray ID and returns the underlying observer promise so failures remain fail closed. The runtime-neutral module does not inspect Cloudflare headers. The default Worker adapters write both event classes to the console; the Fastify adapter uses its request logger. Fetch and time remain construction/test seams. These dependencies are not trust or authorization configuration surfaces, although mandatory observation availability deliberately controls whether the endpoint can return a token.
 
 Each app's accepted Subject-Token Audiences are reviewed TypeScript. Every value is parsed as an exact non-empty, non-whitespace, single-line scalar; the list must be non-empty and contain no duplicates. The Worker has no audience or app-identity runtime override and never infers audience from a request URL or headers.
 
@@ -130,13 +130,21 @@ App private keys remain separate Worker secrets or Secrets Store bindings. The r
 4. `packages/token-issuance-policy` evaluates immutable, independently complete Permit Statements for the selected client ID once and returns one of `permitted`, `target_unsupported`, `requested_permissions_unsupported`, or `subject_token_unacceptable`.
 5. `installation-access-token-issuance.ts` includes `github_app.client_id`, maps that single evaluation result and awaits a token-free `installation_access_token_issuance_started` observation before any GitHub request.
 6. `packages/github` accepts the normalized Installation Access Token Request at one issuance boundary, resolves App authentication once for the exchange, resolves the requested repository installation, validates the returned installation owner, and mints a token limited to the repository and Requested Permissions. It returns either the token with its bound revocation capability or a classified failure with sanitized operational evidence; raw GitHub HTTP errors do not cross into Token Exchange.
-7. The issuance module awaits `installation_access_token_issuance_succeeded` before returning a token. Rejection triggers one awaited best-effort invocation of the token's bound revocation capability and never re-enters the failed observer.
+7. The issuance module awaits `installation_access_token_issuance_succeeded`. Rejection or timeout triggers one awaited best-effort revocation and never re-enters the failed observer. After acknowledgement the endpoint retains a bound discard capability, rechecks cancellation and expiry, and synchronously constructs the response to commit release.
 8. The Token Endpoint maps authentication, policy, and issuance failure reasons directly to stable OAuth errors and sanitizes every otherwise unexpected failure to non-cacheable `500 {"error":"server_error"}` without logging raw tokens.
 
 The endpoint, compiled dispatcher, and Worker use the Token Exchange package's
 exported `unexpectedTokenExchangeFailureResponse` for terminal failure logging
 and response construction. Each retains its catch boundary around the operations
 it owns.
+
+Each request owns a fixed success lifetime. Host adapters start it before admission
+or parsing; the deep handler also enforces its own bound, linked to the incoming
+signal. `lifetime.ts` owns terminal cancellation and bounded observation waiting.
+The GitHub issuer checks cancellation before authentication, installation lookup,
+and minting; once minting starts its existing transport deadline owns completion.
+No timeout races away ownership of a known token. The [service contract](service-contract.md#exchange-lifetime-and-credential-release)
+owns timing and failure semantics.
 
 ## OIDC security boundary
 
