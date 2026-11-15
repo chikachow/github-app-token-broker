@@ -53,7 +53,7 @@
     "@github-app-token-broker/token-exchange": "workspace:*",
     "@github-app-token-broker/token-issuance-policy": "workspace:*",
     "@github-app-token-broker/worker": "workspace:*",
-    "@tsconfig/strictest": "2.0.8",
+    "@tsconfig/strictest": "2.0.9",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "5.1.0",
     "fast-check": "4.10.2",
