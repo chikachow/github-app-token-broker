@@ -58,7 +58,7 @@
     "@vitest/coverage-v8": "5.1.0",
     "fast-check": "4.10.2",
     "fastify": "catalog:",
-    "knip": "6.44.1",
+    "knip": "6.45.1",
     "oxfmt": "0.76.0",
     "oxlint": "1.91.0",
     "oxlint-tsgolint": "7.0.2006",
