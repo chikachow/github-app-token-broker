@@ -17,8 +17,8 @@ catalogs:
       specifier: 5.12.8
       version: 5.12.8
     jose:
-      specifier: 6.2.17
-      version: 6.2.17
+      specifier: 6.2.18
+      version: 6.2.18
     tsdown:
       specifier: 0.23.7
       version: 0.23.7
@@ -38,7 +38,7 @@ importers:
     dependencies:
       jose:
         specifier: 'catalog:'
-        version: 6.2.17
+        version: 6.2.18
     devDependencies:
       '@cloudflare/vitest-plugin':
         specifier: 1.8.1
@@ -138,7 +138,7 @@ importers:
         version: link:../http
       jose:
         specifier: 'catalog:'
-        version: 6.2.17
+        version: 6.2.18
       zod:
         specifier: 'catalog:'
         version: 4.6.7
@@ -152,7 +152,7 @@ importers:
         version: link:../http
       jose:
         specifier: 'catalog:'
-        version: 6.2.17
+        version: 6.2.18
       zod:
         specifier: 'catalog:'
         version: 4.6.7
@@ -1833,8 +1833,8 @@ packages:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
     hasBin: true
 
-  jose@6.2.17:
-    resolution: {integrity: sha512-wOuK9V1yujQFH5S0ZWmLcDZN7+IKh9bUCC2ZPCf2HDlol3WWHy+PPyNjEI75FXRLMp3vDKQcupP59xhVU95hcg==}
+  jose@6.2.18:
+    resolution: {integrity: sha512-doV4thUwgkrycJH4yLeqwTGIIZphHl+pk7CPReuMIhYhncmgzdko85MaCG4YQFTxqMFr1/oEH32tZuKKovcDEg==}
 
   js-tokens@10.0.0:
     resolution: {integrity: sha512-lM/UBzQmfJRo9ABXbPWemivdCW8V2G8FHaHdypQaIy523snUjog0W71ayWXTjiR+ixeMyVHN2XcpnTd/liPg/Q==}
@@ -3413,7 +3413,7 @@ snapshots:
 
   jiti@2.7.0: {}
 
-  jose@6.2.17: {}
+  jose@6.2.18: {}
 
   js-tokens@10.0.0: {}
 
