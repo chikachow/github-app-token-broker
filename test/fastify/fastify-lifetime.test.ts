@@ -66,6 +66,70 @@ describe("Fastify Token Exchange lifetime", () => {
     }
   });
 
+  it.each(["before admission", "during validation"])(
+    "returns 503 on a writable reply after the request reports an abort %s",
+    async (when) => {
+      const server = Fastify();
+      const exchange = vi.fn(async () => Response.json({ ok: true }));
+      if (when === "before admission") {
+        server.addHook("onRequest", async (request) => {
+          request.raw.aborted = true;
+        });
+      } else {
+        server.addHook("preValidation", async (request) => {
+          request.raw.emit("aborted");
+          throw new Error("host validation interrupted");
+        });
+      }
+      await server.register(githubAppTokenExchangePlugin, {
+        tokenExchange: Object.assign(exchange, { tokenEndpointPaths: [path] }),
+      });
+      try {
+        const response = await server.inject({ method: "GET", url: path });
+        expect(response.statusCode).toBe(503);
+        expect(response.json()).toEqual({ error: "temporarily_unavailable" });
+        expect(exchange).not.toHaveBeenCalled();
+      } finally {
+        await server.close();
+      }
+    },
+  );
+
+  it.each(["returns", "throws"])(
+    "skips exchange after a disconnect while a host validation hook %s",
+    async (outcome) => {
+      const entered = Promise.withResolvers<void>();
+      const resumed = Promise.withResolvers<void>();
+      const exchange = vi.fn(async () => Response.json({ ok: true }));
+      const server = Fastify();
+      server.addHook("preValidation", async (request, reply) => {
+        if (!request.headers["x-wait-for-disconnect"]) return;
+        entered.resolve();
+        await new Promise<void>((resolve) => reply.raw.once("close", resolve));
+        resumed.resolve();
+        if (outcome === "throws") throw new Error("host validation interrupted");
+      });
+      await server.register(githubAppTokenExchangePlugin, {
+        tokenExchange: Object.assign(exchange, { tokenEndpointPaths: [path] }),
+      });
+      const address = await server.listen({ host: "127.0.0.1", port: 0 });
+      const client = httpRequest(address + path, { headers: { "x-wait-for-disconnect": "1" } });
+      client.on("error", () => undefined);
+      try {
+        client.end();
+        await entered.promise;
+        client.destroy();
+        await resumed.promise;
+        const next = await fetch(address + path);
+        expect(next.status).toBe(200);
+        expect(exchange).toHaveBeenCalledOnce();
+      } finally {
+        client.destroy();
+        await server.close();
+      }
+    },
+  );
+
   it("bounds stalled body acquisition and accepts the next request on the same listener", async () => {
     const accepted = Promise.withResolvers<void>();
     const exchange = vi.fn(async () => Response.json({ ok: true }));
@@ -93,7 +157,6 @@ describe("Fastify Token Exchange lifetime", () => {
     client.write("fixture=");
     try {
       await accepted.promise;
-      await delay(10);
       await vi.advanceTimersByTimeAsync(45_000);
       await Promise.race([
         responseFinished.promise,
@@ -114,6 +177,36 @@ describe("Fastify Token Exchange lifetime", () => {
       expect(await next.json()).toEqual({ ok: true });
       expect(exchange).toHaveBeenCalledOnce();
     } finally {
+      vi.useRealTimers();
+      client.destroy();
+      await app.server.close();
+    }
+  });
+
+  it("closes a stalled connection when preparing its timeout response fails", async () => {
+    const accepted = Promise.withResolvers<void>();
+    const exchange = vi.fn(async () => Response.json({ ok: true }));
+    const app = await listen(exchange, () => accepted.resolve());
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const client = httpRequest(app.address + path, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", "content-length": "100" },
+    });
+    const closed = Promise.withResolvers<void>();
+    client.on("error", () => undefined);
+    client.once("close", () => closed.resolve());
+    const read = vi
+      .spyOn(Response.prototype, "arrayBuffer")
+      .mockRejectedValueOnce(new Error("response unavailable"));
+    try {
+      client.write("fixture=");
+      await accepted.promise;
+      await vi.advanceTimersByTimeAsync(45_000);
+      await closed.promise;
+      expect(read).toHaveBeenCalledOnce();
+      expect(exchange).not.toHaveBeenCalled();
+    } finally {
+      read.mockRestore();
       vi.useRealTimers();
       client.destroy();
       await app.server.close();
@@ -141,7 +234,6 @@ describe("Fastify Token Exchange lifetime", () => {
     client.write("fixture=");
     try {
       await accepted.promise;
-      await delay(10);
       await vi.advanceTimersByTimeAsync(30_000);
       client.end("body");
       const { signal, deadline } = await started.promise;
@@ -162,10 +254,10 @@ describe("Fastify Token Exchange lifetime", () => {
 
 async function listen(
   handler: (request: Request, context: TokenExchangeRequestContext) => Promise<Response>,
-  onRequest?: () => void,
+  onBodyStart?: () => void,
 ) {
   const server = Fastify();
-  if (onRequest !== undefined) server.addHook("onRequest", async () => onRequest());
+  if (onBodyStart !== undefined) server.addHook("preParsing", async () => onBodyStart());
   const tokenExchange: GitHubAppTokenExchangeHandler = Object.assign(handler, {
     tokenEndpointPaths: [path],
   });

@@ -1,4 +1,8 @@
-import { createGitHubAppTokenExchange } from "@github-app-token-broker/token-exchange";
+import { authenticateOidcIdToken } from "../../packages/token-exchange/dist/authentication.js";
+import {
+  createTokenExchangeLifetime,
+  createGitHubAppTokenExchange,
+} from "@github-app-token-broker/token-exchange";
 import { readRequestBodyUpTo } from "@github-app-token-broker/http/request-body";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -279,6 +283,33 @@ describe("Token Exchange request lifetime", () => {
     expect((await second).status).toBe(200);
     await Promise.all(retained);
     expect(discoveryRequests).toBe(1);
+  });
+
+  it("settles retained authentication work if the authenticator rejects after disconnect", async () => {
+    const abort = new AbortController();
+    const lifetime = createTokenExchangeLifetime(abort.signal);
+    const authentication = Promise.withResolvers<never>();
+    const retained: Promise<void>[] = [];
+    const observe = vi.fn();
+    try {
+      const result = authenticateOidcIdToken(
+        "fixture",
+        new Request("https://broker.example", { signal: abort.signal }),
+        lifetime,
+        { authenticateIdToken: () => authentication.promise },
+        observe,
+        undefined,
+        (work) => retained.push(work),
+      );
+      abort.abort();
+      await expect(result).rejects.toBe(lifetime.signal.reason);
+      expect(retained).toHaveLength(1);
+      authentication.reject(new Error("late authentication failure"));
+      await expect(retained[0]).resolves.toBeUndefined();
+      expect(observe).not.toHaveBeenCalled();
+    } finally {
+      lifetime.dispose();
+    }
   });
 
   it("cancels a stalled body when its Request is aborted", async () => {
