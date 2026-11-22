@@ -115,25 +115,29 @@ describe("GitHub issuance response validation", () => {
     expect(JSON.stringify(failure)).not.toContain("private revocation failure");
   });
 
-  it("revokes a recovered token when the clock fails during validation", async () => {
-    const requests: Request[] = [];
-    const result = await issue(validResponse, requests, undefined, () => {
-      if (requests.some((request) => request.method === "POST")) {
-        throw new Error(`private clock failure ${mintedToken}`);
-      }
-      return now;
-    });
+  it.each(["throws", "returns an invalid date"])(
+    "revokes a recovered token when the validation clock %s",
+    async (failure) => {
+      const requests: Request[] = [];
+      const result = await issue(validResponse, requests, undefined, () => {
+        if (requests.some((request) => request.method === "POST")) {
+          if (failure === "returns an invalid date") return new Date(NaN);
+          throw new Error(`private clock failure ${mintedToken}`);
+        }
+        return now;
+      });
 
-    expect(result).toMatchObject({
-      ok: false,
-      reason: "internal_failure",
-      revocationOutcome: "succeeded",
-    });
-    expect(requests.map((request) => request.method)).toEqual(["GET", "POST", "DELETE"]);
-    expect(requests[2]?.headers.get("authorization")).toBe(`Bearer ${mintedToken}`);
-    expect(JSON.stringify(result)).not.toContain(mintedToken);
-    expect(JSON.stringify(result)).not.toContain("private clock failure");
-  });
+      expect(result).toMatchObject({
+        ok: false,
+        reason: "internal_failure",
+        revocationOutcome: "succeeded",
+      });
+      expect(requests.map((request) => request.method)).toEqual(["GET", "POST", "DELETE"]);
+      expect(requests[2]?.headers.get("authorization")).toBe(`Bearer ${mintedToken}`);
+      expect(JSON.stringify(result)).not.toContain(mintedToken);
+      expect(JSON.stringify(result)).not.toContain("private clock failure");
+    },
+  );
 
   it.each([undefined, "", 123])(
     "does not attempt revocation without a known token (%s)",

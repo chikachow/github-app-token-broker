@@ -44,7 +44,7 @@ does not describe that acknowledgement as durable persistence. A deployment requ
 must supply an adapter whose promise resolves only after its sink confirms persistence.
 
 The [bounded exchange lifecycle decision](bounded-token-exchange-lifecycle.md)
-owns cancellation, the response-construction release boundary, and recovery
+owns cancellation, the final checks before response handoff, and recovery
 after the success budget expires.
 
 ## Consequences

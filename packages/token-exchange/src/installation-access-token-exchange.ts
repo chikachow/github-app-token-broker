@@ -10,6 +10,7 @@ import {
 } from "./installation-access-token-issuance.ts";
 import { authenticateOidcIdToken, type OidcAuthenticationFailureReason } from "./authentication.ts";
 import type { InstallationAccessTokenRequest } from "@github-app-token-broker/github/installation-access-token-request";
+import type { TokenExchangeLifetime } from "./lifetime.ts";
 import type { TokenExchangeRequestContext } from "./events.ts";
 
 // A shared reason would make origin-dependent OAuth mapping ambiguous.
@@ -33,6 +34,7 @@ type InstallationAccessTokenExchangeResult =
 
 export type InstallationAccessTokenExchange = (
   input: {
+    readonly lifetime: TokenExchangeLifetime;
     readonly request: Request;
     readonly subjectToken: string;
     readonly tokenRequest: InstallationAccessTokenRequest;
@@ -51,10 +53,11 @@ export function createInstallationAccessTokenExchange({
   oidcIdTokenAuthenticator: OidcIdTokenAuthenticator;
   tokenIssuancePolicy: TokenIssuancePolicy;
 }): InstallationAccessTokenExchange {
-  return async ({ request, subjectToken, tokenRequest }, context) => {
+  return async ({ request, subjectToken, tokenRequest, lifetime }, context) => {
     const authentication = await authenticateOidcIdToken(
       subjectToken,
       request,
+      lifetime,
       oidcIdTokenAuthenticator,
       context.observe,
       context.observeOidcDiagnostic,
@@ -74,7 +77,7 @@ export function createInstallationAccessTokenExchange({
       githubApp,
       installationAccessTokenRequest: tokenRequest,
       observe: context.observe,
-      signal: request.signal,
+      lifetime,
       tokenIssuancePolicy,
     });
   };

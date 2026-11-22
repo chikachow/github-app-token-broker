@@ -10,7 +10,7 @@ import type { TokenIssuancePolicy } from "@github-app-token-broker/token-issuanc
 import { evaluateTokenIssuancePolicy } from "@github-app-token-broker/token-issuance-policy";
 import type { ObserveTokenExchange } from "./events.ts";
 import {
-  assertTokenExchangeActive,
+  type TokenExchangeLifetime,
   MandatoryObservationError,
   TokenExchangeUnavailableError,
 } from "./lifetime.ts";
@@ -36,7 +36,7 @@ interface InstallationAccessTokenIssuanceInput {
   readonly githubApp: GitHubAppConfiguration;
   readonly installationAccessTokenRequest: InstallationAccessTokenRequest;
   readonly observe: ObserveTokenExchange;
-  readonly signal: AbortSignal;
+  readonly lifetime: TokenExchangeLifetime;
   readonly tokenIssuancePolicy: TokenIssuancePolicy;
 }
 
@@ -49,11 +49,11 @@ export async function issueInstallationAccessTokenForContext(
     githubApp,
     installationAccessTokenRequest,
     observe,
-    signal,
+    lifetime,
     tokenIssuancePolicy,
   } = input;
   const { verifiedSubjectToken } = authenticationContext;
-  assertTokenExchangeActive(signal);
+  lifetime.assertActive();
   const policyEvaluation = evaluateTokenIssuancePolicy(
     tokenIssuancePolicy,
     verifiedSubjectToken,
@@ -112,36 +112,44 @@ export async function issueInstallationAccessTokenForContext(
     githubApp,
     installationAccessTokenRequest,
     dependencies,
-    signal,
+    lifetime,
   );
 
   if (!issuance.ok) {
     if (issuance.revocationOutcome !== undefined) {
       observeReleaseFailure(githubApp.clientId, "upstream_response", issuance.revocationOutcome);
     }
-    assertTokenExchangeActive(signal);
-    await observe({
-      fields: {
-        error: {
-          message: issuance.error.message,
-          name: issuance.error.name,
-          status: issuance.error.status,
-          upstream_status: issuance.error.upstreamStatus,
+    try {
+      await observe({
+        fields: {
+          error: {
+            message: issuance.error.message,
+            name: issuance.error.name,
+            status: issuance.error.status,
+            upstream_status: issuance.error.upstreamStatus,
+          },
+          event: "installation_access_token_issuance_failed",
+          ...issuanceObservationFields(),
+          target_installation: {
+            id: issuance.installationId,
+          },
         },
-        event: "installation_access_token_issuance_failed",
-        ...issuanceObservationFields(),
-        target_installation: {
-          id: issuance.installationId,
-        },
-      },
-      level: "error",
-    });
+        level: "error",
+      });
+    } catch (error) {
+      // Independent revocation may outlast the budget after a mint failure was selected.
+      if (
+        issuance.revocationOutcome === undefined ||
+        !(error instanceof TokenExchangeUnavailableError)
+      )
+        throw error;
+    }
 
     return { ok: false, reason: issuance.reason };
   }
 
   try {
-    assertTokenExchangeActive(signal);
+    lifetime.assertActive();
     await observe({
       fields: {
         event: "installation_access_token_issuance_succeeded",
@@ -157,7 +165,7 @@ export async function issueInstallationAccessTokenForContext(
       },
       level: "info",
     });
-    assertTokenExchangeActive(signal);
+    lifetime.assertActive();
   } catch (error) {
     await discardIssuedToken(
       issuance,

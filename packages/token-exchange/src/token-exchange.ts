@@ -1,3 +1,4 @@
+import { remainingInstallationAccessTokenSeconds } from "@github-app-token-broker/github/app";
 import { jsonResponse } from "@github-app-token-broker/http/problem-details";
 import { readRequestBodyUpTo } from "@github-app-token-broker/http/request-body";
 import { normalizeInstallationAccessTokenRequest } from "@github-app-token-broker/github/installation-access-token-request";
@@ -8,7 +9,7 @@ import type {
 import type { TokenExchangeRequestContext } from "./events.ts";
 import {
   createTokenExchangeLifetime,
-  assertTokenExchangeActive,
+  type TokenExchangeLifetime,
   observeWithinTokenExchangeLifetime,
   TokenExchangeUnavailableError,
 } from "./lifetime.ts";
@@ -58,14 +59,15 @@ export function createTokenExchangeEndpoint(
   runtime: TokenExchangeEndpointRuntime,
 ): (request: Request, context: TokenExchangeRequestContext) => Promise<Response> {
   return async (request, context) => {
-    const lifetime = createTokenExchangeLifetime(request.signal);
+    const lifetime = createTokenExchangeLifetime(request.signal, context.hostDeadline);
     try {
       return await handleTokenExchangeRequestCore(
         new Request(request, { signal: lifetime.signal }),
         runtime,
+        lifetime,
         {
           ...context,
-          observe: observeWithinTokenExchangeLifetime(context.observe, lifetime.signal),
+          observe: observeWithinTokenExchangeLifetime(context.observe, lifetime),
         },
       );
     } catch (error) {
@@ -101,6 +103,7 @@ export function tokenExchangeUnavailableResponse(): Response {
 async function handleTokenExchangeRequestCore(
   request: Request,
   runtime: TokenExchangeEndpointRuntime,
+  lifetime: TokenExchangeLifetime,
   context: TokenExchangeRequestContext,
 ): Promise<Response> {
   if (request.method !== "POST") {
@@ -167,6 +170,7 @@ async function handleTokenExchangeRequestCore(
     {
       request,
       subjectToken,
+      lifetime,
       tokenRequest: tokenRequest.tokenRequest,
     },
     context,
@@ -180,25 +184,31 @@ async function handleTokenExchangeRequestCore(
 
   let stage: "lifetime" | "expiry" | "response" = "lifetime";
   try {
-    assertTokenExchangeActive(request.signal);
+    lifetime.assertActive();
     stage = "expiry";
-    const expiresInSeconds = Math.floor(
-      (Date.parse(result.expiresAt) - runtime.now().getTime()) / 1000,
+    const expiresInSeconds = remainingInstallationAccessTokenSeconds(
+      result.expiresAt,
+      runtime.now(),
     );
     if (!(expiresInSeconds >= 1)) {
       throw new InvalidIssuedTokenExpiryError();
     }
-    stage = "lifetime";
-    assertTokenExchangeActive(request.signal);
     stage = "response";
-    // Response construction commits release synchronously; no asynchronous work follows it.
-    return oauthTokenResponse({
+    const response = oauthTokenResponse({
       access_token: result.token,
       expires_in: expiresInSeconds,
       issued_token_type: requestedTokenType,
       scope: tokenRequest.tokenRequest.scope,
       token_type: "Bearer",
     });
+    // The candidate stays private until the final synchronous checks succeed.
+    stage = "expiry";
+    if (!(remainingInstallationAccessTokenSeconds(result.expiresAt, runtime.now()) >= 1)) {
+      throw new InvalidIssuedTokenExpiryError();
+    }
+    stage = "lifetime";
+    lifetime.assertActive();
+    return response;
   } catch (error) {
     await result.discard(stage);
     if (error instanceof InvalidIssuedTokenExpiryError)

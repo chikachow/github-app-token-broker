@@ -94,7 +94,10 @@ export const githubAppTokenExchangePlugin: FastifyPluginAsync<
           return;
         }
 
-        const response = await options.tokenExchange(webRequest, tokenExchangeContext(request));
+        const response = await options.tokenExchange(webRequest, {
+          ...tokenExchangeContext(request),
+          ...(lifetime === undefined ? {} : { hostDeadline: lifetime.deadline }),
+        });
 
         if (!reply.raw.destroyed) await sendWebResponse(reply, response);
       } finally {
@@ -106,6 +109,7 @@ export const githubAppTokenExchangePlugin: FastifyPluginAsync<
 };
 
 interface FastifyTokenExchangeLifetime {
+  readonly deadline: number;
   readonly signal: AbortSignal;
   handlerStarted: boolean;
   responseStarted: boolean;
@@ -149,6 +153,7 @@ function startFastifyTokenExchangeLifetime(
     );
   };
   const state: FastifyTokenExchangeLifetime = {
+    deadline: lifetime.deadline,
     signal: lifetime.signal,
     handlerStarted: false,
     responseStarted: false,

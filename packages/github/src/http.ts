@@ -52,6 +52,7 @@ export class GitHubApiTransportError extends Error {
 }
 
 interface GitHubApiJsonRequest {
+  beforeDispatch?: (() => void) | undefined;
   headers: HeadersInit;
   init?: RequestInit;
   maxResponseBodyBytes?: number;
@@ -78,11 +79,13 @@ export async function fetchGitHubApiJsonResponse(
   {
     headers,
     init,
+    beforeDispatch,
     maxResponseBodyBytes = defaultMaxGitHubSuccessfulBodyBytes,
     path,
   }: GitHubApiJsonRequest,
 ): Promise<{ readonly body: unknown; readonly status: number }> {
   return requestGitHubApi(dependencies, {
+    beforeDispatch,
     headers,
     ...(init === undefined ? {} : { init }),
     path,
@@ -138,7 +141,9 @@ async function requestGitHubApi<Value>(
     init,
     path,
     readSuccessfulResponse,
+    beforeDispatch,
   }: {
+    beforeDispatch?: (() => void) | undefined;
     headers: HeadersInit;
     init?: RequestInit;
     path: string;
@@ -162,24 +167,24 @@ async function requestGitHubApi<Value>(
       : AbortSignal.any([deadlineSignal, init.signal]);
   let response: Response | undefined;
 
+  const requestInit: RequestInit = {
+    ...init,
+    headers: requestHeaders,
+    redirect: "manual",
+    signal: requestSignal,
+  };
+  beforeDispatch?.();
   try {
     const receivedResponse = await awaitWithAbortSignal(
-      dependencies
-        .fetch(requestUrl, {
-          ...init,
-          headers: requestHeaders,
-          redirect: "manual",
-          signal: requestSignal,
-        })
-        .then((received) => {
-          if (requestSignal.aborted) {
-            discardGitHubResponseBody(received);
-          } else {
-            response = received;
-          }
+      dependencies.fetch(requestUrl, requestInit).then((received) => {
+        if (requestSignal.aborted) {
+          discardGitHubResponseBody(received);
+        } else {
+          response = received;
+        }
 
-          return received;
-        }),
+        return received;
+      }),
       requestSignal,
     );
     throwIfAborted(requestSignal);

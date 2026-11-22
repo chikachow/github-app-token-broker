@@ -16,17 +16,21 @@ export class MandatoryObservationError extends Error {
 }
 
 /** Starts the broker-owned success budget before host admission or body acquisition. */
-export function createTokenExchangeLifetime(parentSignal?: AbortSignal): {
-  readonly signal: AbortSignal;
-  dispose(): void;
-} {
+export function createTokenExchangeLifetime(parentSignal?: AbortSignal, hostDeadline = Infinity) {
+  const startedAt = performance.now();
+  const deadline = Math.min(startedAt + successDeadlineMilliseconds, hostDeadline);
   const controller = new AbortController();
   const cancel = () => controller.abort(new TokenExchangeUnavailableError());
-  const timer = setTimeout(cancel, successDeadlineMilliseconds);
+  const timer = setTimeout(cancel, deadline - startedAt);
   parentSignal?.addEventListener("abort", cancel, { once: true });
-  if (parentSignal?.aborted === true) cancel();
+  if (parentSignal?.aborted === true || !(startedAt < deadline)) cancel();
   return {
+    deadline,
     signal: controller.signal,
+    assertActive() {
+      if (!(performance.now() < deadline)) cancel();
+      controller.signal.throwIfAborted();
+    },
     dispose() {
       clearTimeout(timer);
       parentSignal?.removeEventListener("abort", cancel);
@@ -34,34 +38,32 @@ export function createTokenExchangeLifetime(parentSignal?: AbortSignal): {
   };
 }
 
-export function assertTokenExchangeActive(signal: AbortSignal): void {
-  if (signal.aborted) throw new TokenExchangeUnavailableError();
-}
+export type TokenExchangeLifetime = ReturnType<typeof createTokenExchangeLifetime>;
 
 /** Stops waiting without cancelling issuer-owned refreshes shared by other requests. */
 export async function awaitTokenExchangeOperation<T>(
   operation: Promise<T>,
-  signal: AbortSignal,
+  lifetime: TokenExchangeLifetime,
 ): Promise<T> {
   try {
-    const result = await awaitWithAbortSignal(operation, signal);
-    assertTokenExchangeActive(signal);
+    const result = await awaitWithAbortSignal(operation, lifetime.signal);
+    lifetime.assertActive();
     return result;
   } catch (error) {
-    assertTokenExchangeActive(signal);
+    lifetime.assertActive();
     throw error;
   }
 }
 
 export function observeWithinTokenExchangeLifetime(
   observe: ObserveTokenExchange,
-  signal: AbortSignal,
+  lifetime: TokenExchangeLifetime,
 ): ObserveTokenExchange {
   return async (observation) => {
-    assertTokenExchangeActive(signal);
+    lifetime.assertActive();
     try {
-      await awaitWithAbortSignal(observe(observation), signal);
-      assertTokenExchangeActive(signal);
+      await awaitWithAbortSignal(observe(observation), lifetime.signal);
+      lifetime.assertActive();
     } catch {
       // A started mandatory acknowledgement owns failure precedence, including timeout.
       throw new MandatoryObservationError();
