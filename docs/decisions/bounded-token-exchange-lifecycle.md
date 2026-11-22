@@ -8,6 +8,11 @@ success budget while preserving responsibility for a credential that may already
 have been minted. The [service contract](../service-contract.md#exchange-lifetime-and-credential-release)
 owns the numeric limits, validation rules, and public failure mappings.
 
+The budget uses the time the host can observe. A timer interrupts pending work,
+and synchronous deadline checks detect elapsed time before dispatch and release
+even when the callback has not run. Both adapters carry their admission deadline
+into the handler. The service contract records the deployed Worker clock limit.
+
 Cancellation is terminal before release. Each pre-mint transition checks the
 request lifetime. Shared issuer refresh work remains issuer-owned and is retained
 through the host capability when one waiter stops waiting. An already-started
@@ -18,7 +23,7 @@ the cancelled success signal. There are no automatic mint retries.
 The GitHub issuer validates returned authority against the authorized request and
 retains recoverable tokens from otherwise invalid decoded responses for compensation.
 After mandatory acknowledgement, the Token Endpoint still owns a discard capability
-until it synchronously checks expiry and cancellation and constructs the response.
+until it constructs the response and synchronously checks expiry and cancellation.
 This is the release boundary; actual network delivery is not a transactional
 acknowledgement by the Client. A rejected credential cannot become successful when
 a late secret or observer completes.

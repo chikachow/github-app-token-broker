@@ -5,7 +5,7 @@ import type {
   VerifiedSubjectToken,
 } from "@github-app-token-broker/oidc/id-token-authenticator";
 import type { ObserveOidcDiagnostic, ObserveTokenExchange } from "./events.ts";
-import { awaitTokenExchangeOperation } from "./lifetime.ts";
+import { awaitTokenExchangeOperation, type TokenExchangeLifetime } from "./lifetime.ts";
 
 export interface SubjectTokenAuthenticationContext {
   readonly verificationEvidence: OidcVerificationEvidence;
@@ -34,11 +34,13 @@ export type AuthenticateOidcIdTokenResult =
 export async function authenticateOidcIdToken(
   subjectToken: string,
   request: Request,
+  lifetime: TokenExchangeLifetime,
   authenticator: OidcIdTokenAuthenticator,
   observe: ObserveTokenExchange,
   observeOidcDiagnostic?: ObserveOidcDiagnostic,
   waitUntil?: (operation: Promise<void>) => void,
 ): Promise<AuthenticateOidcIdTokenResult> {
+  lifetime.assertActive();
   const pendingAuthentication = authenticator.authenticateIdToken(subjectToken, (event) => {
     try {
       observeOidcDiagnostic?.({ fields: event, level: "warn" });
@@ -52,7 +54,7 @@ export async function authenticateOidcIdToken(
       () => undefined,
     ),
   );
-  const authentication = await awaitTokenExchangeOperation(pendingAuthentication, request.signal);
+  const authentication = await awaitTokenExchangeOperation(pendingAuthentication, lifetime);
 
   if (!authentication.ok) {
     const { failure } = authentication;

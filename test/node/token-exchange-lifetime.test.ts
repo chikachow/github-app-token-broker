@@ -20,6 +20,7 @@ function deferred<T>() {
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("Token Exchange request lifetime", () => {
@@ -81,6 +82,133 @@ describe("Token Exchange request lifetime", () => {
     );
     expect(response.status).toBe(503);
     expect(methods).toEqual(["GET", "POST", "DELETE"]);
+  });
+
+  it.each([
+    { boundary: "mint transport setup", status: 503, expected: ["GET"] },
+    { boundary: "installation lookup", status: 503, expected: ["GET"] },
+    { boundary: "success acknowledgement", status: 500, expected: ["GET", "POST", "DELETE"] },
+    { boundary: "release", status: 503, expected: ["GET", "POST", "DELETE"] },
+  ])(
+    "enforces the elapsed budget at $boundary before timer delivery",
+    async ({ boundary, status, expected }) => {
+      let elapsed = 0;
+      let acknowledged = false;
+      vi.spyOn(performance, "now").mockImplementation(() => elapsed);
+      const methods: string[] = [];
+      if (boundary === "mint transport setup") {
+        const timeout = AbortSignal.timeout.bind(AbortSignal);
+        vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
+          if (methods.includes("GET")) elapsed = 45_000;
+          return timeout(milliseconds);
+        });
+      }
+      const exchange = createGitHubAppTokenExchange(configuration, {
+        now() {
+          if (acknowledged && boundary === "release") elapsed = 45_000;
+          return testNow;
+        },
+        fetch: async (input, init) => {
+          const request = new Request(input, init);
+          if (new URL(request.url).hostname === "api.github.com") {
+            methods.push(request.method);
+            if (request.method === "GET" && boundary === "installation lookup") elapsed = 45_000;
+            if (request.method === "DELETE") return new Response(null, { status: 204 });
+          }
+          return fetchGitHubActionsTokenExchangeExternalTestDouble(request);
+        },
+      });
+      const response = await exchange(await githubActionsTokenExchangeRequest(), {
+        observe: async (event) => {
+          if (event.fields["event"] === "installation_access_token_issuance_succeeded") {
+            acknowledged = true;
+            if (boundary === "success acknowledgement") elapsed = 45_000;
+          }
+        },
+      });
+      expect(response.status).toBe(status);
+      expect(methods).toEqual(expected);
+    },
+  );
+
+  it.each([
+    { boundary: "deadline", status: 503 },
+    { boundary: "credential expiry", status: 502 },
+    { boundary: "invalid local clock", status: 500 },
+  ])(
+    "discards a private response if construction crosses $boundary",
+    async ({ boundary, status }) => {
+      let acknowledged = false;
+      let constructed = false;
+      const methods: string[] = [];
+      vi.spyOn(performance, "now").mockImplementation(() =>
+        constructed && boundary === "deadline" ? 45_000 : 0,
+      );
+      vi.stubGlobal(
+        "Response",
+        class extends Response {
+          constructor(body?: BodyInit | null, init?: ResponseInit) {
+            super(body, init);
+            if (acknowledged) constructed = true;
+          }
+        },
+      );
+      const exchange = createGitHubAppTokenExchange(configuration, {
+        now() {
+          if (!constructed) return testNow;
+          if (boundary === "invalid local clock") return new Date(NaN);
+          if (boundary === "credential expiry") return new Date("2030-01-01T00:00:00Z");
+          return testNow;
+        },
+        fetch: async (input, init) => {
+          const request = new Request(input, init);
+          if (new URL(request.url).hostname === "api.github.com") methods.push(request.method);
+          if (request.method === "DELETE") return new Response(null, { status: 204 });
+          return fetchGitHubActionsTokenExchangeExternalTestDouble(request);
+        },
+      });
+      const response = await exchange(await githubActionsTokenExchangeRequest(), {
+        observe: async (event) => {
+          if (event.fields["event"] === "installation_access_token_issuance_succeeded")
+            acknowledged = true;
+        },
+      });
+      expect(constructed).toBe(true);
+      expect(response.status).toBe(status);
+      expect(methods).toEqual(["GET", "POST", "DELETE"]);
+    },
+  );
+
+  it("preserves an invalid mint response when revocation consumes the remaining budget", async () => {
+    let elapsed = 0;
+    const methods: string[] = [];
+    const observations: unknown[] = [];
+    vi.spyOn(performance, "now").mockImplementation(() => elapsed);
+    const exchange = createGitHubAppTokenExchange(configuration, {
+      now: () => testNow,
+      fetch: async (input, init) => {
+        const request = new Request(input, init);
+        if (new URL(request.url).hostname === "api.github.com") {
+          methods.push(request.method);
+          if (request.method === "POST")
+            return Response.json({ token: "synthetic-invalid-mint" }, { status: 201 });
+          if (request.method === "DELETE") {
+            elapsed = 45_000;
+            return new Response(null, { status: 204 });
+          }
+        }
+        return fetchGitHubActionsTokenExchangeExternalTestDouble(request);
+      },
+    });
+    const response = await exchange(await githubActionsTokenExchangeRequest(), {
+      observe: async (event) => {
+        observations.push(event.fields["event"]);
+      },
+    });
+    expect(response.status).toBe(502);
+    expect(methods).toEqual(["GET", "POST", "DELETE"]);
+    expect(observations).toContain("installation_access_token_issuance_started");
+    expect(observations).not.toContain("installation_access_token_issuance_failed");
   });
 
   it("bounds body acquisition through the public handler", async () => {

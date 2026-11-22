@@ -304,13 +304,22 @@ Bounded last-known-good OpenID Provider Metadata or a JWK Set may be used accord
 
 ### Exchange lifetime and credential release
 
-A configured Token Exchange has a broker-owned 45-second success budget. Host
+A configured Token Exchange has a broker-owned 45-second success budget measured
+on the host's `performance.now()` clock. Host
 adapters start it before their body acquisition and admission work; a directly
 invoked runtime-neutral handler starts it on entry. The existing, tighter OIDC
 and GitHub transport deadlines remain in force. Header acquisition and host
 listener/shutdown policy outside the adapter remain host-owned.
 
-Deadline expiry or client cancellation permanently forbids new mint attempts
+A timer interrupts outstanding waits. At each pre-mint transition, mandatory
+acknowledgement and release, the broker also checks elapsed time against the
+original deadline. A host clock that advances during synchronous execution can
+therefore report expiry before the timer callback runs. On deployed Cloudflare
+Workers the clock advances only after I/O. Expiry during uninterrupted
+synchronous work becomes observable at the next clock advance or timer delivery.
+[Cloudflare documents the production clock behavior](https://developers.cloudflare.com/workers/runtime-apis/performance/).
+
+Observed deadline expiry or client cancellation permanently forbids new mint attempts
 and successful release. Body reading, authentication waiting, secret resolution,
 and mandatory acknowledgement observe that lifetime. Cancelling one waiter
 does not cancel an issuer refresh shared by other exchanges. The Worker retains
@@ -342,12 +351,12 @@ to infer the effective token scope.
 The credential must have at least one whole second of remaining validity after
 minting and again after mandatory acknowledgement, when constructing the success
 response. The Token Endpoint retains its discard capability until it synchronously
-checks cancellation and expiry and constructs that response. Construction commits
-release; later client delivery or promise scheduling cannot retroactively revoke
-it. Invalid expiry, contradictory successful response evidence, or an unexpected
+constructs the private response and rechecks expiry and lifetime. Returning the response commits release. Invalid expiry, contradictory successful response evidence, or an unexpected
 local failure after recovering a token and before committing release triggers one
-awaited best-effort revocation. Invalid upstream evidence maps to `502 server_error`;
-unexpected local failures retain `500 server_error`.
+awaited best-effort revocation. Invalid upstream evidence maps to `502 server_error`
+and unexpected local failures retain `500 server_error`. If revocation consumes
+the remaining budget, the broker skips any pending failure observation and
+preserves the failure that triggered revocation.
 
 Independent fallback observations use `installation_access_token_release_failed`
 with only configured `github_app.client_id`, `stage` (`upstream_response`,

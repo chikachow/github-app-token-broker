@@ -2,7 +2,10 @@ import { request as httpRequest } from "node:http";
 import { setTimeout as delay } from "node:timers/promises";
 import Fastify from "fastify";
 import { githubAppTokenExchangePlugin } from "@github-app-token-broker/fastify";
-import type { GitHubAppTokenExchangeHandler } from "@github-app-token-broker/token-exchange";
+import type {
+  GitHubAppTokenExchangeHandler,
+  TokenExchangeRequestContext,
+} from "@github-app-token-broker/token-exchange";
 import { describe, expect, it, vi } from "vitest";
 
 const path = "/github/apps/fixture-app/token";
@@ -119,17 +122,17 @@ describe("Fastify Token Exchange lifetime", () => {
 
   it("keeps the original budget when body acquisition finishes", async () => {
     const accepted = Promise.withResolvers<void>();
-    const started = Promise.withResolvers<AbortSignal>();
+    const started = Promise.withResolvers<{ signal: AbortSignal; deadline: number | undefined }>();
     const release = Promise.withResolvers<void>();
     const app = await listen(
-      async (request) => {
-        started.resolve(request.signal);
+      async (request, context) => {
+        started.resolve({ signal: request.signal, deadline: context.hostDeadline });
         await release.promise;
         return Response.json({ ok: true });
       },
       () => accepted.resolve(),
     );
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
     const client = httpRequest(`${app.address}${path}`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -141,7 +144,8 @@ describe("Fastify Token Exchange lifetime", () => {
       await delay(10);
       await vi.advanceTimersByTimeAsync(30_000);
       client.end("body");
-      const signal = await started.promise;
+      const { signal, deadline } = await started.promise;
+      expect(deadline).toBe(45_000);
       expect(signal.aborted).toBe(false);
       await vi.advanceTimersByTimeAsync(14_999);
       expect(signal.aborted).toBe(false);
@@ -156,7 +160,10 @@ describe("Fastify Token Exchange lifetime", () => {
   });
 });
 
-async function listen(handler: (request: Request) => Promise<Response>, onRequest?: () => void) {
+async function listen(
+  handler: (request: Request, context: TokenExchangeRequestContext) => Promise<Response>,
+  onRequest?: () => void,
+) {
   const server = Fastify();
   if (onRequest !== undefined) server.addHook("onRequest", async () => onRequest());
   const tokenExchange: GitHubAppTokenExchangeHandler = Object.assign(handler, {

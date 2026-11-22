@@ -13,7 +13,10 @@ import {
   revokeGitHubInstallationAccessToken,
   type GitHubApiDependencies,
 } from "./http.ts";
-import type { InstallationAccessTokenRequest } from "./installation-access-token-request.ts";
+import {
+  isGitHubRepositoryResourcePathSegment,
+  type InstallationAccessTokenRequest,
+} from "./installation-access-token-request.ts";
 import { resolveSecretText, type SecretTextBinding } from "./secrets.ts";
 
 const githubAppJwtExpirationOffsetSeconds = 9 * 60;
@@ -73,8 +76,10 @@ export const defaultGitHubAppDependencies: GitHubAppDependencies = {
   now: () => new Date(),
 };
 
+const repositorySegment = z.string().refine(isGitHubRepositoryResourcePathSegment);
+
 const githubInstallationResponseSchema = z.object({
-  account: z.object({ login: z.string().min(1) }),
+  account: z.object({ login: repositorySegment }),
   id: z.int().positive(),
 });
 
@@ -82,7 +87,7 @@ const githubInstallationAccessTokenResponseSchema = z.object({
   expires_at: z.iso.datetime({ offset: true }),
   permissions: z.unknown(),
   repositories: z
-    .array(z.object({ name: z.string().min(1), owner: z.object({ login: z.string().min(1) }) }))
+    .array(z.object({ name: repositorySegment, owner: z.object({ login: repositorySegment }) }))
     .optional(),
   token: z.string().min(1),
 });
@@ -92,32 +97,34 @@ export async function issueInstallationAccessToken(
   configuration: GitHubAppConfiguration,
   request: InstallationAccessTokenRequest,
   dependencies: GitHubAppDependencies = defaultGitHubAppDependencies,
-  signal?: AbortSignal,
+  lifetime?: { readonly signal: AbortSignal; assertActive(): void },
 ): Promise<GitHubInstallationAccessTokenIssuanceResult> {
   let installationId: number | undefined;
   let recoveredToken: string | undefined;
 
   try {
-    signal?.throwIfAborted();
+    lifetime?.assertActive();
     const authentication = githubAppAuthenticationHeaders(configuration, dependencies);
-    const authenticationHeaders = await (signal === undefined
+    const authenticationHeaders = await (lifetime === undefined
       ? authentication
-      : awaitWithAbortSignal(authentication, signal));
-    signal?.throwIfAborted();
+      : awaitWithAbortSignal(authentication, lifetime.signal));
+    lifetime?.assertActive();
     const repositoryPath = `${request.resource.owner}/${request.resource.repository}`;
     const installation = await fetchGitHubApiJson(dependencies, {
+      beforeDispatch: () => lifetime?.assertActive(),
       headers: authenticationHeaders,
-      ...(signal === undefined ? {} : { init: { signal } }),
+      ...(lifetime === undefined ? {} : { init: { signal: lifetime.signal } }),
       path: `/repos/${repositoryPath}/installation`,
       responseSchema: githubInstallationResponseSchema.refine((resolvedInstallation) =>
         githubRepositoryOwnerMatches(request.resource.owner, resolvedInstallation.account.login),
       ),
     });
     installationId = installation.id;
-    signal?.throwIfAborted();
+    lifetime?.assertActive();
     // An accepted mint remains owned through its fixed transport deadline, even after cancellation.
     const tokenPath = `/app/installations/${installation.id}/access_tokens`;
     const response = await fetchGitHubApiJsonResponse(dependencies, {
+      beforeDispatch: () => lifetime?.assertActive(),
       headers: authenticationHeaders,
       init: {
         body: JSON.stringify({
@@ -139,7 +146,7 @@ export async function issueInstallationAccessToken(
     if (
       !parsed.success ||
       !permissionsMatch(parsed.data.permissions, request.permissions) ||
-      !(Date.parse(parsed.data.expires_at) - dependencies.now().getTime() >= 1000) ||
+      !(remainingInstallationAccessTokenSeconds(parsed.data.expires_at, dependencies.now()) >= 1) ||
       (parsed.data.repositories !== undefined &&
         (parsed.data.repositories.length !== 1 ||
           parsed.data.repositories[0]!.name.toLowerCase() !==
@@ -183,6 +190,12 @@ export async function issueInstallationAccessToken(
       ...(revocationOutcome === undefined ? {} : { revocationOutcome }),
     };
   }
+}
+
+export function remainingInstallationAccessTokenSeconds(expiresAt: string, now: Date): number {
+  const nowMilliseconds = now.getTime();
+  if (!Number.isFinite(nowMilliseconds)) throw new Error("invalid local clock");
+  return Math.floor((Date.parse(expiresAt) - nowMilliseconds) / 1000);
 }
 
 function permissionsMatch(

@@ -130,7 +130,7 @@ App private keys remain separate Worker secrets or Secrets Store bindings. The r
 4. `packages/token-issuance-policy` evaluates immutable, independently complete Permit Statements for the selected client ID once and returns one of `permitted`, `target_unsupported`, `requested_permissions_unsupported`, or `subject_token_unacceptable`.
 5. `installation-access-token-issuance.ts` includes `github_app.client_id`, maps that single evaluation result and awaits a token-free `installation_access_token_issuance_started` observation before any GitHub request.
 6. `packages/github` accepts the normalized Installation Access Token Request at one issuance boundary, resolves App authentication once for the exchange, resolves the requested repository installation, validates the returned installation owner, and mints a token limited to the repository and Requested Permissions. It returns either the token with its bound revocation capability or a classified failure with sanitized operational evidence; raw GitHub HTTP errors do not cross into Token Exchange.
-7. The issuance module awaits `installation_access_token_issuance_succeeded`. Rejection or timeout triggers one awaited best-effort revocation and never re-enters the failed observer. After acknowledgement the endpoint retains a bound discard capability, rechecks cancellation and expiry, and synchronously constructs the response to commit release.
+7. The issuance module awaits `installation_access_token_issuance_succeeded`. Rejection or timeout triggers one awaited best-effort revocation and never re-enters the failed observer. After acknowledgement the endpoint retains a bound discard capability, constructs a private response, and rechecks expiry and cancellation immediately before returning it.
 8. The Token Endpoint maps authentication, policy, and issuance failure reasons directly to stable OAuth errors and sanitizes every otherwise unexpected failure to non-cacheable `500 {"error":"server_error"}` without logging raw tokens.
 
 The endpoint, compiled dispatcher, and Worker use the Token Exchange package's
@@ -139,8 +139,9 @@ and response construction. Each retains its catch boundary around the operations
 it owns.
 
 Each request owns a fixed success lifetime. Host adapters start it before admission
-or parsing; the deep handler also enforces its own bound, linked to the incoming
-signal. `lifetime.ts` owns terminal cancellation and bounded observation waiting.
+or parsing and pass the absolute `performance.now()` cutoff in
+`TokenExchangeRequestContext.hostDeadline`. The handler uses the earlier of this
+cutoff and its own 45-second deadline, while tracking the incoming request signal. `lifetime.ts` owns terminal cancellation and bounded observation waiting.
 The GitHub issuer checks cancellation before authentication, installation lookup,
 and minting; once minting starts its existing transport deadline owns completion.
 No timeout races away ownership of a known token. The [service contract](service-contract.md#exchange-lifetime-and-credential-release)

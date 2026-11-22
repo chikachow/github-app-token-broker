@@ -90,19 +90,20 @@ export function createTokenExchangeWorker(
             githubAppConfigurationFromWorkerBinding(app, Reflect.get(env, app.privateKeyBinding)),
           );
 
+          lifetime.assertActive();
           const rateLimit = await awaitTokenExchangeOperation(
             env.TOKEN_EXCHANGE_RATE_LIMIT.limit({ key: tokenExchangeRateLimitKey(request) }),
-            lifetime.signal,
+            lifetime,
           );
 
           if (!rateLimit.success) {
             return workerOAuthErrorResponse(429, "temporarily_unavailable");
           }
 
-          const exchange = requestTokenExchange(
-            new Request(request, { signal: lifetime.signal }),
-            context,
-          );
+          const exchange = requestTokenExchange(new Request(request, { signal: lifetime.signal }), {
+            ...context,
+            hostDeadline: lifetime.deadline,
+          });
           // Retain bounded mint recovery after disconnect, while also awaiting it before response.
           ctx.waitUntil(exchange.then(() => undefined));
           return await exchange;

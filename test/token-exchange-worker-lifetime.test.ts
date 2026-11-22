@@ -7,6 +7,29 @@ import { fetchGitHubActionsTokenExchangeExternalTestDouble } from "./support/git
 import { testEnv, testGitHubActionsTokenExchangeComposition } from "./support/worker.ts";
 
 describe("Worker Token Exchange lifetime", () => {
+  it("skips admission when the client has already disconnected", async () => {
+    const fetchExternal = vi.fn<typeof fetch>();
+    const worker = createTokenExchangeWorker(testGitHubActionsTokenExchangeComposition, {
+      fetch: fetchExternal,
+      now: () => testNow,
+      observe: async () => undefined,
+    });
+    const context = createExecutionContext();
+    const request = new Request(await githubActionsTokenExchangeRequest(), {
+      signal: AbortSignal.abort(),
+    });
+    const limit = vi.fn(async () => ({ success: true }));
+    const response = await worker.fetch!(
+      request as Parameters<NonNullable<typeof worker.fetch>>[0],
+      { ...testEnv, TOKEN_EXCHANGE_RATE_LIMIT: { limit } },
+      context,
+    );
+    await waitOnExecutionContext(context);
+    expect(response.status).toBe(503);
+    expect(limit).not.toHaveBeenCalled();
+    expect(fetchExternal).not.toHaveBeenCalled();
+  });
+
   it("bounds stalled admission without starting upstream work", async () => {
     const admission = Promise.withResolvers<{ success: boolean }>();
     const entered = Promise.withResolvers<void>();
@@ -54,6 +77,46 @@ describe("Worker Token Exchange lifetime", () => {
       await pending;
       await waitOnExecutionContext(context);
       vi.useRealTimers();
+    }
+  });
+
+  it("counts admission time before acknowledging issuance", async () => {
+    let elapsed = 0;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => elapsed);
+    const githubMethods: string[] = [];
+    const worker = createTokenExchangeWorker(testGitHubActionsTokenExchangeComposition, {
+      now: () => testNow,
+      observe: async (event) => {
+        if (event.fields["event"] === "installation_access_token_issuance_started")
+          elapsed = 45_000;
+      },
+      fetch: async (input, init) => {
+        const request = new Request(input, init);
+        if (new URL(request.url).hostname === "api.github.com") githubMethods.push(request.method);
+        return fetchGitHubActionsTokenExchangeExternalTestDouble(request);
+      },
+    });
+    const context = createExecutionContext();
+    try {
+      const request = await githubActionsTokenExchangeRequest();
+      const response = await worker.fetch!(
+        request as Parameters<NonNullable<typeof worker.fetch>>[0],
+        {
+          ...testEnv,
+          TOKEN_EXCHANGE_RATE_LIMIT: {
+            limit: async () => {
+              elapsed = 30_000;
+              return { success: true };
+            },
+          },
+        },
+        context,
+      );
+      expect(response.status).toBe(500);
+      expect(githubMethods).toEqual([]);
+    } finally {
+      clock.mockRestore();
+      await waitOnExecutionContext(context);
     }
   });
 
