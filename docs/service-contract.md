@@ -159,7 +159,7 @@ rejecting a name or level after policy approval. When both the resource and
 Requested Permissions are supported but the Verified Subject Token is not
 acceptable to policy, the response is `400 {"error":"invalid_request"}`.
 
-Successful responses are JSON with `Cache-Control: no-store` and `Pragma: no-cache`. github-app-token-broker always returns the canonical issued `scope`, including when the request supplied the same permission set in a different order:
+Successful responses are JSON with `Cache-Control: no-store` and `Pragma: no-cache`. The response `scope` lists the authorized Requested Permissions in canonical order. GitHub may also grant [read-only repository metadata](#exchange-lifetime-and-credential-release).
 
 ```json
 {
@@ -340,9 +340,13 @@ preserving acknowledgement failure precedence. Cancellation before an observatio
 starts does not invoke that observer. Disconnected clients have no response
 delivery guarantee.
 
-A successful GitHub mint response must return exactly the Requested Permissions,
-including their levels; no implicit baseline permission is accepted. Missing,
-additional, weaker, or stronger permission evidence is invalid. If a repository
+A successful GitHub mint response must include every Requested Permission at its
+requested level. GitHub may additionally report `metadata:read` when metadata
+was not requested. Any other additional permission or level is invalid.
+Explicitly requested metadata follows the same policy and exact-level checks as
+other Requested Permissions. The broker sends the Requested Permissions to GitHub
+and returns the requested scope to the Client. The success observation records
+the permissions GitHub actually returned. If a repository
 inventory is present it must identify precisely one repository with the requested
 owner and name, compared case-insensitively. Its omission remains supported;
 other additive fields remain ignored. `repository_selection` alone is not used

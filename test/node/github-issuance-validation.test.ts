@@ -1,5 +1,8 @@
 import { issueInstallationAccessToken } from "@github-app-token-broker/github/app";
-import { createInstallationAccessTokenRequest } from "@github-app-token-broker/github/installation-access-token-request";
+import {
+  type GitHubInstallationPermissions,
+  createInstallationAccessTokenRequest,
+} from "@github-app-token-broker/github/installation-access-token-request";
 import { describe, expect, it } from "vitest";
 
 import { testPrivateKeyPem } from "../support/rsa-test-key-pair.ts";
@@ -8,7 +11,7 @@ const now = new Date("2026-11-14T00:00:00.000Z");
 const mintedToken = "synthetic-validation-token";
 const validResponse = {
   expires_at: "2026-11-14T01:00:00.000Z",
-  permissions: { contents: "read", issues: "write" },
+  permissions: { contents: "read", issues: "write" } as const,
   token: mintedToken,
 };
 
@@ -24,8 +27,18 @@ describe("GitHub issuance response validation", () => {
       replacement: { permissions: { contents: "write", issues: "write" } },
     },
     {
-      label: "additional permission",
-      replacement: { permissions: { contents: "read", issues: "write", metadata: "read" } },
+      label: "additional non-metadata permission alongside metadata read",
+      replacement: {
+        permissions: { ...validResponse.permissions, metadata: "read", actions: "read" },
+      },
+    },
+    {
+      label: "unrequested metadata write",
+      replacement: { permissions: { ...validResponse.permissions, metadata: "write" } },
+    },
+    {
+      label: "metadata read in place of a requested permission",
+      replacement: { permissions: { contents: "read", metadata: "read" } },
     },
     {
       label: "additional prototype-named permission",
@@ -84,13 +97,38 @@ describe("GitHub issuance response validation", () => {
     expect(requests[2]?.redirect).toBe("manual");
   });
 
+  it.each([
+    { requested: "read", returned: undefined, accepted: false },
+    { requested: "write", returned: "read", accepted: false },
+    { requested: "read", returned: "write", accepted: false },
+    { requested: "read", returned: "read", accepted: true },
+  ] as const)(
+    "requires explicitly requested metadata:$requested to match when GitHub returns $returned",
+    async ({ requested, returned, accepted }) => {
+      const requests: Request[] = [];
+      const permissions =
+        returned === undefined
+          ? validResponse.permissions
+          : { ...validResponse.permissions, metadata: returned };
+      const result = await issue({ ...validResponse, permissions }, requests, {
+        requestedPermissions: { ...validResponse.permissions, metadata: requested },
+      });
+      expect(result.ok).toBe(accepted);
+      expect(requests.map((request) => request.method)).toEqual(
+        accepted ? ["GET", "POST"] : ["GET", "POST", "DELETE"],
+      );
+    },
+  );
+
   it("awaits revocation and contains its failure without returning the credential", async () => {
     const revocationStarted = Promise.withResolvers<void>();
     const revocation = Promise.withResolvers<Response>();
     let completed = false;
-    const result = issue({ ...validResponse, permissions: {} }, [], () => {
-      revocationStarted.resolve();
-      return revocation.promise;
+    const result = issue({ ...validResponse, permissions: {} }, [], {
+      revoke: () => {
+        revocationStarted.resolve();
+        return revocation.promise;
+      },
     }).then((value) => {
       completed = true;
       return value;
@@ -119,12 +157,14 @@ describe("GitHub issuance response validation", () => {
     "revokes a recovered token when the validation clock %s",
     async (failure) => {
       const requests: Request[] = [];
-      const result = await issue(validResponse, requests, undefined, () => {
-        if (requests.some((request) => request.method === "POST")) {
-          if (failure === "returns an invalid date") return new Date(NaN);
-          throw new Error(`private clock failure ${mintedToken}`);
-        }
-        return now;
+      const result = await issue(validResponse, requests, {
+        getNow: () => {
+          if (requests.some((request) => request.method === "POST")) {
+            if (failure === "returns an invalid date") return new Date(NaN);
+            throw new Error(`private clock failure ${mintedToken}`);
+          }
+          return now;
+        },
       });
 
       expect(result).toMatchObject({
@@ -177,15 +217,22 @@ describe("GitHub issuance response validation", () => {
 function issue(
   response: unknown,
   requests: Request[],
-  revoke: () => Promise<Response> = async () => new Response(null, { status: 204 }),
-  getNow: () => Date = () => now,
+  {
+    requestedPermissions = validResponse.permissions,
+    revoke = async () => new Response(null, { status: 204 }),
+    getNow = () => now,
+  }: {
+    requestedPermissions?: GitHubInstallationPermissions;
+    revoke?: () => Promise<Response>;
+    getNow?: () => Date;
+  } = {},
 ) {
   return issueInstallationAccessToken(
     { clientId: "Iv1.fixtureApp", privateKey: testPrivateKeyPem },
     createInstallationAccessTokenRequest({
       owner: "fixture-owner",
       repository: "fixture-repository",
-      permissions: { contents: "read", issues: "write" },
+      permissions: requestedPermissions,
     }),
     {
       now: getNow,
@@ -197,7 +244,7 @@ function issue(
         }
         if (request.method === "DELETE") return revoke();
         expect(await request.json()).toEqual({
-          permissions: { contents: "read", issues: "write" },
+          permissions: requestedPermissions,
           repositories: ["fixture-repository"],
         });
         return Response.json(response, { status: 201 });

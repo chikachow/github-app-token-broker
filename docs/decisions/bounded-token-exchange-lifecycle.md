@@ -28,11 +28,12 @@ This is the release boundary; actual network delivery is not a transactional
 acknowledgement by the Client. A rejected credential cannot become successful when
 a late secret or observer completes.
 
-Exact returned permission evidence is required without an implicit baseline.
-Optional repository inventory is checked when present; omission remains compatible
-with GitHub's documented response. Real GitHub interoperability is a deployment
-rollout gate. Changing authority semantics to accommodate a vendor baseline requires
-an explicit decision, rather than an undocumented parser exception.
+A live single-repository mint requested only `contents:read`. GitHub returned
+both `contents:read` and `metadata:read` for the requested repository. Requiring
+identical maps rejected that credential. The broker therefore accepts optional
+read-only repository metadata in the returned grant. All requested levels and
+the repository restriction still apply. The [service contract](../service-contract.md#exchange-lifetime-and-credential-release)
+defines the comparison. Real GitHub interoperability remains a deployment rollout gate.
 
 Rejected alternatives were a top-level timeout race that abandons mint ownership,
 aborting shared refreshes when one waiter disconnects, and retrying ambiguous mint

@@ -323,7 +323,7 @@ describe("GitHub App Token Exchange public interface", () => {
             return Response.json(
               {
                 expires_at: "2030-01-01T00:00:00Z",
-                permissions: { contents: "write", pull_requests: "write" },
+                permissions: { contents: "write", metadata: "read", pull_requests: "write" },
                 token: "ghs_test_token",
               },
               { status: 201 },
@@ -342,6 +342,7 @@ describe("GitHub App Token Exchange public interface", () => {
     });
 
     expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ scope: "contents:write pull_requests:write" });
     const commonFields = expectedIssuanceObservationFields({ outcome: "permitted" });
     expect(observations).toEqual([
       {
@@ -365,7 +366,7 @@ describe("GitHub App Token Exchange public interface", () => {
             repository: testRepository,
           },
           installation_access_token: {
-            permissions: { contents: "write", pull_requests: "write" },
+            permissions: { contents: "write", metadata: "read", pull_requests: "write" },
           },
         },
         level: "info",
