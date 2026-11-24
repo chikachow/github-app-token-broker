@@ -119,7 +119,7 @@ The deployment system is maintained outside this repository. It must:
 9. smoke-test the routed `POST /github/apps/{app_slug}/token` contract without logging tokens
 10. exercise `GitHubAppInformationEntrypoint` through an explicitly configured trusted named service binding; each concrete consumer must test its exact production binding configuration and static `props.githubAppClientId` and the absence of any public HTTP route to that entrypoint
 11. when durable observation is required, inject and test an acknowledgement adapter whose promise resolves only after the selected sink confirms persistence within the broker success budget
-12. verify real GitHub mint responses against exact permission and optional repository validation before rollout; a legitimate vendor baseline that conflicts with the contract requires an explicit decision before deployment
+12. verify a real GitHub mint against the [returned permission and repository checks](service-contract.md#exchange-lifetime-and-credential-release) before rollout
 
 Before enabling an App, verify that its deployed credential authenticates as the
 configured client ID and slug using GitHub's authenticated `GET /app` operation.

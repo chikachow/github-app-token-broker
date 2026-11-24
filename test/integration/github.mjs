@@ -85,7 +85,7 @@ async function protocol(request, response) {
     return sendJson(response, 201, {
       token: "ghs_disposable_other_app_token",
       expires_at: new Date(Date.now() + 3600000).toISOString(),
-      permissions: { contents: "read", pull_requests: "read" },
+      permissions: { contents: "read", metadata: "read", pull_requests: "read" },
     });
   }
   if (request.url === "/repos/integration-buildkite-owner/target/installation") {

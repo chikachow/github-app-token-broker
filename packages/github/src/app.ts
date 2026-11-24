@@ -205,10 +205,14 @@ function permissionsMatch(
   if (typeof permissions !== "object" || permissions === null || Array.isArray(permissions)) {
     return false;
   }
+  const expected =
+    !Object.hasOwn(requested, "metadata") && Object.hasOwn(permissions, "metadata")
+      ? { ...requested, metadata: "read" }
+      : requested;
   const entries = Object.entries(permissions);
   return (
-    entries.length === Object.keys(requested).length &&
-    entries.every(([name, level]) => Object.hasOwn(requested, name) && level === requested[name])
+    entries.length === Object.keys(expected).length &&
+    entries.every(([name, level]) => Object.hasOwn(expected, name) && level === expected[name])
   );
 }
 
